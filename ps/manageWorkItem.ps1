@@ -8,12 +8,18 @@
     3. 管理者修改「員工賦予的工項 (tbWorkItemAssignment)」(設定負責員工與點數分攤比例)
 .PARAMETER actionType
     執行動作：
-    - 'listWorkItemType' : 查詢工項代表類型與標準 Story Point
+    - 'listWorkItemKind'   : 查詢工項類型設定 (專案/維運/顧問時數/自訂類型)
+    - 'upsertWorkItemKind' : 新增或修改工項類型
+    - 'deleteWorkItemKind' : 刪除工項類型
+    - 'listWorkItemType'   : 查詢工項代表類型與標準 Story Point
     - 'upsertWorkItemType' : 新增或修改工項代表類型 (支援同步既有工項點數)
-    - 'listWorkItem'     : 查詢各工項的 Story Point 與指派員工明細
-    - 'upsertWorkItem'   : 建立或修改工項 (自動帶入代表類型點數或手動微調)
-    - 'assignWorkItem'   : 修改員工賦予的工項與分攤比例
-    - 'removeAssignment' : 移除員工身上的指定工項
+    - 'deleteWorkItemType' : 刪除工項代表類型
+    - 'listWorkItem'       : 查詢各工項的 Story Point 與指派員工明細
+    - 'upsertWorkItem'     : 建立或修改工項 (自動帶入代表類型點數或手動微調)
+    - 'deleteWorkItem'     : 刪除實際工項
+    - 'assignWorkItem'     : 修改員工賦予的工項與分攤比例
+    - 'removeAssignment'   : 移除員工身上的指定工項
+    - 'processExpired'     : 檢核並處理達到迄時之工項
 .NOTES
     檔案名稱: manageWorkItem.ps1
     建立者  : Antigravity Senior Full-Stack Engineer
@@ -22,8 +28,26 @@
 [cmdletbinding()]
 param(
     [parameter(mandatory = $false)]
-    [validateset('listWorkItemType', 'upsertWorkItemType', 'listWorkItem', 'upsertWorkItem', 'assignWorkItem', 'removeAssignment', 'processExpired')]
+    [validateset('listWorkItemKind', 'upsertWorkItemKind', 'deleteWorkItemKind', 'listWorkItemType', 'upsertWorkItemType', 'deleteWorkItemType', 'listWorkItem', 'upsertWorkItem', 'deleteWorkItem', 'assignWorkItem', 'removeAssignment', 'processExpired')]
     [string]$actionType = 'listWorkItem',
+
+    [parameter(mandatory = $false)]
+    [int]$workItemKindPk = 0,
+
+    [parameter(mandatory = $false)]
+    [string]$kindCode = '',
+
+    [parameter(mandatory = $false)]
+    [string]$kindName = '',
+
+    [parameter(mandatory = $false)]
+    [string]$badgeIcon = '📌',
+
+    [parameter(mandatory = $false)]
+    [string]$badgeColor = 'blue',
+
+    [parameter(mandatory = $false)]
+    [int]$sortOrder = 100,
 
     [parameter(mandatory = $false)]
     [int]$workItemTypePk = 0,
@@ -38,7 +62,6 @@ param(
     [string]$categoryName = '一般類別',
 
     [parameter(mandatory = $false)]
-    [validateset('project', 'maintenance', 'consultingHour')]
     [string]$defaultWorkItemKind = 'project',
 
     [parameter(mandatory = $false)]
@@ -63,7 +86,6 @@ param(
     [string]$itemDescription = '',
 
     [parameter(mandatory = $false)]
-    [validateset('project', 'maintenance', 'consultingHour')]
     [string]$workItemKind = 'project',
 
     [parameter(mandatory = $false)]
@@ -120,6 +142,37 @@ param(
 . (join-path -path $psscriptroot -childpath 'common.ps1')
 
 switch ($actionType) {
+    'listWorkItemKind' {
+        $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spGetStoryPointDashboard' -parameters @{}
+        writeSystemLog -logLevel 3 -sourceScript 'manageWorkItem.ps1' -objectName 'listWorkItemKind' `
+            -executionResult "查詢工項類型完成，共 $($ds.tables[8].rows.count) 筆" -operatorAccount $operatorAccount
+        return ,$ds.tables[8]
+    }
+
+    'upsertWorkItemKind' {
+        $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spUpsertWorkItemKind' -parameters @{
+            workItemKindPk = $(if ($workItemKindPk -gt 0) { $workItemKindPk } else { $null })
+            kindCode = $kindCode
+            kindName = $kindName
+            badgeIcon = $badgeIcon
+            badgeColor = $badgeColor
+            sortOrder = $sortOrder
+            description = $description
+            isActive = $true
+            operatorAccount = $operatorAccount
+        }
+        return ,$ds.tables[0]
+    }
+
+    'deleteWorkItemKind' {
+        $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spDeleteWorkItemKind' -parameters @{
+            workItemKindPk = $(if ($workItemKindPk -gt 0) { $workItemKindPk } else { $null })
+            kindCode = $(if (-not [string]::isnullorempty($kindCode)) { $kindCode } else { $null })
+            operatorAccount = $operatorAccount
+        }
+        return ,$ds.tables[0]
+    }
+
     'listWorkItemType' {
         $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spGetStoryPointDashboard' -parameters @{
             workItemTypePk = $(if ($workItemTypePk -gt 0) { $workItemTypePk } else { $null })
@@ -139,6 +192,15 @@ switch ($actionType) {
             description = $description
             standardStoryPoint = $standardStoryPoint
             syncExistingOpenWorkItem = $syncExistingOpenWorkItem
+            operatorAccount = $operatorAccount
+        }
+        return ,$ds.tables[0]
+    }
+
+    'deleteWorkItemType' {
+        $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spDeleteWorkItemType' -parameters @{
+            workItemTypePk = $(if ($workItemTypePk -gt 0) { $workItemTypePk } else { $null })
+            typeCode = $(if (-not [string]::isnullorempty($typeCode)) { $typeCode } else { $null })
             operatorAccount = $operatorAccount
         }
         return ,$ds.tables[0]
@@ -200,6 +262,15 @@ switch ($actionType) {
         # 儲存後立即檢核是否達到迄時：若已達迄時自動轉態為已完成、扣減 Story Point 並寄信給部門管理層與 HR
         $null = invokeExpiredWorkItemCheck -operatorAccount $operatorAccount
         return ,$savedItem
+    }
+
+    'deleteWorkItem' {
+        $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spDeleteWorkItem' -parameters @{
+            workItemPk = $(if ($workItemPk -gt 0) { $workItemPk } else { $null })
+            itemCode = $(if (-not [string]::isnullorempty($itemCode)) { $itemCode } else { $null })
+            operatorAccount = $operatorAccount
+        }
+        return ,$ds.tables[0]
     }
 
     'processExpired' {

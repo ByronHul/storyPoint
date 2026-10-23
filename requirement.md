@@ -207,28 +207,37 @@
     1. `ps/manageEmployee.ps1` 新增 `-actionType 'updateSelfCredential'`（搭配 `-employeePk`、`-newLoginAccount`、`-plainPassword`、`-currentPlainPassword`），直接呼叫 `storyPoint.spUpdateEmployeeSelfCredential`。
     2. `ps/ui/uiMain.ps1` 於頂部標題列右側新增「**`🔑 修改我的帳密`**」按鈕 (`showChangeOwnCredentialDialog`)，供任何登入者在 GUI 視窗中隨時修改自己的帳號與密碼。
 
-### 2.14 盲投 Session 獨立網頁進行、多網頁並行參與不同 Session 與同 Session 防重複進入規範 (Dedicated Standalone Session Webpage & Anti-Duplicate Entry Guard)
+### 2.14 盲投議程依個人區分「待參與」與「參與中」、從「待參與」點選進入「參與中」獨立網頁、多網頁並行參與不同 Session 與同 Session 防重複進入規範
 * **核心原則**：
-    1. **以專屬獨立網頁進行整個盲投 Session（非 Modal 彈窗、非大廳內嵌）**：
-        * 當使用者進入任一盲投議程 (`storyPoint.tbVotingSession`) 時，一律透過專屬獨立網頁路由 `GET /voting/session?sessionPk={sessionPk}`（或 `GET /voting/session/{sessionPk}`）開啟並進行整個 Session 的完整生命週期，絕不使用 Modal 對話框或內嵌於主大廳頁籤中。
+    1. **進行中盲投議程依個人狀態分為「📂 待參與」與「🟢 參與中」，由個人從「待參與」點選才進入「參與中」獨立網頁**：
+        * 在主系統盲投大廳 (`/?tab=voting`) 左側「📌 投票議程清單」與右側「盲投議程總覽大廳」中，所有進行中的盲投議程（`sessionStatus in ('voting', 'revealed')`）不再混為單一「投票中與討論中議程」清單，而是**依每位登入員工個人 (`curEmpPk`) 目前是否已點選進入獨立網頁**，明確拆分為兩個分類區塊：
+            1. **「📂 待參與」(`#folder-pending-join` / `#lobbyGridPending`)**：個人尚未點選進入獨立盲投網頁的進行中議程（包含新建立或剛被加入參與名單的議程，預設一律歸屬於「📂 待參與」）。
+            2. **「🟢 參與中」(`#folder-participating` / `#lobbyGridParticipating`)**：個人已從「📂 待參與」主動點選開啟，目前正在專屬獨立網頁中進行的議程。
+            3. **「📁 已拍板定案議程」(`#folder-finalized`)**：已完成核定點數的歷史議程（預設收合）。
+        * **個人點選「待參與」進入「參與中」獨立網頁流程**：
+            * 唯有當個人在「📂 待參與」清單或卡片中點選議程（點擊「`🚀 點選進入「參與中」獨立網頁`」按鈕或議程標題）時，系統才會在獨立網頁分頁開啟 `GET /voting/session?sessionPk={sessionPk}`，並將該筆議程對該名使用者而言由「📂 待參與」即時移入「🟢 參與中」區塊。
+            * 當個人在獨立網頁中點擊「`🚪 結束參與並返回「待參與」(/voting/session/leave)`」、關閉該獨立網頁分頁、或於大廳「🟢 參與中」卡片點擊「`🚪 結束參與`」時，後端立即釋放該使用者對該議程的參與鎖定，並將該議程即時移回「📂 待參與」清單。
+    2. **以專屬獨立網頁進行整個盲投 Session（非 Modal 彈窗、非大廳內嵌）**：
+        * 當使用者從「📂 待參與」點選進入任一盲投議程 (`storyPoint.tbVotingSession`) 時，一律透過專屬獨立網頁路由 `GET /voting/session?sessionPk={sessionPk}`（或 `GET /voting/session/{sessionPk}`）開啟並進行整個 Session 的完整生命週期，絕不使用 Modal 對話框或內嵌於主大廳頁籤中。
         * 獨立盲投網頁內完整包含：綠色撲克牌桌與參與者座位區、單回合倒數計時器、撲克牌出牌區（含中文意義標示與理由輸入）、主持人控制台（立即翻牌揭曉、開啟下一回合重新盲投、達成共識拍板定案）、該 Session 歷次盲投回合統計表與具名出牌明細表（支援通用欄位排序 `⇅/▲/▼` 與標題列鎖定 `📌/🔒`）、以及 SignalR + 2 秒輪詢即時自動翻牌同步機制。
         * 在獨立網頁中執行出牌 (`POST /voting/cast`)、主持控制 (`POST /voting/control`) 或修改設定 (`POST /voting/create`) 時，皆帶入 `fromStandalone=true` 與 `tabInstanceId`，處理完成後直接重導向回該獨立盲投網頁，確保整個 Session 全程在該獨立網頁內完成。
-    2. **支援同一人同時以多個獨立網頁參與「不同」盲投 Session**：
-        * 主系統大廳 (`/?tab=voting`) 轉型為「多人即時盲投議程大廳（多 Session 總覽與獨立網頁入口）」，列出所有可參與的盲投 Session 卡片與狀態摘要；點擊任一「不同」的 `sessionPk` 皆可在新的獨立瀏覽器分頁 (`target="_blank"`) 開啟對應的獨立盲投網頁。
-        * 獨立盲投網頁頂部亦提供「🌐 多網頁並行參與不同 Session 導覽列」，讓使用者可同時開啟多個獨立網頁分別參與不同的盲投 Session（例如：分頁 A 參與 `sessionPk=1`、分頁 B 同時參與 `sessionPk=2`），彼此獨立運作、互不干擾。
-    3. **嚴格禁止重複進入「同一個」盲投 Session (`同一個 session 不能重複進入`)**：
-        * **後端即時佔用鎖定 (`sqlDataService.votingSessionPresenceLease`)**：以 `(employeePk, votingSessionPk)` 為複合鍵建立執行緒安全的獨立網頁佔用鎖定（8 秒心跳續約 TTL）。當某位員工已在分頁 `tabInstanceId_1` 進入 `sessionPk=X` 時，每 2 秒透過 `/voting/liveStatus` 或 `/voting/session/heartbeat` 續約心跳；同分頁重新整理（F5）或表單送出時透過短效 Reload Cookie (`sp_reload_inst_{sessionPk}`) 與 `tabInstanceId` 無縫續用同一鎖定；關閉分頁或點擊「🚪 離開此 Session 並返回大廳 (`/voting/session/leave`)」時透過 `navigator.sendBeacon` 立即釋放鎖定。
-        * **後端與前端雙重攔截重複進入**：當同一位員工嘗試在第二個網頁分頁重複進入已在進行中的同一個 `sessionPk=X` 時：
-            1. 在大廳點擊時，前端 (`openIndependentVotingSession` 結合 `BroadcastChannel('sp_voting_session_guard')`、`localStorage` 與後端 `myActiveOpenSessionPks`) 立即顯示「`🔒 已在獨立網頁進行中 (禁重複進入)`」並攔截重複開啟。
-            2. 若使用者直接於新分頁貼上 `/voting/session?sessionPk=X` 網址強制進入，後端 `votingSessionStandalonePage` 立即偵測到該 `(employeePk, sessionPk)` 已被另一活躍分頁鎖定，回傳專屬「`🚫 同一個盲投 Session 禁止重複進入`」攔截頁面 (`buildDuplicateVotingSessionBlockedHtml`)，同時透過 `BroadcastChannel` 通知原本已開啟該 Session 的獨立網頁顯示提醒橫幅並聚焦，並於攔截頁提供一鍵切換參與「其他不同盲投 Session」的入口。
+    3. **支援同一人同時從「待參與」點選多個不同議程，以多個獨立網頁並行進入「參與中」**：
+        * 使用者可從「📂 待參與」分別點選多個「不同」的 `sessionPk`，在各自的獨立瀏覽器分頁 (`target="_blank"`) 同時開啟多個「🟢 參與中」獨立盲投網頁（例如：分頁 A 參與 `sessionPk=1`、分頁 B 同時參與 `sessionPk=2`），彼此獨立運作、互不干擾。
+        * 獨立盲投網頁頂部亦提供「🌐 多網頁並行導覽列」，標示目前本人處於「🟢 參與中」與「📂 待參與」的各議程狀態，支援一鍵從「📂 待參與」開啟其他不同 Session 的獨立網頁。
+    4. **嚴格禁止重複進入已在「參與中」的同一個盲投 Session (`同一個 session 不能重複進入`)**：
+        * **後端即時參與鎖定 (`sqlDataService.votingSessionPresenceLease`)**：以 `(employeePk, votingSessionPk)` 為複合鍵建立執行緒安全的獨立網頁參與鎖定（45 秒背景心跳容錯 TTL，防背景分頁節流誤釋放；關閉或離開時立即釋放）。當某位員工已在分頁 `tabInstanceId_1` 點選進入 `sessionPk=X`（處於「🟢 參與中」）時，每 2 秒透過 `/voting/liveStatus` 或 `/voting/session/heartbeat` 續約心跳；同分頁重新整理（F5）或表單送出時透過短效 Reload Cookie (`sp_reload_inst_{sessionPk}`) 與 `tabInstanceId` 無縫續用同一鎖定。
+        * **後端與前端雙重攔截重複進入**：當同一位員工嘗試對已在「🟢 參與中」的同一個 `sessionPk=X` 重複進入第二個網頁時：
+            1. 在大廳「🟢 參與中」區塊中，按鈕狀態鎖定為「`🟢 參與中 (獨立網頁進行中，禁重複進入)`」，點擊時前端 (`openIndependentVotingSession` 結合 `BroadcastChannel('sp_voting_session_guard')`、`localStorage` 與後端 `participatingSessionPks` / `myActiveOpenSessionPks`) 立即阻擋重複開啟並提示切換至已開啟之「參與中」分頁。
+            2. 若使用者直接於新分頁貼上 `/voting/session?sessionPk=X` 網址強制進入，後端 `votingSessionStandalonePage` 立即偵測到該 `(employeePk, sessionPk)` 已在「🟢 參與中」，回傳專屬「`🚫 同一個盲投 Session 禁止重複進入`」攔截頁面 (`buildDuplicateVotingSessionBlockedHtml`)，同時透過 `BroadcastChannel` 通知原本已開啟該 Session 的獨立網頁顯示提醒橫幅並聚焦。
 
-### 2.15 工項類型（專案 / 維運 / 顧問時數）、起訖時間設定、到期自動轉態扣減 Story Point 與 Email 寄信通知部門管理層與 HR，以及職級含部門經理規範
-* **工項類型與起訖時間設定 (`workItemKind` / `startDate` / `endDate`)**：
-    1. **三種工項類型**：所有實際工項 (`storyPoint.tbWorkItem`) 與工項代表類型預設值 (`storyPoint.tbWorkItemType.defaultWorkItemKind`) 皆支援以下三種類型設定：
-        * **`project`（🚀 專案）**
-        * **`maintenance`（🛠️ 維運）**
-        * **`consultingHour`（⏱️ 顧問時數）**
-    2. **起訖時間 (`startDate` ~ `endDate`)**：每一筆工項皆具備明確的「開始時間（起時 `startDate`）」與「結束時間（迄時 `endDate`）」，並於 Web 介面 (`/?tab=workitems`)、批次匯入/匯出 (CSV / Excel / 互動 HTML) 與 PowerShell (`ps/manageWorkItem.ps1` / `ps/ui/tabWorkItem.ps1`) 提供完整設定與查詢。
+### 2.15 工項類型（專案 / 維運 / 顧問時數及自訂類型）完整增刪修 (CRUD)、起訖時間設定、到期自動轉態扣減 Story Point 與 Email 寄信通知部門管理層與 HR，以及職級含部門經理規範
+* **工項類型 (`storyPoint.tbWorkItemKind`)、工項代表類型 (`storyPoint.tbWorkItemType`) 與實際工項 (`storyPoint.tbWorkItem`) 完整增、刪、修 (CRUD)**：
+    1. **工項類型主檔 (`storyPoint.tbWorkItemKind`) 增、刪、修**：
+        * 系統建立獨立資料表 `storyPoint.tbWorkItemKind`，預設內建三種核心工項類型：**`project`（🚀 專案）**、**`maintenance`（🛠️ 維運）**、**`consultingHour`（⏱️ 顧問時數）**，並支援管理員自由**新增 (`➕ 新增`)**、**修改 (`✏️ 修改`)** 與**刪除 (`🗑️ 刪除`)** 任何工項類型（包含類型代碼 `kindCode`、繁體中文名稱 `kindName`、圖示 `iconEmoji`、標籤配色 `badgeColor`、排序 `sortOrder` 與說明 `description`）。
+        * 透過預存程序 `storyPoint.spUpsertWorkItemKind` 與 `storyPoint.spDeleteWorkItemKind`、Web 介面 (`/?tab=workitems` 及 `/?tab=types` 之「🗂️ 工項類型增、刪、修管理」專區，對應路由 `POST /workitem/kind/save` 與 `POST /workitem/kind/delete`) 以及 PowerShell (`ps/manageWorkItem.ps1` 之 `listWorkItemKind` / `upsertWorkItemKind` / `deleteWorkItemKind` 與 `ps/ui/tabWorkItem.ps1`) 提供完整增刪修功能；刪除任一工項類型時，原本歸屬該類型之工項與代表類型會自動安全轉移至預設或替代類型，確保資料完整性。
+    2. **工項代表類型 (`storyPoint.tbWorkItemType`) 與實際工項 (`storyPoint.tbWorkItem`) 增、刪、修**：
+        * 除新增與修改外，亦透過 `storyPoint.spDeleteWorkItemType` (`POST /workitem/type/delete`) 與 `storyPoint.spDeleteWorkItem` (`POST /workitem/delete`) 於 Web 介面及 PowerShell 提供代表類型與實際工項之完整刪除功能，並於 `storyPoint.tbPointHistory` 留存完整稽核紀錄。
+    3. **起訖時間 (`startDate` ~ `endDate`)**：每一筆工項皆具備明確的「開始時間（起時 `startDate`）」與「結束時間（迄時 `endDate`）」，並於 Web 介面 (`/?tab=workitems`)、批次匯入/匯出 (CSV / Excel / 互動 HTML) 與 PowerShell (`ps/manageWorkItem.ps1` / `ps/ui/tabWorkItem.ps1`) 提供完整設定與查詢。
 * **達到迄時自動轉換工項狀態、扣減 Story Point 並透過 Email 寄信給部門管理層與 HR**：
     1. **自動偵測與轉換狀態 (`storyPoint.spProcessExpiredWorkItem`)**：
         * 當系統時間達到或超過工項的迄時 (`endDate <= dateadd(hour, 8, sysutcdatetime())`) 且尚未處理 (`isExpiredProcessed = 0`) 時，系統（透過 `workItemExpiryBackgroundService` 背景定時排程、頁面載入/工項儲存自動觸發、或手動點擊 `POST /workitem/checkExpired`）自動將該工項之 `executionStatus` 轉換為 `'done'`（顯示為「已完成 (已到期扣點)」）。

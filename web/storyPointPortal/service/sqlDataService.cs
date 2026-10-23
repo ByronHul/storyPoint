@@ -53,7 +53,7 @@ public class sqlDataService
 
     private static readonly ConcurrentDictionary<string, votingSessionPresenceLease> _activeVotingSessionLeases = new(StringComparer.OrdinalIgnoreCase);
     private static readonly object _leaseSyncLock = new();
-    private const double _leaseExpirationSeconds = 8.0;
+    private const double _leaseExpirationSeconds = 45.0;
 
     /// <summary>
     /// 嘗試進入或續約特定員工對特定盲投議程之獨立網頁佔用鎖定。

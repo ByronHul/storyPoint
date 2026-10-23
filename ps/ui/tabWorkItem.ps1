@@ -97,7 +97,7 @@ process {
     $cmbKind = new-object system.windows.forms.combobox
     $cmbKind.location = new-object system.drawing.point(338, 47)
     $cmbKind.width = 95
-    $cmbKind.dropdownstyle = 'DropDownList'
+    $cmbKind.dropdownstyle = 'DropDown'
     $null = $cmbKind.items.addrange(@('專案', '維運', '顧問時數'))
     $cmbKind.selectedindex = 0
 
@@ -126,30 +126,74 @@ process {
     $dtpEnd.value = (get-date).adddays(14)
 
     $btnSaveWorkItem = new-object system.windows.forms.button
-    $btnSaveWorkItem.text = '💾 儲存工項(達迄時自動扣點寄信)'
+    $btnSaveWorkItem.text = '💾 儲存工項'
     $btnSaveWorkItem.location = new-object system.drawing.point(820, 44)
-    $btnSaveWorkItem.size = new-object system.drawing.size(195, 30)
+    $btnSaveWorkItem.size = new-object system.drawing.size(110, 30)
     $btnSaveWorkItem.backcolor = [system.drawing.color]::fromargb(37, 99, 235)
     $btnSaveWorkItem.forecolor = [system.drawing.color]::white
 
+    $btnDeleteWorkItem = new-object system.windows.forms.button
+    $btnDeleteWorkItem.text = '🗑️ 刪除工項'
+    $btnDeleteWorkItem.location = new-object system.drawing.point(935, 44)
+    $btnDeleteWorkItem.size = new-object system.drawing.size(95, 30)
+
     $btnRefresh = new-object system.windows.forms.button
-    $btnRefresh.text = '⚡ 檢核到期工項/重新整理'
-    $btnRefresh.location = new-object system.drawing.point(1022, 44)
-    $btnRefresh.size = new-object system.drawing.size(155, 30)
+    $btnRefresh.text = '⚡ 檢核到期/重整'
+    $btnRefresh.location = new-object system.drawing.point(1035, 44)
+    $btnRefresh.size = new-object system.drawing.size(125, 30)
+
+    # 工項類型 (tbWorkItemKind) 增刪修控制項列
+    $lblKindCrud = new-object system.windows.forms.label
+    $lblKindCrud.text = '工項類型增刪修 - 代碼：'
+    $lblKindCrud.location = new-object system.drawing.point(12, 84)
+    $lblKindCrud.autosize = $true
+
+    $txtKindCode = new-object system.windows.forms.textbox
+    $txtKindCode.location = new-object system.drawing.point(165, 81)
+    $txtKindCode.width = 110
+    $txtKindCode.text = 'supportCase'
+
+    $lblKindName = new-object system.windows.forms.label
+    $lblKindName.text = '類型名稱：'
+    $lblKindName.location = new-object system.drawing.point(285, 84)
+    $lblKindName.autosize = $true
+
+    $txtKindName = new-object system.windows.forms.textbox
+    $txtKindName.location = new-object system.drawing.point(355, 81)
+    $txtKindName.width = 120
+    $txtKindName.text = '駐點技術支援'
+
+    $btnUpsertKind = new-object system.windows.forms.button
+    $btnUpsertKind.text = '➕ 新增/修改工項類型'
+    $btnUpsertKind.location = new-object system.drawing.point(485, 78)
+    $btnUpsertKind.size = new-object system.drawing.size(145, 28)
+
+    $btnDeleteKind = new-object system.windows.forms.button
+    $btnDeleteKind.text = '🗑️ 刪除工項類型'
+    $btnDeleteKind.location = new-object system.drawing.point(636, 78)
+    $btnDeleteKind.size = new-object system.drawing.size(125, 28)
 
     $gridItem = new-object system.windows.forms.datagridview
-    $gridItem.location = new-object system.drawing.point(12, 88)
-    $gridItem.size = new-object system.drawing.size(1130, 520)
+    $gridItem.location = new-object system.drawing.point(12, 116)
+    $gridItem.size = new-object system.drawing.size(1130, 492)
     $gridItem.readonly = $true
     $gridItem.allowusertoaddrows = $false
     $gridItem.autosizecolumnsmode = 'Fill'
     enableGridHeaderSortAndLock -grid $gridItem -statusLabel $statusLabel
 
     $loadItemData = {
+        $kindDt = & $workItemScript -actionType 'listWorkItemKind'
+        if ($null -ne $kindDt -and $kindDt.rows.count -gt 0) {
+            $cmbKind.items.clear()
+            foreach ($kr in $kindDt.rows) {
+                $null = $cmbKind.items.add($kr.kindName.tostring())
+            }
+            if ($cmbKind.items.count -gt 0) { $cmbKind.selectedindex = 0 }
+        }
         $dt = & $workItemScript -actionType 'listWorkItem'
         $gridItem.datasource = $dt
         if ($null -ne $statusLabel) {
-            $statusLabel.text = "已載入 $($dt.rows.count) 筆工項與 Story Point 明細（已同步檢核到期工項扣點與寄信）"
+            $statusLabel.text = "已載入 $($dt.rows.count) 筆工項與 $($kindDt.rows.count) 種工項類型（支援增刪修）"
         }
     }
 
@@ -163,11 +207,7 @@ process {
     $btnSaveWorkItem.add_click({
         $ptVal = if (-not [string]::isnullorempty($txtPoint.text)) { [decimal]$txtPoint.text } else { $null }
         $isManual = ($null -ne $ptVal)
-        $kindCode = switch ($cmbKind.selecteditem.tostring()) {
-            '維運' { 'maintenance' }
-            '顧問時數' { 'consultingHour' }
-            default { 'project' }
-        }
+        $kindCode = $cmbKind.text.trim()
         $null = & $workItemScript -actionType 'upsertWorkItem' `
             -itemCode $txtCode.text -itemTitle $txtTitle.text `
             -workItemTypePk ([int]$txtTypePk.text) -workItemKind $kindCode `
@@ -176,11 +216,27 @@ process {
             -employeePk ([int]$txtEmpPk.text) -allocationPercent ([decimal]$txtPct.text)
         & $loadItemData
     })
+    $btnDeleteWorkItem.add_click({
+        $null = & $workItemScript -actionType 'deleteWorkItem' -itemCode $txtCode.text.trim()
+        & $loadItemData
+    })
+    $btnUpsertKind.add_click({
+        $null = & $workItemScript -actionType 'upsertWorkItemKind' `
+            -kindCode $txtKindCode.text.trim() -kindName $txtKindName.text.trim()
+        & $loadItemData
+    })
+    $btnDeleteKind.add_click({
+        $null = & $workItemScript -actionType 'deleteWorkItemKind' `
+            -kindCode $txtKindCode.text.trim()
+        & $loadItemData
+    })
 
     $tabPage.controls.addrange(@(
         $lblCode, $txtCode, $lblTitle, $txtTitle, $lblTypePk, $txtTypePk, $lblPoint, $txtPoint,
         $lblEmpPk, $txtEmpPk, $lblPct, $txtPct, $lblKind, $cmbKind, $lblStart, $dtpStart, $lblEnd, $dtpEnd,
-        $btnSaveWorkItem, $btnRefresh, $gridItem
+        $btnSaveWorkItem, $btnDeleteWorkItem, $btnRefresh,
+        $lblKindCrud, $txtKindCode, $lblKindName, $txtKindName, $btnUpsertKind, $btnDeleteKind,
+        $gridItem
     ))
 
     return $tabPage
