@@ -81,15 +81,27 @@ process {
 
     $lblRole = new-object system.windows.forms.label
     $lblRole.text = '角色：'
-    $lblRole.location = new-object system.drawing.point(870, 16)
+    $lblRole.location = new-object system.drawing.point(860, 16)
     $lblRole.autosize = $true
 
     $cmbRole = new-object system.windows.forms.combobox
-    $cmbRole.location = new-object system.drawing.point(920, 13)
-    $cmbRole.width = 110
+    $cmbRole.location = new-object system.drawing.point(905, 13)
+    $cmbRole.width = 85
     $cmbRole.dropdownstyle = 'DropDownList'
     $null = $cmbRole.items.addrange(@('participant', 'admin'))
     $cmbRole.selectedindex = 0
+
+    $lblTitle = new-object system.windows.forms.label
+    $lblTitle.text = '職級：'
+    $lblTitle.location = new-object system.drawing.point(995, 16)
+    $lblTitle.autosize = $true
+
+    $cmbTitle = new-object system.windows.forms.combobox
+    $cmbTitle.location = new-object system.drawing.point(1040, 13)
+    $cmbTitle.width = 105
+    $cmbTitle.dropdownstyle = 'DropDown'
+    $null = $cmbTitle.items.addrange(@('部門經理', '董事長兼部門經理', '部門經理 / 資深架構師', '部門經理 / 人資', '專案經理 (PM)', '資深工程師', '工程師', '人資專員 (HR)'))
+    $cmbTitle.text = '部門經理'
 
     $btnSaveEmp = new-object system.windows.forms.button
     $btnSaveEmp.text = '💾 儲存員工與帳密'
@@ -168,6 +180,7 @@ process {
                 $txtName.text = [string]$rowItem.employeeName
                 $txtAcc.text = [string]$rowItem.loginAccount
                 $txtDept.text = [string]$rowItem.departmentPk
+                $cmbTitle.text = [string]$rowItem.jobTitle
                 $txtPwd.text = ''
                 if ([string]$rowItem.roleName -eq 'admin') {
                     $cmbRole.selectedindex = 1
@@ -184,10 +197,11 @@ process {
 
     $btnRefresh.add_click($loadEmpData)
     $btnSaveEmp.add_click({
+        $titleVal = if (-not [string]::isnullorempty($cmbTitle.text)) { $cmbTitle.text.trim() } else { '部門經理' }
         $null = & $empScript -actionType 'upsertEmployee' `
             -employeeCode $txtCode.text.trim() -employeeName $txtName.text.trim() `
             -loginAccount $txtAcc.text.trim() -plainPassword $txtPwd.text.trim() `
-            -emailAddress "$($txtAcc.text.trim())@company.com" -jobTitle '工程師' `
+            -emailAddress "$($txtAcc.text.trim())@company.com" -jobTitle $titleVal `
             -departmentPk ([int]$txtDept.text) -roleName $cmbRole.selecteditem.tostring()
         & $loadEmpData
     })
@@ -224,7 +238,7 @@ process {
 
     $tabPage.controls.addrange(@(
         $lblCode, $txtCode, $lblName, $txtName, $lblAcc, $txtAcc, $lblPwd, $txtPwd,
-        $lblDept, $txtDept, $lblRole, $cmbRole, $btnImportCsv,
+        $lblDept, $txtDept, $lblRole, $cmbRole, $lblTitle, $cmbTitle, $btnImportCsv,
         $btnSaveEmp, $btnRefresh, $btnExportCsv,
         $lblTargetPk, $txtTargetPk, $btnDisableEmp, $btnEnableEmp, $btnDeleteEmp,
         $gridEmp

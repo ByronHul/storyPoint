@@ -101,11 +101,19 @@ begin
         @loginAccount = 'raya',
         @passwordHash = @adminDefaultHash,
         @emailAddress = 'raya.hsu@mentortrust.com',
-        @jobTitle = N'人資',
+        @jobTitle = N'部門經理 / 人資',
         @departmentPk = @deptHrPk,
         @roleName = 'admin',
         @isActive = 1,
         @operatorAccount = 'system';
+end
+else
+begin
+    update storyPoint.tbEmployee
+    set jobTitle = N'部門經理 / 人資',
+        updatedAt = sysdatetime()
+    where loginAccount = 'raya'
+      and jobTitle in (N'人資', N'HR');
 end
 
 declare @mentorEmployeeSeed table (
@@ -126,7 +134,7 @@ insert into @mentorEmployeeSeed (
 values
     ('241101', N'陳昱達', 'kenny.chen',    @participantDefaultHash, 'Kenny.Chen@mentortrust.com',    N'資料庫執行顧問',             @deptDbInfraPk, 'participant'),
     ('160101', N'柯乃云', 'grace.ko',      @participantDefaultHash, 'Grace.Ko@mentortrust.com',      N'行政助理',                   @deptMgmtPk,    'participant'),
-    ('120801', N'林英豪', 'john.yh.lin',   @participantDefaultHash, 'john.yh.lin@mentortrust.com',   N'資料庫資深顧問',             @deptDbInfraPk, 'participant'),
+    ('120801', N'林英豪', 'john.yh.lin',   @participantDefaultHash, 'john.yh.lin@mentortrust.com',   N'部門經理 / 資料庫資深顧問',   @deptDbInfraPk, 'participant'),
     ('250302', N'陳怡之', 'zoe.chen',      @participantDefaultHash, 'Zoe.Chen@mentortrust.com',      N'商業智慧執行顧問',           @deptBiPk,      'participant'),
     ('240401', N'呂雯琳', 'wennifer.lu',   @participantDefaultHash, 'Wennifer.Lu@mentortrust.com',   N'商業智慧執行顧問',           @deptBiPk,      'participant'),
     ('240305', N'田晨揚', 'young.tien',    @participantDefaultHash, 'Young.Tien@mentortrust.com',    N'資料庫執行顧問',             @deptDbInfraPk, 'participant'),
@@ -138,7 +146,7 @@ values
     ('130801', N'朱文彬', 'ben.ju',        @participantDefaultHash, 'Ben.Ju@mentortrust.com',        N'系統工程師',                 @deptDbInfraPk, 'participant'),
     ('100101', N'陸雲中', 'kent.lu',       @participantDefaultHash, 'Kent.Lu@mentortrust.com',       N'ALM/TFS執行顧問、資料庫執行顧問', @deptDbInfraPk, 'participant'),
     ('110602', N'林恩',   'bryan.lin',     @participantDefaultHash, 'Bryan.Lin@mentortrust.com',     N'BI資深執行顧問',             @deptDbInfraPk, 'participant'),
-    ('81201',  N'胡百敬', 'byron.hu',      @adminDefaultHash,       'Byron.Hu@mentortrust.com',      N'董事長及資料庫資深顧問',     @deptMgmtPk,    'admin'),
+    ('81201',  N'胡百敬', 'byron.hu',      @adminDefaultHash,       'Byron.Hu@mentortrust.com',      N'董事長兼部門經理',           @deptMgmtPk,    'admin'),
     ('200201', N'陳輝瑞', 'ray.chen',      @participantDefaultHash, 'Ray.Chen@mentortrust.com',      N'資料庫資深顧問',             @deptDbInfraPk, 'participant'),
     ('180601', N'楊雅筑', 'zoe.yang',      @participantDefaultHash, 'Zoe.Yang@mentortrust.com',      N'資料庫執行顧問',             @deptDbInfraPk, 'participant'),
     ('160701', N'張月桂', 'karen.chang',   @participantDefaultHash, 'Karen.Chang@mentortrust.com',   N'業務助理',                   @deptMgmtPk,    'participant'),
@@ -150,10 +158,10 @@ values
     ('230801', N'蘇婕妤', 'jessie.su',     @participantDefaultHash, 'Jessie.Su@mentortrust.com',     N'商業智慧執行顧問',           @deptBiPk,      'participant'),
     ('211001', N'張棣棠', 'dillon.chang',  @participantDefaultHash, 'Dillon.Chang@mentortrust.com',  N'資料庫執行顧問',             @deptDbInfraPk, 'participant'),
     ('160302', N'邱宥樺', 'jill.chiu',     @participantDefaultHash, 'Jill.Chiu@mentortrust.com',     N'開發工程師',                 @deptDevPk,     'participant'),
-    ('140901', N'黃振祖', 'jtrue.huang',   @participantDefaultHash, 'Jtrue.Huang@mentortrust.com',   N'資深架構師',                 @deptDevPk,     'participant'),
+    ('140901', N'黃振祖', 'jtrue.huang',   @participantDefaultHash, 'Jtrue.Huang@mentortrust.com',   N'部門經理 / 資深架構師',       @deptDevPk,     'participant'),
     ('160303', N'李靜芳', 'sandy.lee',     @participantDefaultHash, 'Sandy.Lee@mentortrust.com',     N'財務會計',                   @deptMgmtPk,    'participant'),
     ('200202', N'謝僑育', 'jeremy.shie',   @participantDefaultHash, 'Jeremy.Shie@mentortrust.com',   N'商業智慧執行顧問',           @deptBiPk,      'participant'),
-    ('160601', N'黃雅玲', 'catty.huang',   @participantDefaultHash, 'Catty.Huang@mentortrust.com',   N'商業智慧資深顧問',           @deptBiPk,      'participant');
+    ('160601', N'黃雅玲', 'catty.huang',   @participantDefaultHash, 'Catty.Huang@mentortrust.com',   N'部門經理 / 商業智慧資深顧問', @deptBiPk,      'participant');
 
 declare @idx int = 1;
 declare @maxRow int = (select count(1) from @mentorEmployeeSeed);
@@ -222,5 +230,45 @@ begin
         description = N'包含 0.5 半點與 20/40/100 大顆粒度點數之修正費氏數列，含 ?(需求不明需討論) 與 ☕(暫停休息)',
         updatedAt = sysdatetime()
     where deckCode = 'fibonacciModified';
+end
+go
+
+-- ============================================================================
+-- 4. 預設工項類型設定 (storyPoint.tbWorkItemKind：專案 / 維運 / 顧問時數，支援增刪修)
+-- ============================================================================
+if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'project')
+begin
+    insert into storyPoint.tbWorkItemKind (
+        kindCode, kindName, badgeIcon, badgeColor, sortOrder, description, isActive
+    )
+    values (
+        'project', N'專案', N'🏗️', 'blue', 10,
+        N'專案建置與功能開發工項，具備明確起訖時間，達迄時自動轉為已完成並扣除 Story Point 及寄發通知信。',
+        1
+    );
+end
+
+if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'maintenance')
+begin
+    insert into storyPoint.tbWorkItemKind (
+        kindCode, kindName, badgeIcon, badgeColor, sortOrder, description, isActive
+    )
+    values (
+        'maintenance', N'維運', N'🛠️', 'amber', 20,
+        N'日常維運、例行巡檢與異常排除工項，具備起訖期間設定，達迄時自動轉態扣點並通知部門管理層與 HR。',
+        1
+    );
+end
+
+if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'consultingHour')
+begin
+    insert into storyPoint.tbWorkItemKind (
+        kindCode, kindName, badgeIcon, badgeColor, sortOrder, description, isActive
+    )
+    values (
+        'consultingHour', N'顧問時數', N'⏳', 'purple', 30,
+        N'客戶架構諮詢、技術顧問與驻點時數工項，具備合約/顧問起訖時間，達迄時自動轉態扣點並通知部門管理層與 HR。',
+        1
+    );
 end
 go

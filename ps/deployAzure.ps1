@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Azure 多人參與 Story Point 系統 - Azure PaaS 全自動資源建立、資料庫初始化與 .NET 8 網站部署腳本 (deployAzure.ps1)
 .DESCRIPTION
@@ -133,6 +133,24 @@ if (-not $publishOnly.ispresent) {
 }
 
 if (test-path -path $webProjPath) {
+    # 同步解密本機設定檔中之 ACS Email 連線字串並寫入 Azure App Service 組態，確保雲端環境可直接寄發工項到期通知信
+    try {
+        $sysCfg = getSystemConfig
+        if ($null -ne $sysCfg.mailProviderSetting -and -not [string]::isnullorempty($sysCfg.mailProviderSetting.encryptedAcsConnectionString)) {
+            $plainAcsConn = unprotectSensitiveText -encryptedText $sysCfg.mailProviderSetting.encryptedAcsConnectionString
+            $senderEmail = $sysCfg.mailProviderSetting.defaultSenderEmail
+            if (-not [string]::isnullorempty($plainAcsConn)) {
+                & az webapp config appsettings set --resource-group $resourceGroupName --name $webAppName --settings `
+                    "mailProviderSetting__acsConnectionString=$plainAcsConn" `
+                    "mailProviderSetting__defaultSenderEmail=$senderEmail" `
+                    --output none
+            }
+        }
+    }
+    catch {
+        # 忽略雲端郵件設定同步例外
+    }
+
     write-progress -activity '部署 Azure Story Point 系統' -status '正在編譯並發行 .NET 8 storyPointPortal 網站...' -percentcomplete 88
     $stageDir = join-path -path $rootPath -childpath ("temp\publishStage_" + (get-date).tostring('yyyyMMddHHmmss'))
     & dotnet publish $webProjPath -c Release -o $stageDir --nologo | out-null

@@ -917,7 +917,7 @@ create or alter procedure storyPoint.spUpsertWorkItemType
     @typeCode varchar(64),
     @typeName nvarchar(128),
     @categoryName nvarchar(128),
-    @defaultWorkItemKind varchar(32) = 'project',
+    @defaultWorkItemKind varchar(64) = 'project',
     @description nvarchar(1024) = null,
     @standardStoryPoint decimal(8,2) = null,
     @defaultCardDeckPk int = null,
@@ -933,14 +933,31 @@ begin
     declare @targetPk int = isnull(@workItemTypePk, 0);
     declare @oldPoint decimal(8,2) = null;
     declare @newStatus varchar(32) = case when @standardStoryPoint is not null then 'finalized' else 'pending' end;
-    declare @cleanKind varchar(32) = case
-        when @defaultWorkItemKind in ('project', 'maintenance', 'consultingHour') then @defaultWorkItemKind
-        when @categoryName like N'%維運%' then 'maintenance'
-        when @categoryName like N'%顧問%' or @categoryName like N'%時數%' then 'consultingHour'
-        else 'project'
-    end;
+    declare @cleanInputKind nvarchar(128) = ltrim(rtrim(isnull(cast(@defaultWorkItemKind as nvarchar(128)), N'')));
+    declare @cleanKind varchar(64) = null;
 
     begin try
+        if @cleanInputKind <> N''
+        begin
+            select top 1 @cleanKind = kindCode
+            from storyPoint.tbWorkItemKind
+            where isActive = 1
+              and (kindCode = @cleanInputKind or kindName = @cleanInputKind);
+        end
+
+        if @cleanKind is null
+        begin
+            set @cleanKind = case
+                when @cleanInputKind in (N'maintenance', N'維運') then 'maintenance'
+                when @cleanInputKind in (N'consultingHour', N'顧問時數') then 'consultingHour'
+                when @cleanInputKind in (N'project', N'專案') then 'project'
+                when @cleanInputKind <> N'' then cast(@cleanInputKind as varchar(64))
+                when @categoryName like N'%維運%' then 'maintenance'
+                when @categoryName like N'%顧問%' or @categoryName like N'%時數%' then 'consultingHour'
+                else 'project'
+            end;
+        end
+
         if @targetPk <= 0
         begin
             select @targetPk = pk
@@ -1095,11 +1112,15 @@ begin
             wit.typeName,
             wit.categoryName,
             wit.defaultWorkItemKind,
-            case
-                when wit.defaultWorkItemKind = 'maintenance' then N'維運'
-                when wit.defaultWorkItemKind = 'consultingHour' then N'顧問時數'
-                else N'專案'
-            end as defaultWorkItemKindText,
+            isnull(
+                wik.kindName,
+                case
+                    when wit.defaultWorkItemKind = 'maintenance' then N'維運'
+                    when wit.defaultWorkItemKind = 'consultingHour' then N'顧問時數'
+                    when wit.defaultWorkItemKind = 'project' then N'專案'
+                    else cast(wit.defaultWorkItemKind as nvarchar(128))
+                end
+            ) as defaultWorkItemKindText,
             wit.description,
             wit.standardStoryPoint,
             wit.defaultCardDeckPk,
@@ -1107,6 +1128,8 @@ begin
             wit.lastVotingSessionPk,
             wit.isActive
         from storyPoint.tbWorkItemType as wit
+        left join storyPoint.tbWorkItemKind as wik
+            on wit.defaultWorkItemKind = wik.kindCode
         where wit.pk = @targetPk;
     end try
     begin catch
@@ -1168,7 +1191,7 @@ create or alter procedure storyPoint.spUpsertWorkItem
     @itemTitle nvarchar(256),
     @itemDescription nvarchar(max) = null,
     @workItemTypePk int = null,
-    @workItemKind varchar(32) = null,
+    @workItemKind nvarchar(128) = null,
     @sprintName nvarchar(128) = null,
     @priorityLevel varchar(32) = 'medium',
     @storyPoint decimal(8,2) = null,
@@ -1188,8 +1211,9 @@ begin
     declare @durationMs int = 0;
     declare @targetPk int = isnull(@workItemPk, 0);
     declare @typeStandardPoint decimal(8,2) = null;
-    declare @typeDefaultKind varchar(32) = 'project';
-    declare @resolvedKind varchar(32) = 'project';
+    declare @typeDefaultKind varchar(64) = 'project';
+    declare @resolvedKind varchar(64) = null;
+    declare @cleanInputKind nvarchar(128) = ltrim(rtrim(isnull(@workItemKind, N'')));
     declare @resolvedStoryPoint decimal(8,2) = 0.00;
     declare @isManual bit = 0;
     declare @oldPoint decimal(8,2) = null;
@@ -1220,14 +1244,25 @@ begin
             set @workItemTypePk = null;
         end
 
-        set @resolvedKind = case
-            when @workItemKind in ('project', 'maintenance', 'consultingHour') then @workItemKind
-            when @workItemKind = N'專案' then 'project'
-            when @workItemKind = N'維運' then 'maintenance'
-            when @workItemKind = N'顧問時數' then 'consultingHour'
-            when @workItemTypePk is not null then @typeDefaultKind
-            else 'project'
-        end;
+        if @cleanInputKind <> N''
+        begin
+            select top 1 @resolvedKind = kindCode
+            from storyPoint.tbWorkItemKind
+            where isActive = 1
+              and (kindCode = @cleanInputKind or kindName = @cleanInputKind);
+        end
+
+        if @resolvedKind is null
+        begin
+            set @resolvedKind = case
+                when @cleanInputKind in (N'project', N'專案') then 'project'
+                when @cleanInputKind in (N'maintenance', N'維運') then 'maintenance'
+                when @cleanInputKind in (N'consultingHour', N'顧問時數') then 'consultingHour'
+                when @cleanInputKind <> N'' then cast(@cleanInputKind as varchar(64))
+                when @workItemTypePk is not null then @typeDefaultKind
+                else 'project'
+            end;
+        end
 
         if @resolvedEndDate is null and @resolvedDueDate is not null
         begin
@@ -3058,11 +3093,31 @@ begin
             wit.typeName,
             wit.categoryName,
             wit.defaultWorkItemKind,
-            case
-                when wit.defaultWorkItemKind = 'maintenance' then N'維運'
-                when wit.defaultWorkItemKind = 'consultingHour' then N'顧問時數'
-                else N'專案'
-            end as defaultWorkItemKindText,
+            isnull(
+                wik.kindName,
+                case
+                    when wit.defaultWorkItemKind = 'maintenance' then N'維運'
+                    when wit.defaultWorkItemKind = 'consultingHour' then N'顧問時數'
+                    when wit.defaultWorkItemKind = 'project' then N'專案'
+                    else cast(wit.defaultWorkItemKind as nvarchar(128))
+                end
+            ) as defaultWorkItemKindText,
+            isnull(
+                wik.badgeIcon,
+                case
+                    when wit.defaultWorkItemKind = 'maintenance' then N'🛠️'
+                    when wit.defaultWorkItemKind = 'consultingHour' then N'⏳'
+                    else N'🏗️'
+                end
+            ) as defaultWorkItemKindIcon,
+            isnull(
+                wik.badgeColor,
+                case
+                    when wit.defaultWorkItemKind = 'maintenance' then 'amber'
+                    when wit.defaultWorkItemKind = 'consultingHour' then 'purple'
+                    else 'blue'
+                end
+            ) as defaultWorkItemKindColor,
             wit.description,
             wit.standardStoryPoint,
             wit.defaultCardDeckPk,
@@ -3094,7 +3149,10 @@ begin
         from storyPoint.tbWorkItemType as wit
         left join storyPoint.tbCardDeck as cd
             on wit.defaultCardDeckPk = cd.pk
-        where (@workItemTypePk is null or wit.pk = @workItemTypePk)
+        left join storyPoint.tbWorkItemKind as wik
+            on wit.defaultWorkItemKind = wik.kindCode
+        where wit.isActive = 1
+          and (@workItemTypePk is null or wit.pk = @workItemTypePk)
         order by wit.pk asc;
 
         -- Result Set 4: 各工項的 Story Point 與指派彙總 (一般員工僅可看到自己的工項與自己的分數，不可看到他人)
@@ -3109,6 +3167,8 @@ begin
             wi.categoryName,
             wi.workItemKind,
             wi.workItemKindText,
+            wi.workItemKindIcon,
+            wi.workItemKindColor,
             wi.sprintName,
             wi.priorityLevel,
             wi.defaultTypePoint,
@@ -3330,6 +3390,33 @@ begin
         from storyPoint.tbLog as lg
         where @isViewerAdmin = 1
         order by lg.pk desc;
+
+        -- Result Set 9: 工項類型設定清單 (支援增刪修：專案 / 維運 / 顧問時數 / 自訂類型)
+        select
+            wik.pk as workItemKindPk,
+            wik.kindCode,
+            wik.kindName,
+            wik.badgeIcon,
+            wik.badgeColor,
+            wik.sortOrder,
+            wik.description,
+            (
+                select count(1)
+                from storyPoint.tbWorkItem as wi
+                where wi.workItemKind = wik.kindCode
+                  and wi.isActive = 1
+            ) as linkedWorkItemCount,
+            (
+                select count(1)
+                from storyPoint.tbWorkItemType as wit
+                where wit.defaultWorkItemKind = wik.kindCode
+                  and wit.isActive = 1
+            ) as linkedTypeCount,
+            wik.isActive,
+            wik.updatedAt
+        from storyPoint.tbWorkItemKind as wik
+        where wik.isActive = 1
+        order by wik.sortOrder asc, wik.pk asc;
     end try
     begin catch
         set @durationMs = datediff(millisecond, @startTime, sysdatetime());
@@ -3426,6 +3513,899 @@ begin
             @objectName = 'storyPoint.spGetSystemLog',
             @durationMillisecond = @durationMs,
             @executionResult = N'查詢系統 Log 失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @operatorAccount;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
+-- 15. 自動檢核達到迄時之工項、轉換狀態並扣除 Story Point 預存程序 (storyPoint.spProcessExpiredWorkItem)
+-- ============================================================================
+/*
+用途說明: 檢核所有啟用中且已設定迄時 (endDate <= 台灣時間 UTC+8) 尚未執行到期處理之工項 (tbWorkItem)：
+          1. 自動轉換該工項狀態 (executionStatus -> 'done' 已完成)。
+          2. 自動扣掉該工項之 Story Point (storyPoint -> 0.00，並紀錄 originalStoryPoint 與 deductedStoryPoint)。
+          3. 同步扣掉該工項賦予員工之分攤點數 (allocatedStoryPoint -> 0.00，並紀錄 originalAllocatedStoryPoint 與 deductedAllocatedStoryPoint)。
+          4. 寫入點數異動歷程 (tbPointHistory, changeSource = 'autoExpireDeduct') 與系統紀錄 (tbLog)。
+          5. 回傳本次到期或待寄信之工項明細，以及對應之「部門管理層 (部門經理/主管)」與「HR」收件人 Email 清單供寄發通知信。
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-23
+參數說明:
+    @workItemPk      int          : 指定檢核單一工項主鍵 (null 代表檢核全系統所有到期工項)
+    @operatorAccount varchar(128) : 觸發檢核之操作者或系統排程帳號
+修改歷程:
+    2026-10-23 初版建立
+*/
+create or alter procedure storyPoint.spProcessExpiredWorkItem
+    @workItemPk int = null,
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+    declare @nowTw datetime2(3) = dateadd(hour, 8, sysutcdatetime());
+    declare @processedCount int = 0;
+
+    declare @expiredItem table (
+        workItemPk int primary key,
+        itemCode varchar(64),
+        itemTitle nvarchar(256),
+        workItemKind varchar(64),
+        workItemKindText nvarchar(128),
+        workItemTypePk int null,
+        startDate datetime2(0) null,
+        endDate datetime2(0) null,
+        oldExecutionStatus varchar(32),
+        originalPoint decimal(8,2),
+        deductedPoint decimal(8,2)
+    );
+
+    begin try
+        insert into @expiredItem (
+            workItemPk, itemCode, itemTitle, workItemKind, workItemKindText,
+            workItemTypePk, startDate, endDate, oldExecutionStatus,
+            originalPoint, deductedPoint
+        )
+        select
+            wi.pk,
+            wi.itemCode,
+            wi.itemTitle,
+            wi.workItemKind,
+            isnull(
+                wik.kindName,
+                case
+                    when wi.workItemKind = 'maintenance' then N'維運'
+                    when wi.workItemKind = 'consultingHour' then N'顧問時數'
+                    when wi.workItemKind = 'project' then N'專案'
+                    else cast(wi.workItemKind as nvarchar(128))
+                end
+            ),
+            wi.workItemTypePk,
+            wi.startDate,
+            wi.endDate,
+            wi.executionStatus,
+            case
+                when wi.storyPoint > 0 then wi.storyPoint
+                else isnull(wi.originalStoryPoint, isnull(wi.defaultTypePoint, 0.00))
+            end,
+            case
+                when wi.storyPoint > 0 then wi.storyPoint
+                else isnull(wi.deductedStoryPoint, isnull(wi.originalStoryPoint, 0.00))
+            end
+        from storyPoint.tbWorkItem as wi
+        left join storyPoint.tbWorkItemKind as wik
+            on wi.workItemKind = wik.kindCode
+        where wi.isActive = 1
+          and (@workItemPk is null or wi.pk = @workItemPk)
+          and wi.endDate is not null
+          and wi.endDate <= @nowTw
+          and wi.isExpiredProcessed = 0;
+
+        select @processedCount = count(1)
+        from @expiredItem;
+
+        if @processedCount > 0
+        begin
+            -- 1. 扣除員工分攤之 Story Point 並保留原始點數與扣除點數紀錄
+            update wia
+            set wia.originalAllocatedStoryPoint = case
+                    when wia.allocatedStoryPoint > 0 then wia.allocatedStoryPoint
+                    else isnull(wia.originalAllocatedStoryPoint, wia.allocatedStoryPoint)
+                end,
+                wia.deductedAllocatedStoryPoint = case
+                    when wia.allocatedStoryPoint > 0 then wia.allocatedStoryPoint
+                    else isnull(wia.deductedAllocatedStoryPoint, isnull(wia.originalAllocatedStoryPoint, 0.00))
+                end,
+                wia.allocatedStoryPoint = 0.00,
+                wia.updatedAt = sysdatetime()
+            from storyPoint.tbWorkItemAssignment as wia
+            inner join @expiredItem as ex
+                on wia.workItemPk = ex.workItemPk;
+
+            -- 2. 自動轉換工項狀態為 'done' (已完成) 並扣除工項 Story Point 為 0.00
+            update wi
+            set wi.originalStoryPoint = ex.originalPoint,
+                wi.deductedStoryPoint = ex.deductedPoint,
+                wi.storyPoint = 0.00,
+                wi.executionStatus = 'done',
+                wi.isExpiredProcessed = 1,
+                wi.expiredProcessedAt = @nowTw,
+                wi.adjustmentReason = concat(
+                    case
+                        when isnull(ltrim(rtrim(wi.adjustmentReason)), N'') = N'' then N''
+                        else concat(ltrim(rtrim(wi.adjustmentReason)), N'；')
+                    end,
+                    N'[迄時自動轉態扣點] 達迄時 (',
+                    convert(varchar(19), wi.endDate, 120),
+                    N') 自動轉為已完成並扣除 ',
+                    cast(ex.deductedPoint as varchar(32)),
+                    N' pt'
+                ),
+                wi.updatedAt = sysdatetime()
+            from storyPoint.tbWorkItem as wi
+            inner join @expiredItem as ex
+                on wi.pk = ex.workItemPk;
+
+            -- 3. 寫入點數異動歷程表 (tbPointHistory)
+            insert into storyPoint.tbPointHistory (
+                targetKind, workItemTypePk, workItemPk, votingSessionPk,
+                oldStoryPoint, newStoryPoint, changeSource, changeReason,
+                changedByEmployeePk, changedAt
+            )
+            select
+                'workItem',
+                ex.workItemTypePk,
+                ex.workItemPk,
+                null,
+                ex.originalPoint,
+                0.00,
+                'autoExpireDeduct',
+                concat(
+                    N'工項【',
+                    ex.itemCode,
+                    N' ',
+                    ex.itemTitle,
+                    N'】(',
+                    ex.workItemKindText,
+                    N') 達到迄時 (',
+                    convert(varchar(19), ex.endDate, 120),
+                    N')，自動轉換狀態為已完成並扣掉 ',
+                    cast(ex.deductedPoint as varchar(32)),
+                    N' Story Point'
+                ),
+                null,
+                sysdatetime()
+            from @expiredItem as ex;
+
+            set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+            declare @summaryMsg nvarchar(256) = concat(N'自動處理達到迄時工項共 ', cast(@processedCount as varchar(16)), N' 筆：已轉換狀態為已完成並扣除 Story Point');
+            exec storyPoint.spWriteLog
+                @logLevel = 3,
+                @sourceName = 'tsql',
+                @objectName = 'storyPoint.spProcessExpiredWorkItem',
+                @durationMillisecond = @durationMs,
+                @executionResult = @summaryMsg,
+                @operatorAccount = @operatorAccount;
+        end
+
+        -- 4. 回傳本次新到期或尚待發送 Email 通知之工項清單，以及解析出之部門管理層與 HR 收件人
+        select
+            v.pk as workItemPk,
+            v.itemCode,
+            v.itemTitle,
+            v.itemDescription,
+            v.workItemTypePk,
+            v.typeCode,
+            v.typeName,
+            v.workItemKind,
+            v.workItemKindText,
+            v.sprintName,
+            v.priorityLevel,
+            v.startDate,
+            v.endDate,
+            v.dueDate,
+            isnull(ex.oldExecutionStatus, 'inProgress') as oldExecutionStatus,
+            v.executionStatus as newExecutionStatus,
+            N'已完成' as newExecutionStatusText,
+            isnull(v.originalStoryPoint, v.deductedStoryPoint) as originalStoryPoint,
+            v.deductedStoryPoint,
+            v.storyPoint as remainingStoryPoint,
+            v.assigneeSummary,
+            v.departmentSummary,
+            v.isExpiredProcessed,
+            v.expiredProcessedAt,
+            v.expiryNotificationSent,
+            isnull(mgrRecipient.managerEmailCsv, '') as departmentManagerEmailCsv,
+            isnull(mgrRecipient.managerNameCsv, N'部門經理/管理層') as departmentManagerNameCsv,
+            isnull(hrRecipient.hrEmailCsv, '') as hrEmailCsv,
+            isnull(hrRecipient.hrNameCsv, N'HR 人資部門') as hrNameCsv,
+            isnull(allRecipient.allEmailCsv, '') as allRecipientEmailCsv
+        from storyPoint.vwWorkItemDetail as v
+        left join @expiredItem as ex
+            on v.pk = ex.workItemPk
+        outer apply (
+            select
+                string_agg(m.emailAddress, ',') within group (order by m.employeePk asc) as managerEmailCsv,
+                string_agg(concat(m.employeeName, N'(', m.departmentName, N' ', m.jobTitle, N')'), N'、') within group (order by m.employeePk asc) as managerNameCsv
+            from (
+                select distinct
+                    e.pk as employeePk,
+                    ltrim(rtrim(e.emailAddress)) as emailAddress,
+                    e.employeeName,
+                    e.jobTitle,
+                    d.departmentName
+                from storyPoint.tbEmployee as e
+                inner join storyPoint.tbDepartment as d
+                    on e.departmentPk = d.pk
+                where e.isActive = 1
+                  and isnull(ltrim(rtrim(e.emailAddress)), '') <> ''
+                  and (
+                      -- 所屬指派部門之部門經理/管理層
+                      (
+                          exists (
+                              select 1
+                              from storyPoint.tbWorkItemAssignment as wia
+                              inner join storyPoint.tbEmployee as assignEmp
+                                  on wia.employeePk = assignEmp.pk
+                              where wia.workItemPk = v.pk
+                                and assignEmp.departmentPk = e.departmentPk
+                          )
+                          and (
+                              e.jobTitle like N'%部門經理%'
+                              or e.jobTitle like N'%經理%'
+                              or e.jobTitle like N'%主管%'
+                              or e.jobTitle like N'%處長%'
+                              or e.jobTitle like N'%協理%'
+                              or e.jobTitle like N'%總監%'
+                              or e.jobTitle like N'%董事長%'
+                              or e.employeeName = d.managerName
+                          )
+                      )
+                      -- 或該員工姓名即為指派部門之部門主管 (managerName)
+                      or exists (
+                          select 1
+                          from storyPoint.tbWorkItemAssignment as wia
+                          inner join storyPoint.tbEmployee as assignEmp
+                              on wia.employeePk = assignEmp.pk
+                          inner join storyPoint.tbDepartment as assignDept
+                              on assignEmp.departmentPk = assignDept.pk
+                          where wia.workItemPk = v.pk
+                            and assignDept.managerName = e.employeeName
+                      )
+                      -- 或若工項無指派人員時，通知所有部門經理與管理層主管
+                      or (
+                          not exists (select 1 from storyPoint.tbWorkItemAssignment as wia where wia.workItemPk = v.pk)
+                          and (
+                              e.jobTitle like N'%部門經理%'
+                              or e.jobTitle like N'%董事長%'
+                              or e.employeeName = d.managerName
+                          )
+                      )
+                      -- 管理部門 (MGMT) 之高階管理層/部門經理
+                      or (
+                          d.departmentCode = 'MGMT'
+                          and (
+                              e.jobTitle like N'%部門經理%'
+                              or e.jobTitle like N'%董事長%'
+                              or e.jobTitle like N'%總經理%'
+                          )
+                      )
+                  )
+            ) as m
+        ) as mgrRecipient
+        outer apply (
+            select
+                string_agg(h.emailAddress, ',') within group (order by h.employeePk asc) as hrEmailCsv,
+                string_agg(concat(h.employeeName, N'(', h.departmentName, N' ', h.jobTitle, N')'), N'、') within group (order by h.employeePk asc) as hrNameCsv
+            from (
+                select distinct
+                    e.pk as employeePk,
+                    ltrim(rtrim(e.emailAddress)) as emailAddress,
+                    e.employeeName,
+                    e.jobTitle,
+                    d.departmentName
+                from storyPoint.tbEmployee as e
+                inner join storyPoint.tbDepartment as d
+                    on e.departmentPk = d.pk
+                where e.isActive = 1
+                  and isnull(ltrim(rtrim(e.emailAddress)), '') <> ''
+                  and (
+                      d.departmentCode = 'HR'
+                      or d.departmentName = N'HR'
+                      or e.jobTitle like N'%人資%'
+                      or e.jobTitle like N'%HR%'
+                  )
+            ) as h
+        ) as hrRecipient
+        outer apply (
+            select
+                string_agg(u.emailAddress, ',') within group (order by u.emailAddress asc) as allEmailCsv
+            from (
+                select distinct ltrim(rtrim(s.value)) as emailAddress
+                from string_split(
+                    concat(isnull(mgrRecipient.managerEmailCsv, ''), ',', isnull(hrRecipient.hrEmailCsv, '')),
+                    ','
+                ) as s
+                where ltrim(rtrim(s.value)) <> ''
+            ) as u
+        ) as allRecipient
+        where v.isActive = 1
+          and (
+              ex.workItemPk is not null
+              or (
+                  v.isExpiredProcessed = 1
+                  and v.expiryNotificationSent = 0
+                  and (@workItemPk is null or v.pk = @workItemPk)
+              )
+          )
+        order by v.pk desc;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spProcessExpiredWorkItem',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'處理到期工項自動轉態與扣點失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @operatorAccount;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
+-- 16. 標記到期工項已寄送部門管理層與 HR Email 通知預存程序 (storyPoint.spMarkWorkItemExpiryNotified)
+-- ============================================================================
+/*
+用途說明: 當系統完成寄發到期工項通知信給部門管理層與 HR 後，更新工項之 expiryNotificationSent 狀態並寫入 tbLog
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-23
+參數說明:
+    @workItemPk      int            : 工項主鍵
+    @recipientCsv    nvarchar(1024) : 實際寄送之收件人清單
+    @isSuccess       bit            : 是否寄送成功 (1=成功, 0=失敗)
+    @errorMessage    nvarchar(max)  : 若失敗時之錯誤原因
+    @operatorAccount varchar(128)   : 操作者或系統帳號
+修改歷程:
+    2026-10-23 初版建立
+*/
+create or alter procedure storyPoint.spMarkWorkItemExpiryNotified
+    @workItemPk int,
+    @recipientCsv nvarchar(1024),
+    @isSuccess bit = 1,
+    @errorMessage nvarchar(max) = null,
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+    declare @nowTw datetime2(3) = dateadd(hour, 8, sysutcdatetime());
+    declare @itemCode varchar(64) = '';
+    declare @itemTitle nvarchar(256) = N'';
+
+    begin try
+        select
+            @itemCode = itemCode,
+            @itemTitle = itemTitle
+        from storyPoint.tbWorkItem
+        where pk = @workItemPk;
+
+        update storyPoint.tbWorkItem
+        set expiryNotificationSent = isnull(@isSuccess, 1),
+            expiryNotificationSentAt = case when isnull(@isSuccess, 1) = 1 then @nowTw else expiryNotificationSentAt end,
+            expiryNotificationRecipient = @recipientCsv,
+            updatedAt = sysdatetime()
+        where pk = @workItemPk;
+
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @logLevel tinyint = case when isnull(@isSuccess, 1) = 1 then 3 else 2 end;
+        declare @logResult nvarchar(256) = case
+            when isnull(@isSuccess, 1) = 1
+            then concat(N'工項【', @itemCode, N' ', @itemTitle, N'】迄時到期扣點通知信已寄送予部門管理層與 HR: ', left(isnull(@recipientCsv, N''), 140))
+            else concat(N'工項【', @itemCode, N' ', @itemTitle, N'】迄時到期扣點通知信寄送失敗')
+        end;
+
+        exec storyPoint.spWriteLog
+            @logLevel = @logLevel,
+            @sourceName = 'emailService',
+            @objectName = 'storyPoint.spMarkWorkItemExpiryNotified',
+            @durationMillisecond = @durationMs,
+            @executionResult = @logResult,
+            @errorMessage = @errorMessage,
+            @operatorAccount = @operatorAccount;
+
+        select
+            wi.pk as workItemPk,
+            wi.itemCode,
+            wi.expiryNotificationSent,
+            wi.expiryNotificationSentAt,
+            wi.expiryNotificationRecipient
+        from storyPoint.tbWorkItem as wi
+        where wi.pk = @workItemPk;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'emailService',
+            @objectName = 'storyPoint.spMarkWorkItemExpiryNotified',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'更新到期工項寄信狀態失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @operatorAccount;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
+-- 17. 新增或修改工項類型預存程序 (storyPoint.spUpsertWorkItemKind)
+-- ============================================================================
+/*
+用途說明: 新增或更新工項類型 (tbWorkItemKind，如：專案 project、維運 maintenance、顧問時數 consultingHour 或自訂工項類型)。
+          若修改既有類型之代碼 (kindCode)，自動同步更新關聯之工項代表類型 (tbWorkItemType.defaultWorkItemKind) 與實際工項 (tbWorkItem.workItemKind)。
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-23
+參數說明:
+    @workItemKindPk  int           : 工項類型主鍵 (0 或 null 代表依 kindCode 新增或更新)
+    @kindCode        varchar(64)   : 工項類型代碼 (如 project, maintenance, consultingHour, supportCase)
+    @kindName        nvarchar(128) : 工項類型顯示名稱 (如 專案, 維運, 顧問時數)
+    @badgeIcon       nvarchar(32)  : 徽章圖示 (如 🏗️, 🛠️, ⏳, 📌)
+    @badgeColor      varchar(32)   : 徽章顏色 ('blue', 'amber', 'purple', 'green', 'red')
+    @sortOrder       int           : 顯示排序
+    @description     nvarchar(512) : 類型說明與適用情境
+    @isActive        bit           : 是否啟用
+    @operatorAccount varchar(128)  : 操作者帳號
+修改歷程:
+    2026-10-23 初版建立，支援工項類型增、修
+*/
+create or alter procedure storyPoint.spUpsertWorkItemKind
+    @workItemKindPk int = null,
+    @kindCode varchar(64),
+    @kindName nvarchar(128),
+    @badgeIcon nvarchar(32) = N'📌',
+    @badgeColor varchar(32) = 'blue',
+    @sortOrder int = 100,
+    @description nvarchar(512) = null,
+    @isActive bit = 1,
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+    declare @targetPk int = isnull(@workItemKindPk, 0);
+    declare @cleanCode varchar(64) = ltrim(rtrim(isnull(@kindCode, '')));
+    declare @cleanName nvarchar(128) = ltrim(rtrim(isnull(@kindName, N'')));
+    declare @cleanIcon nvarchar(32) = isnull(nullif(ltrim(rtrim(@badgeIcon)), N''), N'📌');
+    declare @cleanColor varchar(32) = case
+        when @badgeColor in ('blue', 'amber', 'purple', 'green', 'red') then @badgeColor
+        else 'blue'
+    end;
+    declare @oldCode varchar(64) = null;
+
+    begin try
+        if @cleanCode = '' or @cleanName = N''
+        begin
+            ;throw 50031, N'工項類型代碼與名稱不可為空白。', 1;
+        end
+
+        if @targetPk <= 0
+        begin
+            select top 1 @targetPk = pk
+            from storyPoint.tbWorkItemKind
+            where kindCode = @cleanCode;
+        end
+
+        if isnull(@targetPk, 0) > 0 and exists (select 1 from storyPoint.tbWorkItemKind where pk = @targetPk)
+        begin
+            select @oldCode = kindCode
+            from storyPoint.tbWorkItemKind
+            where pk = @targetPk;
+
+            if exists (select 1 from storyPoint.tbWorkItemKind where kindCode = @cleanCode and pk <> @targetPk)
+            begin
+                ;throw 50032, N'工項類型代碼已存在於其他類型，請使用不同的類型代碼。', 1;
+            end
+
+            update storyPoint.tbWorkItemKind
+            set kindCode = @cleanCode,
+                kindName = @cleanName,
+                badgeIcon = @cleanIcon,
+                badgeColor = @cleanColor,
+                sortOrder = isnull(@sortOrder, 100),
+                description = @description,
+                isActive = isnull(@isActive, 1),
+                updatedAt = sysdatetime()
+            where pk = @targetPk;
+
+            if @oldCode is not null and @oldCode <> @cleanCode
+            begin
+                update storyPoint.tbWorkItemType
+                set defaultWorkItemKind = @cleanCode,
+                    updatedAt = sysdatetime()
+                where defaultWorkItemKind = @oldCode;
+
+                update storyPoint.tbWorkItem
+                set workItemKind = @cleanCode,
+                    updatedAt = sysdatetime()
+                where workItemKind = @oldCode;
+            end
+        end
+        else
+        begin
+            insert into storyPoint.tbWorkItemKind (
+                kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+                description, isActive, createdAt, updatedAt
+            )
+            values (
+                @cleanCode,
+                @cleanName,
+                @cleanIcon,
+                @cleanColor,
+                isnull(@sortOrder, 100),
+                @description,
+                isnull(@isActive, 1),
+                sysdatetime(),
+                sysdatetime()
+            );
+            set @targetPk = scope_identity();
+        end
+
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        exec storyPoint.spWriteLog
+            @logLevel = 3,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spUpsertWorkItemKind',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'工項類型儲存成功',
+            @operatorAccount = @operatorAccount;
+
+        select
+            wik.pk as workItemKindPk,
+            wik.kindCode,
+            wik.kindName,
+            wik.badgeIcon,
+            wik.badgeColor,
+            wik.sortOrder,
+            wik.description,
+            wik.isActive,
+            wik.updatedAt
+        from storyPoint.tbWorkItemKind as wik
+        where wik.pk = @targetPk;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spUpsertWorkItemKind',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'工項類型儲存失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @operatorAccount;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
+-- 18. 刪除工項類型預存程序 (storyPoint.spDeleteWorkItemKind)
+-- ============================================================================
+/*
+用途說明: 刪除指定之工項類型 (tbWorkItemKind)，若有既有工項或代表類型引用該類型，則安全轉移至備援類型 (@fallbackKindCode，預設 'project' 或第一筆啟用類型) 後實體刪除該工項類型。
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-23
+參數說明:
+    @workItemKindPk   int          : 欲刪除之工項類型主鍵 (若傳 0 或 null 可依 @kindCode 定位)
+    @kindCode         varchar(64)  : 欲刪除之工項類型代碼
+    @fallbackKindCode varchar(64)  : 若有關聯工項時轉移之目標類型代碼 (預設 'project')
+    @operatorAccount  varchar(128) : 操作者帳號
+修改歷程:
+    2026-10-23 初版建立，支援工項類型刪除
+*/
+create or alter procedure storyPoint.spDeleteWorkItemKind
+    @workItemKindPk int = null,
+    @kindCode varchar(64) = null,
+    @fallbackKindCode varchar(64) = 'project',
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+    declare @targetPk int = isnull(@workItemKindPk, 0);
+    declare @targetCode varchar(64) = null;
+    declare @targetName nvarchar(128) = null;
+    declare @safeFallback varchar(64) = isnull(nullif(ltrim(rtrim(@fallbackKindCode)), ''), 'project');
+
+    begin try
+        if @targetPk <= 0 and isnull(ltrim(rtrim(@kindCode)), '') <> ''
+        begin
+            select top 1 @targetPk = pk
+            from storyPoint.tbWorkItemKind
+            where kindCode = ltrim(rtrim(@kindCode));
+        end
+
+        select
+            @targetCode = kindCode,
+            @targetName = kindName
+        from storyPoint.tbWorkItemKind
+        where pk = @targetPk;
+
+        if @targetCode is null
+        begin
+            ;throw 50033, N'找不到欲刪除的工項類型紀錄。', 1;
+        end
+
+        if @safeFallback = @targetCode or not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = @safeFallback and pk <> @targetPk and isActive = 1)
+        begin
+            select top 1 @safeFallback = kindCode
+            from storyPoint.tbWorkItemKind
+            where pk <> @targetPk
+              and isActive = 1
+            order by sortOrder asc, pk asc;
+
+            set @safeFallback = isnull(@safeFallback, 'project');
+        end
+
+        update storyPoint.tbWorkItemType
+        set defaultWorkItemKind = @safeFallback,
+            updatedAt = sysdatetime()
+        where defaultWorkItemKind = @targetCode;
+
+        update storyPoint.tbWorkItem
+        set workItemKind = @safeFallback,
+            updatedAt = sysdatetime()
+        where workItemKind = @targetCode;
+
+        delete from storyPoint.tbWorkItemKind
+        where pk = @targetPk;
+
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @delMsg nvarchar(256) = concat(N'工項類型【', @targetCode, N' - ', @targetName, N'】已刪除');
+        exec storyPoint.spWriteLog
+            @logLevel = 3,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeleteWorkItemKind',
+            @durationMillisecond = @durationMs,
+            @executionResult = @delMsg,
+            @operatorAccount = @operatorAccount;
+
+        select
+            @targetPk as deletedWorkItemKindPk,
+            @targetCode as deletedKindCode,
+            @targetName as deletedKindName,
+            @safeFallback as reassignedToKindCode;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeleteWorkItemKind',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'刪除工項類型失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @operatorAccount;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
+-- 19. 刪除工項代表類型預存程序 (storyPoint.spDeleteWorkItemType)
+-- ============================================================================
+/*
+用途說明: 刪除指定之工項代表類型 (tbWorkItemType)，解除關聯工項之 workItemTypePk 外鍵 (保留工項既有 Story Point)，並清除關聯後刪除該代表類型。
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-23
+參數說明:
+    @workItemTypePk  int          : 欲刪除之工項代表類型主鍵 (若傳 0 或 null 可依 @typeCode 定位)
+    @typeCode        varchar(64)  : 欲刪除之工項代表類型代碼
+    @operatorAccount varchar(128) : 操作者帳號
+修改歷程:
+    2026-10-23 初版建立，支援工項代表類型刪除
+*/
+create or alter procedure storyPoint.spDeleteWorkItemType
+    @workItemTypePk int = null,
+    @typeCode varchar(64) = null,
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+    declare @targetPk int = isnull(@workItemTypePk, 0);
+    declare @targetCode varchar(64) = null;
+    declare @targetName nvarchar(128) = null;
+
+    begin try
+        if @targetPk <= 0 and isnull(ltrim(rtrim(@typeCode)), '') <> ''
+        begin
+            select top 1 @targetPk = pk
+            from storyPoint.tbWorkItemType
+            where typeCode = ltrim(rtrim(@typeCode));
+        end
+
+        select
+            @targetCode = typeCode,
+            @targetName = typeName
+        from storyPoint.tbWorkItemType
+        where pk = @targetPk;
+
+        if @targetCode is null
+        begin
+            ;throw 50034, N'找不到欲刪除的工項代表類型紀錄。', 1;
+        end
+
+        update storyPoint.tbWorkItem
+        set workItemTypePk = null,
+            updatedAt = sysdatetime()
+        where workItemTypePk = @targetPk;
+
+        update storyPoint.tbPointHistory
+        set workItemTypePk = null
+        where workItemTypePk = @targetPk;
+
+        update storyPoint.tbVotingSession
+        set workItemTypePk = null,
+            updatedAt = sysdatetime()
+        where workItemTypePk = @targetPk;
+
+        delete from storyPoint.tbWorkItemType
+        where pk = @targetPk;
+
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @delTypeMsg nvarchar(256) = concat(N'工項代表類型【', @targetCode, N' - ', @targetName, N'】已刪除');
+        exec storyPoint.spWriteLog
+            @logLevel = 3,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeleteWorkItemType',
+            @durationMillisecond = @durationMs,
+            @executionResult = @delTypeMsg,
+            @operatorAccount = @operatorAccount;
+
+        select
+            @targetPk as deletedWorkItemTypePk,
+            @targetCode as deletedTypeCode,
+            @targetName as deletedTypeName;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeleteWorkItemType',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'刪除工項代表類型失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @operatorAccount;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
+-- 20. 刪除實際工項預存程序 (storyPoint.spDeleteWorkItem)
+-- ============================================================================
+/*
+用途說明: 刪除指定之實際工項 (tbWorkItem)，一併清除其員工指派明細 (tbWorkItemAssignment) 與點數異動外鍵，確保員工與部門點數即時扣除更新。
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-23
+參數說明:
+    @workItemPk      int          : 欲刪除之工項主鍵 (若傳 0 或 null 可依 @itemCode 定位)
+    @itemCode        varchar(64)  : 欲刪除之工項代碼
+    @operatorAccount varchar(128) : 操作者帳號
+修改歷程:
+    2026-10-23 初版建立，支援工項刪除
+*/
+create or alter procedure storyPoint.spDeleteWorkItem
+    @workItemPk int = null,
+    @itemCode varchar(64) = null,
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+    declare @targetPk int = isnull(@workItemPk, 0);
+    declare @targetCode varchar(64) = null;
+    declare @targetTitle nvarchar(256) = null;
+
+    begin try
+        if @targetPk <= 0 and isnull(ltrim(rtrim(@itemCode)), '') <> ''
+        begin
+            select top 1 @targetPk = pk
+            from storyPoint.tbWorkItem
+            where itemCode = ltrim(rtrim(@itemCode));
+        end
+
+        select
+            @targetCode = itemCode,
+            @targetTitle = itemTitle
+        from storyPoint.tbWorkItem
+        where pk = @targetPk;
+
+        if @targetCode is null
+        begin
+            ;throw 50035, N'找不到欲刪除的工項紀錄。', 1;
+        end
+
+        delete from storyPoint.tbWorkItemAssignment
+        where workItemPk = @targetPk;
+
+        update storyPoint.tbPointHistory
+        set workItemPk = null
+        where workItemPk = @targetPk;
+
+        update storyPoint.tbVotingSession
+        set workItemPk = null,
+            updatedAt = sysdatetime()
+        where workItemPk = @targetPk;
+
+        delete from storyPoint.tbWorkItem
+        where pk = @targetPk;
+
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @delItemMsg nvarchar(256) = concat(N'實際工項【', @targetCode, N' - ', @targetTitle, N'】已刪除');
+        exec storyPoint.spWriteLog
+            @logLevel = 3,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeleteWorkItem',
+            @durationMillisecond = @durationMs,
+            @executionResult = @delItemMsg,
+            @operatorAccount = @operatorAccount;
+
+        select
+            @targetPk as deletedWorkItemPk,
+            @targetCode as deletedItemCode,
+            @targetTitle as deletedItemTitle;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeleteWorkItem',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'刪除實際工項失敗',
             @errorCode = @errCode,
             @errorLine = @errLine,
             @errorMessage = @errMsg,

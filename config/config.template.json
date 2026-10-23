@@ -1,4 +1,4 @@
-﻿{
+{
   "systemSetting": {
     "applicationName": "azureStoryPointSystem",
     "environmentName": "development",
@@ -24,6 +24,12 @@
     "sqlDatabaseName": "storyPointDb",
     "appServicePlanName": "asp-storypoint-964764",
     "webAppName": "app-storypoint-964764"
+  },
+  "mailProviderSetting": {
+    "providerType": "acsEmail",
+    "defaultSenderEmail": "DoNotReply@2116ef18-0b69-4917-9e2b-b1adaa14af1b.azurecomm.net",
+    "defaultSenderDisplayName": "Story Point 工項與權重管理系統",
+    "encryptedAcsConnectionString": ""
   },
   "securitySetting": {
     "passwordSaltKey": "storyPointEnterpriseSalt2026",

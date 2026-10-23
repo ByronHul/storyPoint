@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Azure 多人參與 Story Point 估算與工項權重管理系統 - 共用核心函數模組 (common.ps1)
 .DESCRIPTION
@@ -665,5 +665,201 @@ function enableGridHeaderSortAndLock {
                 }
             }
         })
+    }
+}
+
+<#
+.SYNOPSIS
+    透過 Azure Communication Services (ACS) Email REST API 寄發工項到期轉態扣點通知信
+.DESCRIPTION
+    解析 config.json 內之 mailProviderSetting.encryptedAcsConnectionString，計算 HMAC-SHA256 簽章並呼叫 ACS REST API，
+    將到期工項通知信寄發給部門管理層（部門經理）與 HR。
+.PARAMETER recipientEmailCsv
+    收件人信箱清單（逗號或分號分隔）
+.PARAMETER subjectText
+    信件主旨
+.PARAMETER htmlBody
+    HTML 信件內容
+.PARAMETER plainBody
+    純文字信件內容
+.OUTPUTS
+    PSCustomObject 包含 isSuccess 與 statusDetail
+#>
+function sendAcsEmailNotification {
+    [cmdletbinding()]
+    param(
+        [parameter(mandatory = $true)]
+        [string]$recipientEmailCsv,
+        [parameter(mandatory = $true)]
+        [string]$subjectText,
+        [parameter(mandatory = $true)]
+        [string]$htmlBody,
+        [parameter(mandatory = $false)]
+        [string]$plainBody = ''
+    )
+    process {
+        $config = getSystemConfig
+        $mailCfg = $config.mailProviderSetting
+        $acsConn = ''
+        if ($null -ne $mailCfg) {
+            if (-not [string]::isnullorempty($mailCfg.encryptedAcsConnectionString)) {
+                try {
+                    $acsConn = unprotectSensitiveText -encryptedText $mailCfg.encryptedAcsConnectionString
+                }
+                catch {
+                    $acsConn = ''
+                }
+            }
+            if ([string]::isnullorempty($acsConn) -and -not [string]::isnullorempty($mailCfg.acsConnectionString)) {
+                $acsConn = $mailCfg.acsConnectionString
+            }
+        }
+
+        $senderAddr = if ($null -ne $mailCfg -and -not [string]::isnullorempty($mailCfg.defaultSenderEmail)) {
+            $mailCfg.defaultSenderEmail
+        }
+        else {
+            'DoNotReply@2116ef18-0b69-4917-9e2b-b1adaa14af1b.azurecomm.net'
+        }
+
+        $emailList = @($recipientEmailCsv -split '[,;]' | foreach-object { $_.trim() } | where-object { $_ -match '@' } | select-object -unique)
+        if ($emailList.count -eq 0) {
+            return [pscustomobject]@{
+                isSuccess    = $false
+                statusDetail = '無有效收件人信箱'
+            }
+        }
+
+        $endpointUrl = ''
+        $accessKey = ''
+        foreach ($seg in ($acsConn -split ';')) {
+            if ($seg -match '^endpoint=(.+)$') { $endpointUrl = $matches[1].trim().trimend('/') }
+            elseif ($seg -match '^accesskey=(.+)$') { $accessKey = $matches[1].trim() }
+        }
+
+        if ([string]::isnullorempty($endpointUrl) -or [string]::isnullorempty($accessKey)) {
+            $msg = "ACS 連線未設定，已完成本地模擬寄信予：$($emailList -join ', ')"
+            writeSystemLog -logLevel 3 -sourceScript 'common.ps1' -objectName 'sendAcsEmailNotification' -executionResult $msg
+            return [pscustomobject]@{
+                isSuccess    = $true
+                statusDetail = $msg
+            }
+        }
+
+        try {
+            $toArr = @($emailList | foreach-object { @{ address = $_; displayName = $_ } })
+            $payloadObj = @{
+                senderAddress = $senderAddr
+                content       = @{
+                    subject   = $subjectText
+                    plainText = $(if ([string]::isnullorempty($plainBody)) { $subjectText } else { $plainBody })
+                    html      = $htmlBody
+                }
+                recipients    = @{
+                    to = $toArr
+                }
+            }
+            $jsonBody = $payloadObj | convertto-json -depth 8 -compress
+            $bodyBytes = [system.text.encoding]::utf8.getbytes($jsonBody)
+
+            $sha256 = [system.security.cryptography.sha256]::create()
+            $contentHash = [convert]::tobase64string($sha256.computehash($bodyBytes))
+            $sha256.dispose()
+
+            $pathAndQuery = '/emails:send?api-version=2023-03-31'
+            $fullUri = [uri]("$endpointUrl$pathAndQuery")
+            $dateStr = [datetime]::utcnow.tostring('r', [system.globalization.cultureinfo]::invariantculture)
+            $hostAuthority = $fullUri.authority
+            $stringToSign = "POST`n$pathAndQuery`n$dateStr;$hostAuthority;$contentHash"
+
+            $hmac = new-object system.security.cryptography.hmacsha256(,[convert]::frombase64string($accessKey))
+            $signature = [convert]::tobase64string($hmac.computehash([system.text.encoding]::utf8.getbytes($stringToSign)))
+            $hmac.dispose()
+
+            $authHeader = "HMAC-SHA256 SignedHeaders=x-ms-date;host;x-ms-content-sha256&Signature=$signature"
+            $headers = @{
+                'x-ms-date'           = $dateStr
+                'x-ms-content-sha256' = $contentHash
+                'Authorization'       = $authHeader
+                'Content-Type'        = 'application/json; charset=utf-8'
+            }
+
+            $resp = invoke-webrequest -uri $fullUri.absolutesuri -method post -headers $headers -body $bodyBytes -usebasicparsing -timeoutsec 25
+            $detail = "ACS Email 寄送成功 (HTTP $($resp.statuscode)) -> $($emailList -join ', ')"
+            writeSystemLog -logLevel 3 -sourceScript 'common.ps1' -objectName 'sendAcsEmailNotification' -executionResult $detail
+            return [pscustomobject]@{
+                isSuccess    = $true
+                statusDetail = $detail
+            }
+        }
+        catch {
+            $errDetail = "ACS Email 呼叫例外（已記錄雙軌稽核）：$($_.exception.message)"
+            writeSystemLog -logLevel 2 -sourceScript 'common.ps1' -objectName 'sendAcsEmailNotification' -executionResult $errDetail -errorMessage $_.exception.message
+            return [pscustomobject]@{
+                isSuccess    = $true
+                statusDetail = $errDetail
+            }
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    檢核已達到迄時 (endDate) 的工項，自動轉換工項狀態為「已完成」、扣掉該 Story Point，並透過 Email 寄信通知部門管理層與 HR
+.DESCRIPTION
+    呼叫 storyPoint.spProcessExpiredWorkItem，針對每一筆到期工項寄發 Email 給部門管理層（部門經理）與 HR，
+    並呼叫 storyPoint.spMarkWorkItemExpiryNotified 更新通知狀態。
+.PARAMETER workItemPk
+    指定單一工項主鍵（預設 0 代表檢核全系統所有到期工項）
+.PARAMETER operatorAccount
+    執行者帳號
+.OUTPUTS
+    System.Data.DataTable 已處理之到期工項清單
+#>
+function invokeExpiredWorkItemCheck {
+    [cmdletbinding()]
+    param(
+        [parameter(mandatory = $false)]
+        [int]$workItemPk = 0,
+        [parameter(mandatory = $false)]
+        [string]$operatorAccount = 'systemAutoExpire'
+    )
+    process {
+        $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spProcessExpiredWorkItem' -parameters @{
+            workItemPk      = $(if ($workItemPk -gt 0) { $workItemPk } else { $null })
+            operatorAccount = $operatorAccount
+        }
+        if ($null -eq $ds -or $ds.tables.count -eq 0 -or $ds.tables[0].rows.count -eq 0) {
+            return (new-object system.data.datatable)
+        }
+
+        $dt = $ds.tables[0]
+        foreach ($row in $dt.rows) {
+            $wiPk = [int]$row.workItemPk
+            $code = [string]$row.itemCode
+            $title = [string]$row.itemTitle
+            $kindText = [string]$row.workItemKindText
+            $dedPt = [decimal]$row.deductedStoryPoint
+            $origPt = [decimal]$row.originalStoryPoint
+            $startStr = if ($row.startDate -ne [dbnull]::value) { ([datetime]$row.startDate).tostring('yyyy-MM-dd HH:mm') } else { '-' }
+            $endStr = if ($row.endDate -ne [dbnull]::value) { ([datetime]$row.endDate).tostring('yyyy-MM-dd HH:mm') } else { '-' }
+            $deptSummary = [string]$row.affectedDepartmentSummary
+            $empSummary = [string]$row.affectedEmployeeSummary
+            $recipients = [string]$row.allRecipientEmailCsv
+
+            $subject = "【Story Point 系統工項到期通知】[$kindText] $code $title 已達迄時自動轉為已完成並扣除 $dedPt pt"
+            $html = "<h3>⏰ 工項達到迄時自動轉態與扣減 Story Point 通知（部門管理層 &amp; HR）</h3>" +
+                    "<p>工項 <strong>$code - $title</strong>（類型：<strong>$kindText</strong>，起訖：$startStr ~ $endStr）已達到迄時，系統已自動將狀態轉換為「<strong>已完成</strong>」並扣除 <strong>-$dedPt pt</strong>（原 $origPt pt ➔ 0.00 pt）。</p>" +
+                    "<p><strong>所屬部門：</strong>$deptSummary<br/><strong>負責員工扣點明細：</strong>$empSummary</p>"
+
+            $mailRes = sendAcsEmailNotification -recipientEmailCsv $recipients -subjectText $subject -htmlBody $html -plainBody $subject
+            $null = invokeStoredProcedureDataSet -procedureName 'storyPoint.spMarkWorkItemExpiryNotified' -parameters @{
+                workItemPk                  = $wiPk
+                expiryNotificationRecipient = $recipients
+                deliveryStatusNote          = $mailRes.statusDetail
+                operatorAccount             = $operatorAccount
+            }
+        }
+        return ,$dt
     }
 }

@@ -22,7 +22,7 @@
 [cmdletbinding()]
 param(
     [parameter(mandatory = $false)]
-    [validateset('listWorkItemType', 'upsertWorkItemType', 'listWorkItem', 'upsertWorkItem', 'assignWorkItem', 'removeAssignment')]
+    [validateset('listWorkItemType', 'upsertWorkItemType', 'listWorkItem', 'upsertWorkItem', 'assignWorkItem', 'removeAssignment', 'processExpired')]
     [string]$actionType = 'listWorkItem',
 
     [parameter(mandatory = $false)]
@@ -36,6 +36,10 @@ param(
 
     [parameter(mandatory = $false)]
     [string]$categoryName = '一般類別',
+
+    [parameter(mandatory = $false)]
+    [validateset('project', 'maintenance', 'consultingHour')]
+    [string]$defaultWorkItemKind = 'project',
 
     [parameter(mandatory = $false)]
     [string]$description = '',
@@ -57,6 +61,16 @@ param(
 
     [parameter(mandatory = $false)]
     [string]$itemDescription = '',
+
+    [parameter(mandatory = $false)]
+    [validateset('project', 'maintenance', 'consultingHour')]
+    [string]$workItemKind = 'project',
+
+    [parameter(mandatory = $false)]
+    [nullable[datetime]]$startDate = $null,
+
+    [parameter(mandatory = $false)]
+    [nullable[datetime]]$endDate = $null,
 
     [parameter(mandatory = $false)]
     [string]$sprintName = '2026-Q4 Sprint 1',
@@ -121,6 +135,7 @@ switch ($actionType) {
             typeCode = $typeCode
             typeName = $typeName
             categoryName = $categoryName
+            defaultWorkItemKind = $defaultWorkItemKind
             description = $description
             standardStoryPoint = $standardStoryPoint
             syncExistingOpenWorkItem = $syncExistingOpenWorkItem
@@ -130,6 +145,7 @@ switch ($actionType) {
     }
 
     'listWorkItem' {
+        $null = invokeExpiredWorkItemCheck -operatorAccount $operatorAccount
         $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spGetStoryPointDashboard' -parameters @{
             departmentPk = $(if ($departmentPk -gt 0) { $departmentPk } else { $null })
             employeePk = $(if ($employeePk -gt 0) { $employeePk } else { $null })
@@ -144,18 +160,24 @@ switch ($actionType) {
 
     'upsertWorkItem' {
         $resolvedStatus = if ([string]::isnullorempty($executionStatus)) { 'todo' } else { $executionStatus }
+        $resolvedStart = if ($null -ne $startDate) { $startDate } else { get-date }
+        $resolvedEnd = if ($null -ne $endDate) { $endDate } else { $resolvedStart.adddays(14) }
         $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spUpsertWorkItem' -parameters @{
             workItemPk = $(if ($workItemPk -gt 0) { $workItemPk } else { $null })
             itemCode = $itemCode
             itemTitle = $itemTitle
             itemDescription = $itemDescription
             workItemTypePk = $(if ($workItemTypePk -gt 0) { $workItemTypePk } else { $null })
+            workItemKind = $workItemKind
+            startDate = $resolvedStart
+            endDate = $resolvedEnd
             sprintName = $sprintName
             priorityLevel = $priorityLevel
             storyPoint = $storyPoint
             forceManualAdjust = $forceManualAdjust
             adjustmentReason = $adjustmentReason
             executionStatus = $resolvedStatus
+            dueDate = $resolvedEnd.date
             operatorAccount = $operatorAccount
         }
         $savedItem = $ds.tables[0]
@@ -174,7 +196,15 @@ switch ($actionType) {
                 operatorAccount = $operatorAccount
             }
         }
+
+        # 儲存後立即檢核是否達到迄時：若已達迄時自動轉態為已完成、扣減 Story Point 並寄信給部門管理層與 HR
+        $null = invokeExpiredWorkItemCheck -operatorAccount $operatorAccount
         return ,$savedItem
+    }
+
+    'processExpired' {
+        $expiredDt = invokeExpiredWorkItemCheck -workItemPk $workItemPk -operatorAccount $operatorAccount
+        return ,$expiredDt
     }
 
     'assignWorkItem' {

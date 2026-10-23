@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Azure 多人參與 Story Point 系統 - [Tab 3] 工項管理与員工賦予設定頁籤 (tabWorkItem.ps1)
 .DESCRIPTION
@@ -76,30 +76,66 @@ process {
 
     $txtEmpPk = new-object system.windows.forms.textbox
     $txtEmpPk.location = new-object system.drawing.point(105, 47)
-    $txtEmpPk.width = 60
+    $txtEmpPk.width = 50
     $txtEmpPk.text = '3'
 
     $lblPct = new-object system.windows.forms.label
-    $lblPct.text = '分攤比例(%)：'
-    $lblPct.location = new-object system.drawing.point(180, 50)
+    $lblPct.text = '分攤(%)：'
+    $lblPct.location = new-object system.drawing.point(165, 50)
     $lblPct.autosize = $true
 
     $txtPct = new-object system.windows.forms.textbox
-    $txtPct.location = new-object system.drawing.point(275, 47)
-    $txtPct.width = 60
+    $txtPct.location = new-object system.drawing.point(235, 47)
+    $txtPct.width = 45
     $txtPct.text = '100'
 
+    $lblKind = new-object system.windows.forms.label
+    $lblKind.text = '類型：'
+    $lblKind.location = new-object system.drawing.point(290, 50)
+    $lblKind.autosize = $true
+
+    $cmbKind = new-object system.windows.forms.combobox
+    $cmbKind.location = new-object system.drawing.point(338, 47)
+    $cmbKind.width = 95
+    $cmbKind.dropdownstyle = 'DropDownList'
+    $null = $cmbKind.items.addrange(@('專案', '維運', '顧問時數'))
+    $cmbKind.selectedindex = 0
+
+    $lblStart = new-object system.windows.forms.label
+    $lblStart.text = '起時：'
+    $lblStart.location = new-object system.drawing.point(442, 50)
+    $lblStart.autosize = $true
+
+    $dtpStart = new-object system.windows.forms.datetimepicker
+    $dtpStart.location = new-object system.drawing.point(488, 47)
+    $dtpStart.width = 135
+    $dtpStart.format = [system.windows.forms.datetimepickerformat]::custom
+    $dtpStart.customformat = 'yyyy-MM-dd HH:mm'
+    $dtpStart.value = (get-date)
+
+    $lblEnd = new-object system.windows.forms.label
+    $lblEnd.text = '迄時：'
+    $lblEnd.location = new-object system.drawing.point(630, 50)
+    $lblEnd.autosize = $true
+
+    $dtpEnd = new-object system.windows.forms.datetimepicker
+    $dtpEnd.location = new-object system.drawing.point(676, 47)
+    $dtpEnd.width = 135
+    $dtpEnd.format = [system.windows.forms.datetimepickerformat]::custom
+    $dtpEnd.customformat = 'yyyy-MM-dd HH:mm'
+    $dtpEnd.value = (get-date).adddays(14)
+
     $btnSaveWorkItem = new-object system.windows.forms.button
-    $btnSaveWorkItem.text = '💾 建立/儲存工項並賦予員工'
-    $btnSaveWorkItem.location = new-object system.drawing.point(355, 44)
-    $btnSaveWorkItem.size = new-object system.drawing.size(210, 30)
+    $btnSaveWorkItem.text = '💾 儲存工項(達迄時自動扣點寄信)'
+    $btnSaveWorkItem.location = new-object system.drawing.point(820, 44)
+    $btnSaveWorkItem.size = new-object system.drawing.size(195, 30)
     $btnSaveWorkItem.backcolor = [system.drawing.color]::fromargb(37, 99, 235)
     $btnSaveWorkItem.forecolor = [system.drawing.color]::white
 
     $btnRefresh = new-object system.windows.forms.button
-    $btnRefresh.text = '🔄 重新整理工項與點數清單'
-    $btnRefresh.location = new-object system.drawing.point(580, 44)
-    $btnRefresh.size = new-object system.drawing.size(200, 30)
+    $btnRefresh.text = '⚡ 檢核到期工項/重新整理'
+    $btnRefresh.location = new-object system.drawing.point(1022, 44)
+    $btnRefresh.size = new-object system.drawing.size(155, 30)
 
     $gridItem = new-object system.windows.forms.datagridview
     $gridItem.location = new-object system.drawing.point(12, 88)
@@ -113,24 +149,38 @@ process {
         $dt = & $workItemScript -actionType 'listWorkItem'
         $gridItem.datasource = $dt
         if ($null -ne $statusLabel) {
-            $statusLabel.text = "已載入 $($dt.rows.count) 筆工項與 Story Point 明細"
+            $statusLabel.text = "已載入 $($dt.rows.count) 筆工項與 Story Point 明細（已同步檢核到期工項扣點與寄信）"
         }
     }
 
-    $btnRefresh.add_click($loadItemData)
+    $btnRefresh.add_click({
+        $expDt = & $workItemScript -actionType 'processExpired'
+        & $loadItemData
+        if ($null -ne $statusLabel -and $null -ne $expDt -and $expDt.rows.count -gt 0) {
+            $statusLabel.text = "⏰ 已處理 $($expDt.rows.count) 筆達到迄時的工項，自動轉為已完成、扣除 Story Point 並寄發 Email 給部門管理層與 HR！"
+        }
+    })
     $btnSaveWorkItem.add_click({
         $ptVal = if (-not [string]::isnullorempty($txtPoint.text)) { [decimal]$txtPoint.text } else { $null }
         $isManual = ($null -ne $ptVal)
+        $kindCode = switch ($cmbKind.selecteditem.tostring()) {
+            '維運' { 'maintenance' }
+            '顧問時數' { 'consultingHour' }
+            default { 'project' }
+        }
         $null = & $workItemScript -actionType 'upsertWorkItem' `
             -itemCode $txtCode.text -itemTitle $txtTitle.text `
-            -workItemTypePk ([int]$txtTypePk.text) -storyPoint $ptVal -forceManualAdjust $isManual `
+            -workItemTypePk ([int]$txtTypePk.text) -workItemKind $kindCode `
+            -startDate $dtpStart.value -endDate $dtpEnd.value `
+            -storyPoint $ptVal -forceManualAdjust $isManual `
             -employeePk ([int]$txtEmpPk.text) -allocationPercent ([decimal]$txtPct.text)
         & $loadItemData
     })
 
     $tabPage.controls.addrange(@(
         $lblCode, $txtCode, $lblTitle, $txtTitle, $lblTypePk, $txtTypePk, $lblPoint, $txtPoint,
-        $lblEmpPk, $txtEmpPk, $lblPct, $txtPct, $btnSaveWorkItem, $btnRefresh, $gridItem
+        $lblEmpPk, $txtEmpPk, $lblPct, $txtPct, $lblKind, $cmbKind, $lblStart, $dtpStart, $lblEnd, $dtpEnd,
+        $btnSaveWorkItem, $btnRefresh, $gridItem
     ))
 
     return $tabPage

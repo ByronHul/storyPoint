@@ -25,6 +25,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<sqlDataService>();
+builder.Services.AddSingleton<emailNotificationService>();
+builder.Services.AddHostedService<workItemExpiryBackgroundService>();
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {

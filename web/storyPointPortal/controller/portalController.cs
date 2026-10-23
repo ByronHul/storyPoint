@@ -38,11 +38,13 @@ public class portalController : Controller
 {
     private readonly sqlDataService _sqlService;
     private readonly IHubContext<votingHub> _hubContext;
+    private readonly emailNotificationService _emailService;
 
-    public portalController(sqlDataService sqlService, IHubContext<votingHub> hubContext)
+    public portalController(sqlDataService sqlService, IHubContext<votingHub> hubContext, emailNotificationService emailService)
     {
         _sqlService = sqlService;
         _hubContext = hubContext;
+        _emailService = emailService;
     }
 
     private int getCurrentEmployeePk()
@@ -366,6 +368,14 @@ public class portalController : Controller
 
         try
         {
+            // 先自動檢核是否有已達到迄時 (endDate) 的工項：若有則自動轉換狀態為已完成、扣掉該 Story Point，並寄發 Email 給部門管理層與 HR
+            var autoProcessedExpiredResult = await _emailService.processExpiredWorkItemsAndNotifyAsync(null, currentAcc);
+            if (autoProcessedExpiredResult.processedCount > 0 && string.IsNullOrWhiteSpace(msg))
+            {
+                string joinedItems = string.Join("、", autoProcessedExpiredResult.itemSummaryList);
+                msg = $"⏰ 系統已偵測到 {autoProcessedExpiredResult.processedCount} 筆工項達到迄時，已自動轉換狀態為「已完成 (已到期扣點)」、扣除其 Story Point，並寄發 Email 通知部門管理層與 HR：{joinedItems}";
+            }
+
             // 載入儀表板完整統計資料（依角色自動隔離：一般員工僅能看到自己的工項與自己的分數，不可看到其他人）
             var dashDs = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spGetStoryPointDashboard", new Dictionary<string, object?>
             {
@@ -596,10 +606,16 @@ public class portalController : Controller
         [FromForm] bool restrictToParticipant = true,
         [FromForm] string? roundGoalNote = null,
         [FromForm] bool resetCurrentRoundVotes = false,
-        [FromForm] string? submitMode = "saveAndGoVoting")
+        [FromForm] string? submitMode = "saveAndGoVoting",
+        [FromForm] bool fromStandalone = false,
+        [FromForm] string? tabInstanceId = null)
     {
         if (!isAdminUser())
         {
+            if (fromStandalone && votingSessionPk.HasValue && votingSessionPk.Value > 0)
+            {
+                return Redirect($"/voting/session?sessionPk={votingSessionPk.Value}&tabInstanceId={Uri.EscapeDataString(tabInstanceId ?? "")}&err=" + Uri.EscapeDataString("僅管理者可以發起新的多人投票議程或設定盲投回合。"));
+            }
             return Redirect("/?tab=voting&err=" + Uri.EscapeDataString("僅管理者可以發起新的多人投票議程或設定盲投回合。"));
         }
 
@@ -656,16 +672,31 @@ public class portalController : Controller
                 timestamp = DateTime.Now.ToString("HH:mm:ss")
             });
 
-            string targetTab = string.Equals(submitMode, "saveStaySetup", StringComparison.OrdinalIgnoreCase) ? "roundSetup" : "voting";
             string okText = isUpdatingExisting
                 ? $"已成功儲存議程「{cleanTitle}」的盲投回合設定（允許點數：{minStoryPoint ?? 0:0.##} ~ {maxStoryPoint ?? 21:0.##} pt）！"
-                : $"已成功根據回合設定啟動多人盲投議程「{cleanTitle}」（允許點數：{minStoryPoint ?? 0:0.##} ~ {maxStoryPoint ?? 21:0.##} pt）！請參與者開始出牌。";
+                : $"已成功根據回合設定啟動多人盲投議程「{cleanTitle}」（允許點數：{minStoryPoint ?? 0:0.##} ~ {maxStoryPoint ?? 21:0.##} pt）！請點擊開啟獨立網頁進行盲投。";
 
+            if (fromStandalone || string.Equals(submitMode, "saveAndOpenStandalone", StringComparison.OrdinalIgnoreCase))
+            {
+                var (_, assignedTabId, _) = sqlDataService.tryEnterOrRefreshVotingSessionLease(
+                    getCurrentEmployeePk(),
+                    getCurrentEmployeeName(),
+                    newPk,
+                    tabInstanceId);
+                string tokenParam = !string.IsNullOrEmpty(assignedTabId) ? $"&tabInstanceId={Uri.EscapeDataString(assignedTabId)}" : "";
+                return Redirect($"/voting/session?sessionPk={newPk}{tokenParam}&msg=" + Uri.EscapeDataString(okText));
+            }
+
+            string targetTab = string.Equals(submitMode, "saveStaySetup", StringComparison.OrdinalIgnoreCase) ? "roundSetup" : "voting";
             return Redirect($"/?tab={targetTab}&sessionPk={newPk}&msg=" + Uri.EscapeDataString(okText));
         }
         catch (Exception ex)
         {
             await logPortalExceptionAsync("portalController.createVotingSession", ex);
+            if (fromStandalone && votingSessionPk.HasValue && votingSessionPk.Value > 0)
+            {
+                return Redirect($"/voting/session?sessionPk={votingSessionPk.Value}&tabInstanceId={Uri.EscapeDataString(tabInstanceId ?? "")}&err=" + Uri.EscapeDataString("儲存盲投議程設定時發生異常（已自動記錄至系統 Log）：" + ex.Message));
+            }
             return Redirect("/?tab=roundSetup&err=" + Uri.EscapeDataString("儲存盲投議程設定時發生異常（已自動記錄至系統 Log）：" + ex.Message));
         }
     }
@@ -676,7 +707,9 @@ public class portalController : Controller
         [FromForm] int votingSessionPk,
         [FromForm] string cardValue,
         [FromForm] string? voteComment,
-        [FromForm] int? actAsEmployeePk = null)
+        [FromForm] int? actAsEmployeePk = null,
+        [FromForm] bool fromStandalone = false,
+        [FromForm] string? tabInstanceId = null)
     {
         int voterPk = getCurrentEmployeePk();
         if (isAdminUser() && actAsEmployeePk.HasValue && actAsEmployeePk.Value > 0)
@@ -739,12 +772,27 @@ public class portalController : Controller
                 ? $"已投出撲克牌「{fullCardMeaning}」！🎉 全體受邀參與者 ({votedCnt}/{reqCnt} 人) 皆已完成投票，所有人的畫面已自動翻牌揭曉！"
                 : $"已成功投出撲克牌「{fullCardMeaning}」（目前已出牌 {votedCnt}/{reqCnt} 人，待全員完成投票後將自動翻牌揭曉）！";
 
-            return Redirect($"/?tab=voting&sessionPk={votingSessionPk}&msg=" + Uri.EscapeDataString(redirectMsg));
+            if (fromStandalone || !string.IsNullOrWhiteSpace(tabInstanceId))
+            {
+                var (_, assignedTabId, _) = sqlDataService.tryEnterOrRefreshVotingSessionLease(
+                    getCurrentEmployeePk(),
+                    getCurrentEmployeeName(),
+                    votingSessionPk,
+                    tabInstanceId);
+                string tokenParam = !string.IsNullOrEmpty(assignedTabId) ? $"&tabInstanceId={Uri.EscapeDataString(assignedTabId)}" : "";
+                return Redirect($"/voting/session?sessionPk={votingSessionPk}{tokenParam}&msg=" + Uri.EscapeDataString(redirectMsg));
+            }
+
+            return Redirect($"/voting/session?sessionPk={votingSessionPk}&msg=" + Uri.EscapeDataString(redirectMsg));
         }
         catch (Exception ex)
         {
             await logPortalExceptionAsync("portalController.castVote", ex);
-            return Redirect($"/?tab=voting&sessionPk={votingSessionPk}&err=" + Uri.EscapeDataString(ex.Message));
+            if (fromStandalone || !string.IsNullOrWhiteSpace(tabInstanceId))
+            {
+                return Redirect($"/voting/session?sessionPk={votingSessionPk}&tabInstanceId={Uri.EscapeDataString(tabInstanceId ?? "")}&err=" + Uri.EscapeDataString(ex.Message));
+            }
+            return Redirect($"/voting/session?sessionPk={votingSessionPk}&err=" + Uri.EscapeDataString(ex.Message));
         }
     }
 
@@ -756,11 +804,13 @@ public class portalController : Controller
         [FromForm] string? roundDiscussionNote,
         [FromForm] decimal? finalStoryPoint,
         [FromForm] string? finalDecisionNote,
-        [FromForm] bool syncExistingOpenWorkItem = false)
+        [FromForm] bool syncExistingOpenWorkItem = false,
+        [FromForm] bool fromStandalone = false,
+        [FromForm] string? tabInstanceId = null)
     {
         if (!isAdminUser())
         {
-            return Redirect($"/?tab=voting&sessionPk={votingSessionPk}&err=" + Uri.EscapeDataString("僅管理者可執行翻牌揭曉、開啟下一回合或拍板定案。"));
+            return Redirect($"/voting/session?sessionPk={votingSessionPk}&tabInstanceId={Uri.EscapeDataString(tabInstanceId ?? "")}&err=" + Uri.EscapeDataString("僅管理者可執行翻牌揭曉、開啟下一回合或拍板定案。"));
         }
 
         try
@@ -793,23 +843,45 @@ public class portalController : Controller
                 timestamp = DateTime.Now.ToString("HH:mm:ss")
             });
 
-            return Redirect($"/?tab=voting&sessionPk={votingSessionPk}&msg=" + Uri.EscapeDataString(actionText));
+            var (_, assignedTabId, _) = sqlDataService.tryEnterOrRefreshVotingSessionLease(
+                getCurrentEmployeePk(),
+                getCurrentEmployeeName(),
+                votingSessionPk,
+                tabInstanceId);
+            string tokenParam = !string.IsNullOrEmpty(assignedTabId) ? $"&tabInstanceId={Uri.EscapeDataString(assignedTabId)}" : "";
+            return Redirect($"/voting/session?sessionPk={votingSessionPk}{tokenParam}&msg=" + Uri.EscapeDataString(actionText));
         }
         catch (Exception ex)
         {
             await logPortalExceptionAsync("portalController.controlVotingSession", ex);
-            return Redirect($"/?tab=voting&sessionPk={votingSessionPk}&err=" + Uri.EscapeDataString("控制投票議程時發生異常（已自動記錄至系統 Log）：" + ex.Message));
+            return Redirect($"/voting/session?sessionPk={votingSessionPk}&tabInstanceId={Uri.EscapeDataString(tabInstanceId ?? "")}&err=" + Uri.EscapeDataString("控制投票議程時發生異常（已自動記錄至系統 Log）：" + ex.Message));
         }
     }
 
     [HttpGet("voting/liveStatus")]
     [Authorize]
-    public async Task<IActionResult> getVotingLiveStatus([FromQuery] int? sessionPk = null)
+    public async Task<IActionResult> getVotingLiveStatus([FromQuery] int? sessionPk = null, [FromQuery] string? tabInstanceId = null)
     {
         try
         {
             int currentEmpPk = getCurrentEmployeePk();
             bool isAdmin = isAdminUser();
+
+            bool isSessionLeaseOwner = true;
+            string currentOwnerTabId = "";
+            if (sessionPk.HasValue && sessionPk.Value > 0 && !string.IsNullOrWhiteSpace(tabInstanceId))
+            {
+                var hb = sqlDataService.refreshVotingSessionHeartbeat(
+                    currentEmpPk,
+                    getCurrentEmployeeName(),
+                    sessionPk.Value,
+                    tabInstanceId);
+                isSessionLeaseOwner = hb.isOwner;
+                currentOwnerTabId = hb.currentOwnerTabInstanceId;
+            }
+
+            List<int> myActiveOpenSessionPks = sqlDataService.getActiveLockedSessionPksForEmployee(currentEmpPk);
+
             // 查詢屬於該成員的所有投票議程 (votingSessionPk 傳 null)，以便同時偵測是否有新議程出現
             var votingDs = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spGetVotingProcessHistory", new Dictionary<string, object?>
             {
@@ -833,7 +905,10 @@ public class portalController : Controller
                     ongoingSessionPks = Array.Empty<int>(),
                     latestOngoingSessionPk = 0,
                     newestSessionPk = 0,
-                    sessionListSignature = ""
+                    sessionListSignature = "",
+                    isSessionLeaseOwner = isSessionLeaseOwner,
+                    currentOwnerTabInstanceId = currentOwnerTabId,
+                    myActiveOpenSessionPks = myActiveOpenSessionPks
                 });
             }
 
@@ -904,12 +979,201 @@ public class portalController : Controller
                 ongoingSessionPks = ongoingSessionPks,
                 latestOngoingSessionPk = latestVotingPk > 0 ? latestVotingPk : (latestOngoingPk > 0 ? latestOngoingPk : newestPk),
                 newestSessionPk = newestPk,
-                sessionListSignature = string.Join("|", sigParts)
+                sessionListSignature = string.Join("|", sigParts),
+                isSessionLeaseOwner = isSessionLeaseOwner,
+                currentOwnerTabInstanceId = currentOwnerTabId,
+                myActiveOpenSessionPks = myActiveOpenSessionPks
             });
         }
         catch
         {
             return Json(new { found = false });
+        }
+    }
+
+    /// <summary>
+    /// 獨立盲投 Session 網頁心跳續約端點（確保開啟中的獨立網頁持續保有進入鎖定，防止同一人重複開啟相同 Session）
+    /// </summary>
+    [HttpPost("voting/session/heartbeat")]
+    [Authorize]
+    public IActionResult votingSessionHeartbeat([FromForm] int votingSessionPk, [FromForm] string? tabInstanceId)
+    {
+        int empPk = getCurrentEmployeePk();
+        var (isOwner, ownerId) = sqlDataService.refreshVotingSessionHeartbeat(
+            empPk,
+            getCurrentEmployeeName(),
+            votingSessionPk,
+            tabInstanceId);
+        return Json(new
+        {
+            ok = true,
+            isSessionLeaseOwner = isOwner,
+            currentOwnerTabInstanceId = ownerId,
+            myActiveOpenSessionPks = sqlDataService.getActiveLockedSessionPksForEmployee(empPk)
+        });
+    }
+
+    /// <summary>
+    /// 離開或關閉獨立盲投 Session 網頁時釋放佔用鎖定（支援 navigator.sendBeacon 與按鈕主動離開）
+    /// </summary>
+    [HttpPost("voting/session/leave")]
+    [HttpGet("voting/session/leave")]
+    [Authorize]
+    public IActionResult votingSessionLeave(
+        [FromQuery] int? sessionPk = null,
+        [FromForm] int? votingSessionPk = null,
+        [FromQuery] string? tabInstanceId = null,
+        [FromForm] string? formTabInstanceId = null,
+        [FromQuery] bool redirectLobby = false)
+    {
+        int empPk = getCurrentEmployeePk();
+        int targetSessionPk = votingSessionPk ?? sessionPk ?? 0;
+        string? resolvedTabId = !string.IsNullOrWhiteSpace(tabInstanceId) ? tabInstanceId : formTabInstanceId;
+
+        if (targetSessionPk > 0 && empPk > 0)
+        {
+            sqlDataService.releaseVotingSessionLease(empPk, targetSessionPk, resolvedTabId);
+        }
+
+        if (redirectLobby)
+        {
+            return Redirect("/?tab=voting&msg=" + Uri.EscapeDataString($"您已離開盲投議程 (#{targetSessionPk}) 獨立網頁並釋放鎖定，可隨時重新進入或參與其他議程。"));
+        }
+
+        return Json(new
+        {
+            released = true,
+            votingSessionPk = targetSessionPk,
+            myActiveOpenSessionPks = sqlDataService.getActiveLockedSessionPksForEmployee(empPk)
+        });
+    }
+
+    /// <summary>
+    /// 盲投 Session 獨立專屬網頁 (/voting/session?sessionPk=X 或 /voting/session/X)
+    /// 遵循需求規範：
+    /// 1. 當一個人進入一個盲投 session 時，使用獨立的網頁進行這整個 session（非 Modal 彈窗）
+    /// 2. 讓人可以同時以多個獨立網頁參與「不同」的 session
+    /// 3. 但「同一個」session 不能重複進入（若已在另一個獨立網頁開啟同一場 session，立即攔截並顯示禁止重複進入畫面）
+    /// </summary>
+    [HttpGet("voting/session")]
+    [HttpGet("voting/session/{routeSessionPk:int}")]
+    [Authorize]
+    public async Task<IActionResult> votingSessionStandalonePage(
+        [FromQuery] int? sessionPk = null,
+        [FromRoute] int? routeSessionPk = null,
+        [FromQuery] string? tabInstanceId = null,
+        [FromQuery] string? msg = null,
+        [FromQuery] string? err = null)
+    {
+        int currentEmpPk = getCurrentEmployeePk();
+        string currentAcc = getCurrentLoginAccount();
+        if (currentEmpPk <= 0 || string.IsNullOrWhiteSpace(currentAcc))
+        {
+            return Redirect("/login");
+        }
+
+        int targetSessionPk = sessionPk ?? routeSessionPk ?? 0;
+        if (targetSessionPk <= 0)
+        {
+            return Redirect("/?tab=voting&err=" + Uri.EscapeDataString("請選擇要進入的盲投議程 (Voting Session)。"));
+        }
+
+        bool isAdmin = isAdminUser();
+
+        try
+        {
+            // 讀取該員工可存取的投票議程資料
+            var voteDs = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spGetVotingProcessHistory", new Dictionary<string, object?>
+            {
+                ["viewerEmployeePk"] = currentEmpPk,
+                ["isViewerAdmin"] = isAdmin
+            });
+
+            DataTable sessionTable = voteDs.Tables[0];
+            DataTable roundTable = voteDs.Tables[1];
+            DataTable voteRecordTable = voteDs.Tables[2];
+            DataTable participantTable = voteDs.Tables[3];
+
+            DataRow? targetSessionRow = null;
+            foreach (DataRow sr in sessionTable.Rows)
+            {
+                if (Convert.ToInt32(sr["votingSessionPk"]) == targetSessionPk)
+                {
+                    targetSessionRow = sr;
+                    break;
+                }
+            }
+
+            if (targetSessionRow == null)
+            {
+                return Redirect("/?tab=voting&err=" + Uri.EscapeDataString($"找不到指定的盲投議程 (#{targetSessionPk})，或您不屬於本場議程的受邀參與者名單。"));
+            }
+
+            // 檢查是否有同分頁 F5 重新整理暫存 Cookie
+            string reloadCookieName = $"sp_reload_inst_{targetSessionPk}";
+            string? reloadCookieTabId = Request.Cookies[reloadCookieName];
+            if (!string.IsNullOrEmpty(reloadCookieTabId))
+            {
+                Response.Cookies.Delete(reloadCookieName);
+            }
+
+            // 檢核同一員工是否已在另一個獨立網頁進入同一個盲投 Session
+            var (isAllowed, assignedTabInstanceId, conflictLease) = sqlDataService.tryEnterOrRefreshVotingSessionLease(
+                currentEmpPk,
+                getCurrentEmployeeName(),
+                targetSessionPk,
+                tabInstanceId,
+                reloadCookieTabId);
+
+            if (!isAllowed && conflictLease != null)
+            {
+                await _sqlService.writeSystemLogAsync(
+                    logLevel: 2,
+                    sourceName: "webPortal.votingSessionGuard",
+                    objectName: "portalController.votingSessionStandalonePage",
+                    durationMillisecond: 0,
+                    executionResult: $"攔截重複進入同一盲投議程：員工 {getCurrentEmployeeName()} ({currentAcc}) 嘗試重複開啟議程 #{targetSessionPk} ({targetSessionRow["sessionCode"]})",
+                    operatorAccount: currentAcc);
+
+                string blockedHtml = buildDuplicateVotingSessionBlockedHtml(
+                    targetSessionPk,
+                    targetSessionRow,
+                    conflictLease,
+                    sessionTable);
+                return Content(blockedHtml, "text/html; charset=utf-8");
+            }
+
+            // 載入輔助資料表（供管理者在獨立網頁內也可調整牌組/受邀參與者設定）
+            var dashDs = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spGetStoryPointDashboard", new Dictionary<string, object?>
+            {
+                ["viewerEmployeePk"] = currentEmpPk,
+                ["isViewerAdmin"] = isAdmin
+            });
+            DataTable deptTable = dashDs.Tables[0];
+            DataTable empTable = dashDs.Tables[1];
+            DataTable cardDeckTable = dashDs.Tables.Count > 6 ? dashDs.Tables[6] : new DataTable();
+
+            string standaloneHtml = buildStandaloneVotingSessionHtml(
+                targetSessionPk,
+                assignedTabInstanceId,
+                isAdmin,
+                msg,
+                err,
+                targetSessionRow,
+                sessionTable,
+                roundTable,
+                voteRecordTable,
+                participantTable,
+                deptTable,
+                empTable,
+                cardDeckTable);
+
+            return Content(standaloneHtml, "text/html; charset=utf-8");
+        }
+        catch (Exception ex)
+        {
+            string friendly = await logPortalExceptionAsync(nameof(votingSessionStandalonePage), ex);
+            return Redirect("/?tab=voting&err=" + Uri.EscapeDataString(friendly));
         }
     }
 
@@ -924,8 +1188,9 @@ public class portalController : Controller
         [FromForm] string typeCode,
         [FromForm] string typeName,
         [FromForm] string categoryName,
-        [FromForm] string? description,
-        [FromForm] decimal? standardStoryPoint,
+        [FromForm] string? defaultWorkItemKind = "project",
+        [FromForm] string? description = null,
+        [FromForm] decimal? standardStoryPoint = null,
         [FromForm] bool syncExistingOpenWorkItem = false)
     {
         if (!isAdminUser())
@@ -935,12 +1200,19 @@ public class portalController : Controller
 
         try
         {
+            string cleanKind = (defaultWorkItemKind ?? "project").Trim();
+            if (cleanKind != "project" && cleanKind != "maintenance" && cleanKind != "consultingHour")
+            {
+                cleanKind = "project";
+            }
+
             await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpsertWorkItemType", new Dictionary<string, object?>
             {
                 ["workItemTypePk"] = workItemTypePk,
                 ["typeCode"] = (typeCode ?? "").Trim(),
                 ["typeName"] = (typeName ?? "").Trim(),
                 ["categoryName"] = string.IsNullOrWhiteSpace(categoryName) ? "一般分類" : categoryName.Trim(),
+                ["defaultWorkItemKind"] = cleanKind,
                 ["description"] = description,
                 ["standardStoryPoint"] = standardStoryPoint,
                 ["syncExistingOpenWorkItem"] = syncExistingOpenWorkItem,
@@ -965,9 +1237,12 @@ public class portalController : Controller
         [FromForm] string itemTitle,
         [FromForm] string? itemDescription,
         [FromForm] int? workItemTypePk,
-        [FromForm] string? sprintName,
-        [FromForm] string priorityLevel,
-        [FromForm] decimal? storyPoint,
+        [FromForm] string? workItemKind = "project",
+        [FromForm] DateTime? startDate = null,
+        [FromForm] DateTime? endDate = null,
+        [FromForm] string? sprintName = null,
+        [FromForm] string priorityLevel = "medium",
+        [FromForm] decimal? storyPoint = null,
         [FromForm] bool forceManualAdjust = false,
         [FromForm] string? adjustmentReason = null,
         [FromForm] string executionStatus = "todo",
@@ -982,6 +1257,19 @@ public class portalController : Controller
 
         try
         {
+            string cleanKind = (workItemKind ?? "project").Trim();
+            if (cleanKind != "project" && cleanKind != "maintenance" && cleanKind != "consultingHour")
+            {
+                cleanKind = "project";
+            }
+
+            DateTime resolvedStart = startDate ?? DateTime.Now;
+            DateTime resolvedEnd = endDate ?? dueDate ?? resolvedStart.AddDays(14);
+            if (resolvedEnd < resolvedStart)
+            {
+                resolvedEnd = resolvedStart;
+            }
+
             var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpsertWorkItem", new Dictionary<string, object?>
             {
                 ["workItemPk"] = workItemPk,
@@ -989,20 +1277,26 @@ public class portalController : Controller
                 ["itemTitle"] = (itemTitle ?? "").Trim(),
                 ["itemDescription"] = itemDescription,
                 ["workItemTypePk"] = (workItemTypePk.HasValue && workItemTypePk.Value > 0) ? workItemTypePk.Value : null,
+                ["workItemKind"] = cleanKind,
+                ["startDate"] = resolvedStart,
+                ["endDate"] = resolvedEnd,
                 ["sprintName"] = sprintName,
                 ["priorityLevel"] = string.IsNullOrWhiteSpace(priorityLevel) ? "medium" : priorityLevel,
                 ["storyPoint"] = storyPoint,
                 ["forceManualAdjust"] = forceManualAdjust,
                 ["adjustmentReason"] = adjustmentReason,
                 ["executionStatus"] = string.IsNullOrWhiteSpace(executionStatus) ? "todo" : executionStatus,
-                ["dueDate"] = dueDate,
+                ["dueDate"] = resolvedEnd.Date,
                 ["createdByEmployeePk"] = getCurrentEmployeePk(),
                 ["operatorAccount"] = getCurrentLoginAccount()
             });
 
-            if (primaryEmployeePk.HasValue && primaryEmployeePk.Value > 0 && ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0)
+            int savedWiPk = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0)
+                ? Convert.ToInt32(ds.Tables[0].Rows[0]["pk"])
+                : (workItemPk ?? 0);
+
+            if (primaryEmployeePk.HasValue && primaryEmployeePk.Value > 0 && savedWiPk > 0)
             {
-                int savedWiPk = Convert.ToInt32(ds.Tables[0].Rows[0]["pk"]);
                 await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spAssignWorkItemToEmployee", new Dictionary<string, object?>
                 {
                     ["actionType"] = "upsert",
@@ -1016,12 +1310,57 @@ public class portalController : Controller
                 });
             }
 
-            return Redirect("/?tab=workitems&msg=" + Uri.EscapeDataString($"工項「{itemCode} - {itemTitle}」已成功儲存，並已自動計算員工與部門 Story Point！"));
+            // 儲存後立即檢核：若該工項（或其他工項）已達到迄時 (endDate)，自動轉換狀態為已完成、扣掉該 Story Point，並寄發 Email 給部門管理層與 HR
+            var expiredResult = await _emailService.processExpiredWorkItemsAndNotifyAsync(null, getCurrentLoginAccount());
+            if (expiredResult.processedCount > 0)
+            {
+                var expDetail = string.Join("；", expiredResult.itemSummaryList);
+                return Redirect("/?tab=workitems&msg=" + Uri.EscapeDataString($"工項「{itemCode} - {itemTitle}」已儲存！⏰ 因達到迄時，系統已自動轉換狀態、扣減 Story Point 並寄信給部門管理層與 HR：{expDetail}"));
+            }
+
+            string kindText = cleanKind switch
+            {
+                "maintenance" => "維運",
+                "consultingHour" => "顧問時數",
+                _ => "專案"
+            };
+            return Redirect("/?tab=workitems&msg=" + Uri.EscapeDataString($"工項「{itemCode} - {itemTitle}」（類型：{kindText}｜起訖：{resolvedStart:yyyy-MM-dd HH:mm} ~ {resolvedEnd:yyyy-MM-dd HH:mm}）已成功儲存，並已自動計算員工與部門 Story Point！"));
         }
         catch (Exception ex)
         {
             await logPortalExceptionAsync("portalController.saveWorkItem", ex);
             return Redirect("/?tab=workitems&err=" + Uri.EscapeDataString("儲存工項失敗（已記錄至系統 Log）：" + ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// 手動或排程觸發：檢核所有已達到迄時 (endDate) 的工項，自動轉換狀態為「已完成」、扣掉該 Story Point，並透過 Email 寄信給部門管理層與 HR
+    /// </summary>
+    [HttpPost("workitem/checkExpired")]
+    [Authorize]
+    public async Task<IActionResult> checkExpiredWorkItemsNow([FromForm] int? workItemPk = null)
+    {
+        if (!isAdminUser())
+        {
+            return Redirect("/?tab=workitems&err=" + Uri.EscapeDataString("僅管理者可手動觸發到期工項檢核與通知。"));
+        }
+
+        try
+        {
+            var results = await _emailService.processExpiredWorkItemsAndNotifyAsync(workItemPk, getCurrentLoginAccount());
+            if (results.processedCount == 0)
+            {
+                return Redirect("/?tab=workitems&msg=" + Uri.EscapeDataString("✅ 已完成到期工項檢核：目前沒有新的已達迄時待處理工項（所有到期工項皆已完成轉態、扣點與寄信）。"));
+            }
+
+            string summary = string.Join("；", results.itemSummaryList);
+
+            return Redirect("/?tab=workitems&msg=" + Uri.EscapeDataString($"⏰ 已成功處理 {results.processedCount} 筆到期工項並寄發 Email 通知：{summary}"));
+        }
+        catch (Exception ex)
+        {
+            await logPortalExceptionAsync("portalController.checkExpiredWorkItemsNow", ex);
+            return Redirect("/?tab=workitems&err=" + Uri.EscapeDataString("執行到期工項檢核時發生異常：" + ex.Message));
         }
     }
 
@@ -1360,9 +1699,9 @@ public class portalController : Controller
         string[] headers = { "員工編號", "員工姓名", "登入帳號", "登入密碼", "電子郵件", "職稱", "所屬部門", "系統角色", "是否啟用" };
         var rows = new List<string[]>
         {
-            new[] { "EMP009", "林志豪 (Leo)", "leo.lin", "pass123", "leo.lin@company.com", "資深後端工程師", "全端應用開發部", "participant", "1" },
-            new[] { "EMP010", "許雅筑 (Chloe)", "chloe.hsu", "pass123", "chloe.hsu@company.com", "前端工程師", "全端應用開發部", "participant", "1" },
-            new[] { "EMP011", "鄭家銘 (Mark)", "mark.cheng", "admin123", "mark.cheng@company.com", "敏捷教練 (Agile Coach)", "產品規劃與專案管理部", "admin", "1" }
+            new[] { "EMP009", "林志豪 (Leo)", "leo.lin", "pass123", "leo.lin@company.com", "部門經理", "全端應用開發部", "admin", "1" },
+            new[] { "EMP010", "許雅筑 (Chloe)", "chloe.hsu", "pass123", "chloe.hsu@company.com", "資深工程師", "全端應用開發部", "participant", "1" },
+            new[] { "EMP011", "鄭家銘 (Mark)", "mark.cheng", "admin123", "mark.cheng@company.com", "部門經理 / 敏捷教練", "產品規劃與專案管理部", "admin", "1" }
         };
 
         if (string.Equals(format, "excel", StringComparison.OrdinalIgnoreCase) ||
@@ -1510,12 +1849,12 @@ public class portalController : Controller
     [Authorize]
     public IActionResult downloadWorkItemImportTemplate([FromQuery] string format = "csv")
     {
-        string[] headers = { "工項代碼", "工項標題", "工項說明", "代表類型代碼或名稱", "StoryPoint", "所屬Sprint", "執行狀態", "負責員工編號或帳號", "分攤比例" };
+        string[] headers = { "工項代碼", "工項標題", "工項說明", "代表類型代碼或名稱", "StoryPoint", "所屬Sprint", "執行狀態", "負責員工編號或帳號", "分攤比例", "工項類型(專案/維運/顧問時數)", "開始時間(起時)", "結束時間(迄時)" };
         var rows = new List<string[]>
         {
-            new[] { "WI-2026-101", "實作部門月度報表批次匯出 API", "支援 CSV、Excel 與互動式 HTML 報表下載", "TYPE_API_CRUD", "5", "2026-Q4 Sprint 2", "inProgress", "EMP003", "100" },
-            new[] { "WI-2026-102", "規劃並建置跨部門單一簽入驗證機制", "整合內部 AD 與角色權限檢核", "TYPE_SECURITY_AUTH", "8", "2026-Q4 Sprint 2", "todo", "EMP002", "100" },
-            new[] { "WI-2026-103", "優化首頁儀表板查詢 Stored Procedure 效能", "新增複合索引並重構統計 View", "TYPE_DB_TUNING", "3", "2026-Q4 Sprint 2", "done", "EMP004", "100" }
+            new[] { "WI-2026-101", "實作部門月度報表批次匯出 API", "支援 CSV、Excel 與互動式 HTML 報表下載", "TYPE_API_CRUD", "5", "2026-Q4 Sprint 2", "inProgress", "EMP003", "100", "專案", "2026-10-01 09:00", "2026-11-15 18:00" },
+            new[] { "WI-2026-102", "核心資料庫例行維運與備份監控", "整合資料庫健康巡檢與異常告警", "TYPE_DB_TUNING", "3", "2026-Q4 Sprint 2", "inProgress", "EMP002", "100", "維運", "2026-10-01 09:00", "2026-12-31 18:00" },
+            new[] { "WI-2026-103", "企業客戶技術架構顧問時數支援", "提供高併發架構與效能調校顧問服務", "TYPE_SECURITY_AUTH", "8", "2026-Q4 Sprint 2", "todo", "EMP004", "100", "顧問時數", "2026-10-15 09:00", "2026-11-30 18:00" }
         };
 
         if (string.Equals(format, "excel", StringComparison.OrdinalIgnoreCase) ||
@@ -1600,6 +1939,9 @@ public class portalController : Controller
                 string statusToken = cols.Length > 6 ? cols[6].Trim().Trim('"') : "todo";
                 string empToken = cols.Length > 7 ? cols[7].Trim().Trim('"') : "";
                 string allocToken = cols.Length > 8 ? cols[8].Trim().Trim('"') : "100";
+                string kindToken = cols.Length > 9 ? cols[9].Trim().Trim('"') : "";
+                string startToken = cols.Length > 10 ? cols[10].Trim().Trim('"') : "";
+                string endToken = cols.Length > 11 ? cols[11].Trim().Trim('"') : "";
 
                 int? resolvedTypePk = null;
                 if (!string.IsNullOrWhiteSpace(typeToken) && typeMap.TryGetValue(typeToken, out int foundTypePk))
@@ -1623,6 +1965,19 @@ public class portalController : Controller
                     cleanStatus = "inProgress";
                 }
 
+                string cleanKind = "project";
+                if (kindToken.Equals("maintenance", StringComparison.OrdinalIgnoreCase) || kindToken.Contains("維運"))
+                {
+                    cleanKind = "maintenance";
+                }
+                else if (kindToken.Equals("consultingHour", StringComparison.OrdinalIgnoreCase) || kindToken.Contains("顧問"))
+                {
+                    cleanKind = "consultingHour";
+                }
+
+                DateTime? parsedStart = DateTime.TryParse(startToken, out DateTime dtStart) ? dtStart : null;
+                DateTime? parsedEnd = DateTime.TryParse(endToken, out DateTime dtEnd) ? dtEnd : null;
+
                 var wiDs = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpsertWorkItem", new Dictionary<string, object?>
                 {
                     ["workItemPk"] = null,
@@ -1630,13 +1985,16 @@ public class portalController : Controller
                     ["itemTitle"] = itemTitle,
                     ["itemDescription"] = itemDesc,
                     ["workItemTypePk"] = resolvedTypePk,
+                    ["workItemKind"] = cleanKind,
+                    ["startDate"] = parsedStart,
+                    ["endDate"] = parsedEnd,
                     ["sprintName"] = sprintName,
                     ["priorityLevel"] = "medium",
                     ["storyPoint"] = parsedPt,
                     ["forceManualAdjust"] = parsedPt.HasValue && !resolvedTypePk.HasValue,
                     ["adjustmentReason"] = "由批次匯入建立或更新",
                     ["executionStatus"] = cleanStatus,
-                    ["dueDate"] = null,
+                    ["dueDate"] = parsedEnd?.Date,
                     ["createdByEmployeePk"] = getCurrentEmployeePk(),
                     ["operatorAccount"] = getCurrentLoginAccount()
                 });
@@ -1663,11 +2021,15 @@ public class portalController : Controller
                 importedCount++;
             }
 
+            // 匯入後立即檢核是否有已達到迄時之工項，自動轉態扣點並寄信
+            var expiredList = await _emailService.processExpiredWorkItemsAndNotifyAsync(null, getCurrentLoginAccount());
+
             string fmtLabel = (importFile != null && importFile.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)) ||
                               string.Equals(importFormat, "excel", StringComparison.OrdinalIgnoreCase)
                 ? "Excel"
                 : "CSV";
-            return Redirect("/?tab=workitems&msg=" + Uri.EscapeDataString($"已透過 {fmtLabel} 格式成功批次匯入並更新 {importedCount} 筆工項與 Story Point 資料！"));
+            string expSuffix = expiredList.processedCount > 0 ? $"（其中 {expiredList.processedCount} 筆已達迄時，已自動轉為已完成、扣除點數並寄信通知部門管理層與 HR）" : "";
+            return Redirect("/?tab=workitems&msg=" + Uri.EscapeDataString($"已透過 {fmtLabel} 格式成功批次匯入並更新 {importedCount} 筆工項與 Story Point 資料！{expSuffix}"));
         }
         catch (Exception ex)
         {
@@ -1785,7 +2147,7 @@ public class portalController : Controller
             else if (string.Equals(type, "department", StringComparison.OrdinalIgnoreCase))
             {
                 reportTitle = "各部門總 Story Point 與負載統計報表";
-                headers = new[] { "部門代碼", "部門名稱", "部門主管", "在職人數", "參與工項數", "部門總StoryPoint", "待處理點數", "進行中點數", "已完成點數", "人均StoryPoint" };
+                headers = new[] { "部門代碼", "部門名稱", "部門主管", "在職人數", "參與工項數", "部門總StoryPoint", "到期已扣除StoryPoint", "待處理點數", "進行中點數", "已完成點數", "人均StoryPoint" };
                 defaultGroupColIndex = 1;
                 primaryPointColIndex = 5;
                 foreach (DataRow r in dashDs.Tables[0].Rows)
@@ -1798,6 +2160,7 @@ public class portalController : Controller
                         r["activeEmployeeCount"]?.ToString() ?? "0",
                         r["distinctWorkItemCount"]?.ToString() ?? "0",
                         r["totalDepartmentStoryPoint"]?.ToString() ?? "0",
+                        r.Table.Columns.Contains("totalDeductedDepartmentStoryPoint") ? (r["totalDeductedDepartmentStoryPoint"]?.ToString() ?? "0") : "0",
                         r["todoDepartmentStoryPoint"]?.ToString() ?? "0",
                         r["inProgressDepartmentStoryPoint"]?.ToString() ?? "0",
                         r["doneDepartmentStoryPoint"]?.ToString() ?? "0",
@@ -1808,21 +2171,33 @@ public class portalController : Controller
             else if (string.Equals(type, "workitem", StringComparison.OrdinalIgnoreCase))
             {
                 reportTitle = isAdmin ? "各工項 Story Point 與員工賦予明細報表" : "我的工項與個人 Story Point 配額報表";
-                headers = new[] { "工項代碼", "工項標題", "代表類型代碼", "代表類型名稱", "代表類型預設點數", "工項實際StoryPoint", "點數來源", "執行狀態", "所屬Sprint", "負責員工與配額明細" };
-                defaultGroupColIndex = 3; // 預設依「代表類型名稱」群組彙總
-                primaryPointColIndex = 5;
+                headers = new[] { "工項代碼", "工項標題", "工項類型", "開始時間(起時)", "結束時間(迄時)", "代表類型代碼", "代表類型名稱", "代表類型預設點數", "工項目前StoryPoint", "原核定StoryPoint", "到期已扣除點數", "點數來源", "執行狀態", "到期通知信箱", "所屬Sprint", "負責員工與配額明細" };
+                defaultGroupColIndex = 2; // 預設依「工項類型」群組彙總
+                primaryPointColIndex = 8;
                 foreach (DataRow r in dashDs.Tables[3].Rows)
                 {
+                    string startStr = r.Table.Columns.Contains("startDate") && r["startDate"] != DBNull.Value
+                        ? Convert.ToDateTime(r["startDate"]).ToString("yyyy-MM-dd HH:mm")
+                        : "";
+                    string endStr = r.Table.Columns.Contains("endDate") && r["endDate"] != DBNull.Value
+                        ? Convert.ToDateTime(r["endDate"]).ToString("yyyy-MM-dd HH:mm")
+                        : "";
                     rows.Add(new[]
                     {
                         r["itemCode"]?.ToString() ?? "",
                         r["itemTitle"]?.ToString() ?? "",
+                        r.Table.Columns.Contains("workItemKindText") ? (r["workItemKindText"]?.ToString() ?? "專案") : "專案",
+                        startStr,
+                        endStr,
                         r["typeCode"]?.ToString() ?? "",
                         r["typeName"]?.ToString() ?? "未分類",
                         r["defaultTypePoint"]?.ToString() ?? "0",
                         r["storyPoint"]?.ToString() ?? "0",
+                        r.Table.Columns.Contains("originalStoryPoint") ? (r["originalStoryPoint"]?.ToString() ?? "0") : (r["storyPoint"]?.ToString() ?? "0"),
+                        r.Table.Columns.Contains("deductedStoryPoint") ? (r["deductedStoryPoint"]?.ToString() ?? "0") : "0",
                         r["pointSourceText"]?.ToString() ?? "",
                         r["executionStatusText"]?.ToString() ?? "",
+                        r.Table.Columns.Contains("expiryNotificationRecipient") ? (r["expiryNotificationRecipient"]?.ToString() ?? "") : "",
                         r["sprintName"]?.ToString() ?? "",
                         (r["assigneeSummary"]?.ToString() ?? "").Replace(",", "；")
                     });
@@ -3168,7 +3543,7 @@ public class portalController : Controller
         .sp-th-lock-btn {{ display:inline-flex; align-items:center; justify-content:center; width:24px; height:22px; border-radius:5px; border:1px solid #cbd5e1; background:#ffffff; color:#64748b; font-size:11px; cursor:pointer; padding:0; transition:all .15s; flex-shrink:0; }}
         .sp-th-lock-btn:hover {{ border-color:#2563eb; color:#2563eb; background:#eff6ff; }}
         .sp-th-lock-btn.active {{ background:#1e40af; color:#ffffff; border-color:#1e3a8a; box-shadow:0 1px 3px rgba(30,64,175,0.3); }}
-        input[type=text], input[type=number], input[type=password], input[type=date], select, textarea {{ width:100%; padding:8px 11px; border:1px solid #cbd5e1; border-radius:7px; font-size:13.5px; font-family:inherit; }}
+        input[type=text], input[type=number], input[type=password], input[type=date], input[type=datetime-local], select, textarea {{ width:100%; padding:8px 11px; border:1px solid #cbd5e1; border-radius:7px; font-size:13.5px; font-family:inherit; }}
         .form-row {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:12px; align-items:end; }}
         .form-row > div {{ min-width:0; }}
         label {{ display:block; font-size:12.5px; font-weight:600; color:#334155; margin-bottom:4px; }}
@@ -3585,7 +3960,7 @@ public class portalController : Controller
         </div>");
 
         // =====================================================================
-        // TAB 1: 多人即時盲投大廳 (Planning Poker)
+        // TAB 1: 多人即時盲投大廳 (Planning Poker — 點擊以獨立網頁進行整個 Session)
         // =====================================================================
         DataRow? activeSessionRow = null;
         var ongoingSessions = new List<DataRow>();
@@ -3608,7 +3983,7 @@ public class portalController : Controller
             }
         }
 
-        bool isActiveSessionFinalized = activeSessionRow != null && (activeSessionRow["sessionStatus"]?.ToString() == "finalized");
+        var myLockedSessionSet = sqlDataService.getActiveLockedSessionPksForEmployee(curEmpPk).ToHashSet();
 
         sb.Append($"<div id='pane-voting' class='tab-pane {(currentTab == "voting" ? "active" : "")}'>");
         sb.Append("<div class='grid-voting' id='votingGridContainer'>");
@@ -3632,7 +4007,7 @@ public class portalController : Controller
                 </div>
                 <div class='voting-sidebar-body' id='votingSidebarBody'>");
 
-        // 輔助函式：渲染單一投票議程邊項（支援點擊切換議程 + 邊項本身展開/收合詳情）
+        // 輔助函式：渲染單一投票議程邊項（支援點擊以獨立網頁進入 Session + 邊項本身展開/收合詳情 + 同 Session 防重複進入狀態標示）
         void renderSessionAgendaItem(DataRow sRow)
         {
             int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
@@ -3648,14 +4023,17 @@ public class portalController : Controller
             string goalNote = sRow.Table.Columns.Contains("roundGoalNote") ? (sRow["roundGoalNote"]?.ToString() ?? "") : "";
             string itemDetailCollapsed = (sPk == activeSessionPk && sStatus != "finalized") ? "" : "collapsed";
             string toggleBtnText = (sPk == activeSessionPk && sStatus != "finalized") ? "▴ 收合詳情" : "▾ 邊項詳情";
+            bool isAlreadyOpen = myLockedSessionSet.Contains(sPk);
+            string jsSafeTitle = escapeJsString($"{sRow["sessionCode"]} - {sRow["sessionTitle"]}");
 
             sb.Append($@"
             <div class=""session-item-card"" style=""{activeBorder}"">
-                <div style=""display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:6px;"">
+                <div style=""display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;gap:6px;flex-wrap:wrap;"">
                     <a href=""/?tab=voting&sessionPk={sPk}"" style=""text-decoration:none;color:#1e293b;font-weight:700;font-size:13px;"">
                         {h(sRow["sessionCode"])}
                     </a>
-                    <div style=""display:flex;align-items:center;gap:4px;"">
+                    <div style=""display:flex;align-items:center;gap:4px;flex-wrap:wrap;"">
+                        <span data-session-open-badge=""{sPk}"" class=""badge"" style=""display:{(isAlreadyOpen ? "inline-block" : "none")};background:#dcfce7;color:#15803d;border:1px solid #86efac;"">🟢 獨立網頁進行中</span>
                         <span class=""badge {badgeCls}"">{h(sRow["sessionStatusText"])}</span>
                         <button type=""button"" class=""btn-item-toggle"" onclick=""toggleSessionItemDetail(event, {sPk}, this)"">{toggleBtnText}</button>
                     </div>
@@ -3669,9 +4047,11 @@ public class portalController : Controller
                     <div>📏 <strong>點數範圍：</strong>{minPt:0.##} ~ {maxPt:0.##} pt ｜ <strong>共識規則：</strong>{h(consensusText)}</div>
                     <div>👥 <strong>誰可參與：</strong>{(restrictPart ? $"僅限指定名單 ({partCnt} 人)" : $"全體啟用員工 (目前 {partCnt} 人)")}</div>
                     {(!string.IsNullOrWhiteSpace(goalNote) ? $"<div>📝 <strong>回合重點：</strong>{h(goalNote)}</div>" : "")}
-                    <div style=""display:flex;gap:6px;margin-top:4px;"">
-                        <a href=""/?tab=voting&sessionPk={sPk}"" class=""btn btn-primary"" style=""padding:3px 8px;font-size:11.5px;"">🃏 進入此議程桌面</a>
-                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:3px 8px;font-size:11.5px;' onclick='openRoundSetupForSession({sPk})'>⚙️ 修改回合設定</button>" : "")}
+                    <div style=""display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;"">
+                        <a href=""/voting/session?sessionPk={sPk}"" target=""_blank"" data-session-enter-btn=""{sPk}"" data-session-title=""{h(sRow["sessionCode"] + " - " + sRow["sessionTitle"])}"" onclick=""return openIndependentVotingSession(event, {sPk}, '{jsSafeTitle}')"" class=""btn {(isAlreadyOpen ? "btn-outline" : "btn-primary")}"" style=""padding:4px 9px;font-size:11.5px;{(isAlreadyOpen ? "background:#f1f5f9;color:#475569;border-color:#94a3b8;" : "")}"">
+                            {(isAlreadyOpen ? "🔒 已在獨立網頁進行中 (禁重複進入)" : "🚀 以獨立網頁進入此 Session")}
+                        </a>
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:11.5px;' onclick='openRoundSetupForSession({sPk})'>⚙️ 修改回合設定</button>" : "")}
                     </div>
                 </div>
             </div>");
@@ -3742,262 +4122,152 @@ public class portalController : Controller
         }
         sb.Append("</div></div></div>"); // end votingSidebarBody, voting-sidebar-full-content, votingSidebarCard
 
-        // 右側：當前投票議程出牌桌面與即時狀態
+        // 右側：獨立網頁盲投 Session 入口大廳與多開狀態監控面板（非 Modal，每場盲投皆於獨立網頁 /voting/session 進行）
         sb.Append("<div class='card'>");
+        sb.Append($@"
+            <div class=""card-title"">
+                <div>
+                    <span style=""font-size:18px;"">🌐 多人盲投 Session 獨立網頁入口中心（支援多網頁同時參與不同 Session）</span>
+                    <div style=""font-size:12.5px;color:#64748b;font-weight:normal;margin-top:3px;"">
+                        進入盲投議程時將開啟<strong>獨立專屬網頁 (<code>/voting/session?sessionPk=...</code>)</strong>進行完整 Session（非 Modal 彈窗）｜可同時開啟多個網頁參與不同議程，但<strong>同一個 Session 不能重複進入</strong>
+                    </div>
+                </div>
+                <div style=""display:flex;align-items:center;gap:8px;flex-wrap:wrap;"">
+                    <button type=""button"" class=""btn btn-outline"" style=""padding:6px 12px;font-size:12.5px;"" onclick=""refreshVotingSessionsNow(this)"" title=""重新整理並檢查是否有屬於您的新投票議程"">🔄 重新整理議程清單</button>
+                    {(isAdmin ? "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;' onclick=\"switchTab('roundSetup')\">➕ 發起新盲投議程</button>" : "")}
+                </div>
+            </div>
+
+            <!-- 獨立網頁參與規範與目前開啟中 Session 即時狀態橫幅 -->
+            <div style=""background:linear-gradient(135deg,#eff6ff 0%,#f0fdf4 100%);border:1px solid #93c5fd;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;"">
+                <div style=""font-size:13px;color:#1e3a8a;line-height:1.6;"">
+                    <div>✅ <strong>獨立網頁進行整個 Session：</strong>點擊下方任一議程的「<strong>🚀 以獨立網頁進入此盲投 Session</strong>」，即在新瀏覽器分頁開啟專屬盲投頁面完成出牌、自動翻牌與拍板定案。</div>
+                    <div>🔒 <strong>多開不同議程 ＆ 防止同議程重複進入：</strong>您可同時開啟多個獨立網頁參與<strong>不同</strong>的盲投 Session；若某 Session 已在獨立網頁開啟中，系統將自動鎖定防止重複進入同一個 Session。</div>
+                </div>
+                <div id=""lobbyActiveSessionCountBox"" style=""background:#ffffff;border:1.5px solid #2563eb;border-radius:10px;padding:8px 14px;text-align:center;min-width:210px;"">
+                    <div style=""font-size:11.5px;color:#64748b;font-weight:700;"">我目前開啟中的獨立 Session 網頁</div>
+                    <div id=""lobbyActiveSessionCountVal"" style=""font-size:20px;font-weight:800;color:#15803d;margin-top:2px;"">{myLockedSessionSet.Count} 場進行中</div>
+                </div>
+            </div>");
+
         if (activeSessionRow != null)
         {
             string sStatus = activeSessionRow["sessionStatus"].ToString() ?? "voting";
-            string rawCardCsv = normalizeCardDeckCsv(activeSessionRow["cardValueCsv"]?.ToString());
-            string[] cards = rawCardCsv.Split(',', StringSplitOptions.RemoveEmptyEntries);
             int curRound = Convert.ToInt32(activeSessionRow["currentRoundNumber"]);
             decimal minPt = activeSessionRow.Table.Columns.Contains("minStoryPoint") && activeSessionRow["minStoryPoint"] != DBNull.Value ? Convert.ToDecimal(activeSessionRow["minStoryPoint"]) : 0m;
             decimal maxPt = activeSessionRow.Table.Columns.Contains("maxStoryPoint") && activeSessionRow["maxStoryPoint"] != DBNull.Value ? Convert.ToDecimal(activeSessionRow["maxStoryPoint"]) : 21m;
             decimal maxSpread = activeSessionRow.Table.Columns.Contains("maxAllowedSpread") && activeSessionRow["maxAllowedSpread"] != DBNull.Value ? Convert.ToDecimal(activeSessionRow["maxAllowedSpread"]) : 5m;
-            string consensusRule = activeSessionRow.Table.Columns.Contains("consensusRule") ? (activeSessionRow["consensusRule"]?.ToString() ?? "nearestFibonacci") : "nearestFibonacci";
             string consensusRuleText = activeSessionRow.Table.Columns.Contains("consensusRuleText") ? (activeSessionRow["consensusRuleText"]?.ToString() ?? "對齊最接近費氏牌面") : "對齊最接近費氏牌面";
             bool autoReveal = activeSessionRow.Table.Columns.Contains("autoRevealWhenAllVoted") && activeSessionRow["autoRevealWhenAllVoted"] != DBNull.Value && Convert.ToBoolean(activeSessionRow["autoRevealWhenAllVoted"]);
             int timeLimitSec = activeSessionRow.Table.Columns.Contains("roundTimeLimitSecond") && activeSessionRow["roundTimeLimitSecond"] != DBNull.Value ? Convert.ToInt32(activeSessionRow["roundTimeLimitSecond"]) : 180;
-            bool allowQ = !activeSessionRow.Table.Columns.Contains("allowQuestionCard") || activeSessionRow["allowQuestionCard"] == DBNull.Value || Convert.ToBoolean(activeSessionRow["allowQuestionCard"]);
-            bool allowCoffee = !activeSessionRow.Table.Columns.Contains("allowCoffeeCard") || activeSessionRow["allowCoffeeCard"] == DBNull.Value || Convert.ToBoolean(activeSessionRow["allowCoffeeCard"]);
-            string commentPolicy = activeSessionRow.Table.Columns.Contains("voteCommentPolicy") ? (activeSessionRow["voteCommentPolicy"]?.ToString() ?? "optional") : "optional";
             string commentPolicyText = activeSessionRow.Table.Columns.Contains("voteCommentPolicyText") ? (activeSessionRow["voteCommentPolicyText"]?.ToString() ?? "選填") : "選填";
             bool restrictParticipant = activeSessionRow.Table.Columns.Contains("restrictToParticipant") && activeSessionRow["restrictToParticipant"] != DBNull.Value && Convert.ToBoolean(activeSessionRow["restrictToParticipant"]);
             int partCount = activeSessionRow.Table.Columns.Contains("participantCount") && activeSessionRow["participantCount"] != DBNull.Value ? Convert.ToInt32(activeSessionRow["participantCount"]) : 0;
+            int votedCount = activeSessionRow.Table.Columns.Contains("currentRoundVoteCount") && activeSessionRow["currentRoundVoteCount"] != DBNull.Value ? Convert.ToInt32(activeSessionRow["currentRoundVoteCount"]) : 0;
             string roundGoalNote = activeSessionRow.Table.Columns.Contains("roundGoalNote") ? (activeSessionRow["roundGoalNote"]?.ToString() ?? "") : "";
+            bool isFocusedOpen = myLockedSessionSet.Contains(activeSessionPk);
+            string jsFocusedTitle = escapeJsString($"{activeSessionRow["sessionCode"]} - {activeSessionRow["sessionTitle"]}");
 
             sb.Append($@"
-            <div class=""card-title"">
-                <div>
-                    <span style=""font-size:18px;"">{h(activeSessionRow["sessionTitle"])}</span>
-                    <div style=""font-size:12.5px;color:#64748b;font-weight:normal;margin-top:3px;"">
-                        議程代碼：{h(activeSessionRow["sessionCode"])} ｜ 估算標的：{h(activeSessionRow["targetDisplayName"])} ｜ 主持：{h(activeSessionRow["hostEmployeeName"])}
+            <!-- 當前聚焦議程摘要與獨立網頁啟動卡片 -->
+            <div style=""background:#ffffff;border:2px solid #2563eb;border-radius:12px;padding:18px;margin-bottom:20px;box-shadow:0 4px 14px rgba(37,99,235,0.08);"">
+                <div style=""display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:12px;"">
+                    <div>
+                        <div style=""display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;"">
+                            <span class=""badge badge-user"">🎯 當前選取議程</span>
+                            <span class=""badge {(sStatus == "voting" ? "badge-voting" : (sStatus == "revealed" ? "badge-revealed" : "badge-finalized"))}"">
+                                第 {curRound} 回合 - {h(activeSessionRow["sessionStatusText"])}
+                            </span>
+                            <span data-session-open-badge=""{activeSessionPk}"" class=""badge"" style=""display:{(isFocusedOpen ? "inline-block" : "none")};background:#dcfce7;color:#15803d;border:1px solid #86efac;"">
+                                🟢 您已在獨立網頁開啟此 Session (禁止重複進入)
+                            </span>
+                        </div>
+                        <div style=""font-size:18px;font-weight:800;color:#0f172a;"">{h(activeSessionRow["sessionCode"])} — {h(activeSessionRow["sessionTitle"])}</div>
+                        <div style=""font-size:13px;color:#475569;margin-top:3px;"">
+                            估算標的：<strong>{h(activeSessionRow["targetDisplayName"])}</strong> ({h(activeSessionRow["targetKindText"])}) ｜ 主持管理者：{h(activeSessionRow["hostEmployeeName"])} ｜ 本回合已出牌：<strong>{votedCount} / {partCount} 人</strong>
+                        </div>
+                    </div>
+                    <div style=""display:flex;align-items:center;gap:8px;flex-wrap:wrap;"">
+                        <a href=""/voting/session?sessionPk={activeSessionPk}"" target=""_blank"" data-session-enter-btn=""{activeSessionPk}"" data-session-title=""{h(activeSessionRow["sessionCode"] + " - " + activeSessionRow["sessionTitle"])}"" onclick=""return openIndependentVotingSession(event, {activeSessionPk}, '{jsFocusedTitle}')"" class=""btn {(isFocusedOpen ? "btn-outline" : "btn-primary")}"" style=""padding:10px 18px;font-size:14.5px;{(isFocusedOpen ? "background:#f1f5f9;color:#475569;border-color:#94a3b8;" : "box-shadow:0 4px 12px rgba(37,99,235,0.28);")}"">
+                            {(isFocusedOpen ? "🔒 已在獨立網頁進行中 (同一個 Session 不能重複進入)" : "🚀 以獨立網頁進入此盲投 Session (進行完整盲投流程)")}
+                        </a>
+                        {(isAdmin && sStatus != "finalized" ? $"<button type='button' class='btn btn-outline' style='padding:10px 14px;font-size:13px;' onclick='openRoundSetupForSession({activeSessionPk})'>⚙️ 修改回合設定</button>" : "")}
                     </div>
                 </div>
-                <div style=""display:flex;align-items:center;gap:8px;flex-wrap:wrap;"">
-                    <button type=""button"" class=""btn btn-outline"" style=""padding:5px 10px;font-size:12px;"" onclick=""refreshVotingSessionsNow(this)"" title=""重新整理並檢查是否有屬於您的新投票議程"">🔄 重新整理議程</button>
-                    {(isAdmin && sStatus != "finalized" ? $"<button type='button' class='btn btn-outline' style='padding:5px 10px;font-size:12px;' onclick='openRoundSetupForSession({activeSessionPk})'>⚙️ 修改本回合設定</button>" : "")}
-                    <span class=""badge {(sStatus == "voting" ? "badge-voting" : (sStatus == "revealed" ? "badge-revealed" : "badge-finalized"))}"" style=""font-size:13px;"">
-                        第 {curRound} 回合 - {h(activeSessionRow["sessionStatusText"])}
-                    </span>
-                </div>
-            </div>
 
-            <!-- 本回合規則設定與參與範圍摘要橫幅 -->
-            <div style=""background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:10px 14px;margin-bottom:14px;"">
-                <div style=""display:flex;flex-wrap:wrap;gap:6px;align-items:center;"">
-                    <span style=""font-size:12.5px;font-weight:700;color:#1e3a8a;"">⚙️ 本回合設定：</span>
-                    <span class=""rule-pill"">📏 點數上下限：<strong>{minPt:0.##} ~ {maxPt:0.##} pt</strong></span>
+                <div style=""display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding-top:10px;border-top:1px dashed #cbd5e1;"">
+                    <span style=""font-size:12.5px;font-weight:700;color:#1e3a8a;"">⚙️ 回合規則：</span>
+                    <span class=""rule-pill"">📏 點數範圍：<strong>{minPt:0.##} ~ {maxPt:0.##} pt</strong></span>
                     <span class=""rule-pill"">👥 參與資格：<strong>{(restrictParticipant ? $"指定受邀參與者 ({partCount} 人)" : $"開放全體員工 ({partCount} 人)")}</strong></span>
                     <span class=""rule-pill"">🧮 共識計算：<strong>{h(consensusRuleText)}</strong></span>
-                    <span class=""rule-pill"">⚠️ 分歧警示門檻：<strong>落差 &gt; {maxSpread:0.##} pt</strong></span>
-                    <span class=""rule-pill"">💬 出牌理由：<strong>{h(commentPolicyText)}</strong></span>
-                    <span class=""rule-pill"">⚡ 全員出牌自動翻牌：<strong>{(autoReveal ? "啟用" : "手動翻牌")}</strong></span>
-                    {(timeLimitSec > 0 && sStatus == "voting"
-                        ? $"<span class='rule-pill' style='background:#fef3c7;border-color:#fde047;color:#92400e;'>⏱️ 回合倒數計時：<strong id='roundCountdownTimer' data-seconds='{timeLimitSec}'>{timeLimitSec} 秒</strong></span>"
-                        : $"<span class='rule-pill'>⏱️ 計時設定：<strong>{(timeLimitSec > 0 ? $"{timeLimitSec} 秒" : "不限時間")}</strong></span>")}
+                    <span class=""rule-pill"">⚠️ 分歧門檻：<strong>&le; {maxSpread:0.##} pt</strong></span>
+                    <span class=""rule-pill"">💬 理由規範：<strong>{h(commentPolicyText)}</strong></span>
+                    <span class=""rule-pill"">⚡ 自動翻牌：<strong>{(autoReveal ? "全員投完自動翻牌" : "手動翻牌")}</strong></span>
+                    <span class=""rule-pill"">⏱️ 限時：<strong>{(timeLimitSec > 0 ? $"{timeLimitSec} 秒" : "不限時間")}</strong></span>
                 </div>
-                {(!string.IsNullOrWhiteSpace(roundGoalNote) ? $"<div style='margin-top:8px;padding-top:6px;border-top:1px dashed #cbd5e1;font-size:12.5px;color:#334155;'>📌 <strong>本回合估算範圍與驗收重點：</strong>{h(roundGoalNote)}</div>" : "")}
+                {(!string.IsNullOrWhiteSpace(roundGoalNote) ? $"<div style='margin-top:8px;font-size:12.5px;color:#334155;'>📌 <strong>估算範圍與驗收重點：</strong>{h(roundGoalNote)}</div>" : "")}
+            </div>");
+        }
+
+        // 所有進行中盲投議程多開卡片列表（讓使用者可同時開啟多個獨立網頁參與不同 Session）
+        sb.Append($@"
+            <div style=""font-weight:700;font-size:15px;color:#0f172a;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;"">
+                <span>📂 目前進行中與討論中的盲投 Session（共 {ongoingSessions.Count} 場 — 可同時開啟多個獨立網頁參與不同議程）</span>
             </div>");
 
-            if (sStatus == "finalized")
+        if (ongoingSessions.Count > 0)
+        {
+            sb.Append(@"<div style=""display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;margin-bottom:18px;"">");
+            foreach (DataRow sRow in ongoingSessions)
             {
-                sb.Append($@"
-                <div class=""alert alert-ok"" style=""font-size:15px;"">
-                    🎉 <strong>本議程已拍板定案！最終核定 Story Point：<span style=""font-size:22px;"">{activeSessionRow["finalStoryPoint"]}</span> pt</strong>
-                    <div style=""font-size:13px;margin-top:4px;font-weight:normal;"">核定說明：{h(activeSessionRow["finalDecisionNote"])}</div>
-                </div>");
-            }
-            else if (sStatus == "revealed")
-            {
-                decimal rMin = activeSessionRow["currentRoundMinPoint"] != DBNull.Value ? Convert.ToDecimal(activeSessionRow["currentRoundMinPoint"]) : 0m;
-                decimal rMax = activeSessionRow["currentRoundMaxPoint"] != DBNull.Value ? Convert.ToDecimal(activeSessionRow["currentRoundMaxPoint"]) : 0m;
-                decimal actualSpread = rMax - rMin;
-                bool spreadExceeded = actualSpread > maxSpread;
-                string suggestedByRule = calculateSuggestedPoint(voteRecordTable, activeSessionPk, curRound, consensusRule, rawCardCsv, minPt, maxPt);
+                int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
+                string sStatus = sRow["sessionStatus"]?.ToString() ?? "voting";
+                string badgeCls = sStatus == "voting" ? "badge-voting" : "badge-revealed";
+                int curRound = sRow["currentRoundNumber"] != DBNull.Value ? Convert.ToInt32(sRow["currentRoundNumber"]) : 1;
+                decimal minPt = sRow.Table.Columns.Contains("minStoryPoint") && sRow["minStoryPoint"] != DBNull.Value ? Convert.ToDecimal(sRow["minStoryPoint"]) : 0m;
+                decimal maxPt = sRow.Table.Columns.Contains("maxStoryPoint") && sRow["maxStoryPoint"] != DBNull.Value ? Convert.ToDecimal(sRow["maxStoryPoint"]) : 21m;
+                int partCnt = sRow.Table.Columns.Contains("participantCount") && sRow["participantCount"] != DBNull.Value ? Convert.ToInt32(sRow["participantCount"]) : 0;
+                int voteCnt = sRow.Table.Columns.Contains("currentRoundVoteCount") && sRow["currentRoundVoteCount"] != DBNull.Value ? Convert.ToInt32(sRow["currentRoundVoteCount"]) : 0;
+                bool isOpenNow = myLockedSessionSet.Contains(sPk);
+                string jsCardTitle = escapeJsString($"{sRow["sessionCode"]} - {sRow["sessionTitle"]}");
 
                 sb.Append($@"
-                <div class=""alert"" style=""background:#eef2ff;border:1px solid #c7d2fe;color:#1e3a8a;"">
+                <div style=""border:1.5px solid {(sPk == activeSessionPk ? "#2563eb" : "#cbd5e1")};border-radius:10px;padding:14px;background:#f8fafc;display:flex;flex-direction:column;justify-content:space-between;gap:10px;"">
                     <div>
-                        👁️ <strong>第 {curRound} 回合已全員翻牌揭曉！</strong>
-                        算術平均：<strong>{activeSessionRow["currentRoundAveragePoint"]} pt</strong> ｜
-                        最低：<strong>{activeSessionRow["currentRoundMinPoint"]} pt</strong> ｜
-                        最高：<strong>{activeSessionRow["currentRoundMaxPoint"]} pt</strong> ｜
-                        本回合落差：<strong>{actualSpread:0.##} pt</strong>（門檻 {maxSpread:0.##} pt）｜
-                        已出牌人數：<strong>{activeSessionRow["currentRoundVoteCount"]} 人</strong>
-                    </div>
-                    <div style=""margin-top:6px;font-size:13px;"">
-                        💡 依本回合【{h(consensusRuleText)}】自動計算建議定案點數：<strong style=""font-size:16px;color:#1d4ed8;"">{suggestedByRule} pt</strong>
-                        {(spreadExceeded
-                            ? $"<span class='badge' style='background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;margin-left:8px;'>⚠️ 最高與最低分落差 ({actualSpread:0.##} pt) 超過門檻 ({maxSpread:0.##} pt)，建議請極端值成員說明後開啟下一回合重新盲投！</span>"
-                            : $"<span class='badge badge-finalized' style='margin-left:8px;'>✅ 點數落差 ({actualSpread:0.##} pt) 在共識門檻內，可直接拍板定案！</span>")}
-                    </div>
-                </div>");
-            }
-            else
-            {
-                // 挑選預設選中的有效撲克牌面（介於 minPt ~ maxPt 之間）
-                string defaultSelectedCard = "";
-                foreach (string c in cards)
-                {
-                    string cleanC = c.Trim();
-                    if (decimal.TryParse(cleanC, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal cVal))
-                    {
-                        if (cVal >= minPt && cVal <= maxPt)
-                        {
-                            if (defaultSelectedCard == "" || cleanC == "5" || cleanC == "3")
-                            {
-                                defaultSelectedCard = cleanC;
-                            }
-                        }
-                    }
-                }
-                if (string.IsNullOrEmpty(defaultSelectedCard)) defaultSelectedCard = minPt.ToString("0.##");
-
-                sb.Append($@"
-                <div style=""background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:18px;"">
-                    <div style=""font-weight:700;font-size:14.5px;margin-bottom:6px;"">🃏 請點選撲克牌投出您對「{h(activeSessionRow["targetDisplayName"])}」的 Story Point（允許範圍：{minPt:0.##} ~ {maxPt:0.##} pt，翻牌前其他人看不到您的點數）：</div>
-                    <form method=""post"" action=""/voting/cast"" id=""formCastVote"" onsubmit=""return validateVoteForm('{commentPolicy}', {minPt.ToString(CultureInfo.InvariantCulture)}, {maxPt.ToString(CultureInfo.InvariantCulture)})"">
-                        <input type=""hidden"" name=""votingSessionPk"" value=""{activeSessionPk}"" />
-                        <input type=""hidden"" name=""cardValue"" id=""inputCardValue"" value=""{h(defaultSelectedCard)}"" />
-                        <div class=""poker-deck"">");
-                foreach (string c in cards)
-                {
-                    string cleanC = c.Trim();
-                    var (shortMeaning, fullMeaning) = getPokerCardMeaning(cleanC);
-                    bool isAllowed = true;
-                    string disableReason = "";
-                    string disableBadge = "範圍外";
-                    if (cleanC == "?")
-                    {
-                        if (!allowQ) { isAllowed = false; disableReason = "本回合未開放 ? (需求不明需補充討論) 疑問牌"; disableBadge = "未開放"; }
-                    }
-                    else if (cleanC == "☕")
-                    {
-                        if (!allowCoffee) { isAllowed = false; disableReason = "本回合未開放 ☕ (暫停休息) 休息牌"; disableBadge = "未開放"; }
-                    }
-                    else if (decimal.TryParse(cleanC, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal numVal))
-                    {
-                        if (numVal < minPt || numVal > maxPt)
-                        {
-                            isAllowed = false;
-                            disableReason = $"超出本回合設定範圍 ({minPt:0.##} ~ {maxPt:0.##} pt)";
-                            disableBadge = "範圍外";
-                        }
-                    }
-
-                    if (isAllowed)
-                    {
-                        string selCls = cleanC == defaultSelectedCard ? "selected" : "";
-                        sb.Append($"<div class='poker-card {selCls}' onclick=\"selectPokerCard(this, '{h(cleanC)}')\" title='投出 {h(fullMeaning)}'><span>{h(cleanC)}</span><span class='poker-card-meaning'>{h(shortMeaning)}</span></div>");
-                    }
-                    else
-                    {
-                        sb.Append($"<div class='poker-card disabled-card' title='{h(disableReason)}'><span>{h(cleanC)}</span><span class='poker-card-meaning'>{h(shortMeaning)}</span><span style='font-size:9.5px;font-weight:700;color:#dc2626;'>({h(disableBadge)})</span></div>");
-                    }
-                }
-                sb.Append($@"
-                        </div>
-                        <div class=""form-row"" style=""align-items:end;"">
-                            <div style=""grid-column: span 2;"">
-                                <label data-tip=""估算理由 / 備註：填寫本回合出牌的評估假設與理由（本回合規範：{h(commentPolicyText)}）"" title=""估算理由 / 備註：填寫本回合出牌的評估假設與理由（本回合規範：{h(commentPolicyText)}）"">估算理由 / 備註 <span class=""sp-tip-icon"">ⓘ</span></label>
-                                <input type=""text"" name=""voteComment"" id=""inputVoteComment"" {(commentPolicy == "requiredAll" ? "required" : "")} placeholder=""例如：包含資料庫 Stored Procedure 與權限驗證，評估約 {h(defaultSelectedCard)} 點"" />
-                            </div>
-                            <div>
-                                <button type=""submit"" class=""btn btn-primary"" style=""width:100%;padding:10px;"">🃏 送出我的盲投出牌 ({h(getCurrentEmployeeName())})</button>
+                        <div style=""display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;"">
+                            <strong style=""font-size:13.5px;color:#1e3a8a;"">{h(sRow["sessionCode"])}</strong>
+                            <div style=""display:flex;gap:4px;align-items:center;flex-wrap:wrap;"">
+                                <span data-session-open-badge=""{sPk}"" class=""badge"" style=""display:{(isOpenNow ? "inline-block" : "none")};background:#dcfce7;color:#15803d;border:1px solid #86efac;"">🟢 獨立網頁進行中</span>
+                                <span class=""badge {badgeCls}"">第 {curRound} 回合・{h(sRow["sessionStatusText"])}</span>
                             </div>
                         </div>
-                    </form>
-                </div>");
-            }
-
-            // 顯示本回合出牌桌面狀態（盲投時他人蓋牌，全員完成投票後所有人畫面自動同步翻牌）
-            sb.Append($"<div style='font-weight:700;font-size:14px;margin-bottom:8px;'>👥 第 {curRound} 回合受邀參與者出牌桌面狀態（共 {partCount} 位參與者｜{(sStatus == "voting" ? "盲投階段他人牌面蓋牌，全員投完自動翻牌" : "🎉 已全員翻牌揭曉所有參與者牌面")}）：</div>");
-            sb.Append("<div class='voter-grid'>");
-            foreach (DataRow pRow in participantTable.Rows)
-            {
-                if (Convert.ToInt32(pRow["votingSessionPk"]) != activeSessionPk) continue;
-                bool voted = Convert.ToInt32(pRow["hasVotedCurrentRound"]) == 1;
-                bool isFlipped = sStatus == "revealed" || sStatus == "finalized";
-                string bg = isFlipped ? "#f0fdf4" : (voted ? "#eff6ff" : "#f8fafc");
-                string border = isFlipped ? "#86efac" : (voted ? "#93c5fd" : "#e2e8f0");
-                sb.Append($@"
-                <div class=""voter-box"" style=""background:{bg};border-color:{border};"">
-                    <div style=""font-weight:700;font-size:13.5px;"">{h(pRow["employeeName"])}</div>
-                    <div style=""font-size:11.5px;color:#64748b;"">{h(pRow["departmentName"])}</div>
-                    <div class=""voter-card-val"">{h(pRow["currentRoundCardDisplay"])}</div>
-                    <div style=""font-size:11.5px;color:#475569;min-height:18px;"">{h(pRow["currentRoundCommentDisplay"])}</div>
+                        <div style=""font-size:15px;font-weight:800;color:#0f172a;margin-bottom:4px;"">{h(sRow["sessionTitle"])}</div>
+                        <div style=""font-size:12.5px;color:#334155;margin-bottom:4px;"">🎯 <strong>標的：</strong>{h(sRow["targetDisplayName"])}</div>
+                        <div style=""font-size:12px;color:#64748b;"">
+                            📏 範圍：{minPt:0.##}~{maxPt:0.##} pt ｜ 👥 已出牌：<strong>{voteCnt} / {partCnt} 人</strong> ｜ 主持：{h(sRow["hostEmployeeName"])}
+                        </div>
+                    </div>
+                    <div style=""display:flex;gap:8px;flex-wrap:wrap;padding-top:8px;border-top:1px dashed #cbd5e1;"">
+                        <a href=""/voting/session?sessionPk={sPk}"" target=""_blank"" data-session-enter-btn=""{sPk}"" data-session-title=""{h(sRow["sessionCode"] + " - " + sRow["sessionTitle"])}"" onclick=""return openIndependentVotingSession(event, {sPk}, '{jsCardTitle}')"" class=""btn {(isOpenNow ? "btn-outline" : "btn-primary")}"" style=""flex:1;padding:8px 12px;font-size:13px;{(isOpenNow ? "background:#f1f5f9;color:#475569;border-color:#94a3b8;" : "")}"">
+                            {(isOpenNow ? "🔒 已在獨立網頁進行中 (禁重複進入)" : "🚀 以獨立網頁進入此 Session")}
+                        </a>
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:8px 10px;font-size:12px;' onclick='openRoundSetupForSession({sPk})'>⚙️ 設定</button>" : "")}
+                    </div>
                 </div>");
             }
             sb.Append("</div>");
-
-            // 管理者主持控制面板 (翻牌揭曉、開啟下一回合、拍板定案)
-            if (isAdmin && sStatus != "finalized")
-            {
-                string suggestedPt = calculateSuggestedPoint(voteRecordTable, activeSessionPk, curRound, consensusRule, rawCardCsv, minPt, maxPt);
-
-                sb.Append($@"
-                <div style=""margin-top:22px;padding:16px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;"">
-                    <div style=""font-weight:700;font-size:14px;color:#92400e;margin-bottom:10px;"" data-tip=""管理者主持控制台：可執行 1.翻牌揭曉本回合點數、2.開啟下一回合重新盲投、3.拍板定案最終 Story Point"" title=""管理者主持控制台：可執行 1.翻牌揭曉本回合點數、2.開啟下一回合重新盲投、3.拍板定案最終 Story Point"">👑 管理者主持控制台（翻牌揭曉 ／ 開啟下一回合重新投票 ／ 拍板定案最終 Story Point）</div>
-                    <form method=""post"" action=""/voting/control"">
-                        <input type=""hidden"" name=""votingSessionPk"" value=""{activeSessionPk}"" />
-                        <div class=""form-row"">
-                            <div style=""grid-column: span 2;"">
-                                <label data-tip=""本回合討論摘要備註：記錄最高分與最低分成員的想法差異，會完整記錄於投票過程中供事後查詢"" title=""本回合討論摘要備註：記錄最高分與最低分成員的想法差異，會完整記錄於投票過程中供事後查詢"">本回合討論摘要備註 <span class=""sp-tip-icon"">ⓘ</span></label>
-                                <input type=""text"" name=""roundDiscussionNote"" value=""{h(activeSessionRow["currentRoundDiscussionNote"])}"" placeholder=""記錄最高分與最低分成員的想法差異..."" />
-                            </div>
-                            <div>
-                                <label data-tip=""拍板定案最終 Story Point：依【{h(consensusRuleText)}】規則自動計算建議值（目前建議 {suggestedPt} pt，可輸入範圍 {minPt:0.##} ~ {maxPt:0.##} pt）"" title=""拍板定案最終 Story Point：依【{h(consensusRuleText)}】規則自動計算建議值（目前建議 {suggestedPt} pt，可輸入範圍 {minPt:0.##} ~ {maxPt:0.##} pt）"">拍板定案點數 <span class=""sp-tip-icon"">ⓘ</span></label>
-                                <input type=""number"" step=""0.5"" min=""{minPt.ToString(CultureInfo.InvariantCulture)}"" max=""{maxPt.ToString(CultureInfo.InvariantCulture)}"" name=""finalStoryPoint"" value=""{suggestedPt}"" />
-                            </div>
-                            <div>
-                                <label data-tip=""定案核定理由說明：記錄最終拍板定案之決策依據與團隊共識說明（例如：依{h(consensusRuleText)}團隊達成共識核定為 {suggestedPt} 點）"" title=""定案核定理由說明：記錄最終拍板定案之決策依據與團隊共識說明（例如：依{h(consensusRuleText)}團隊達成共識核定為 {suggestedPt} 點）"">定案核定理由 <span class=""sp-tip-icon"">ⓘ</span></label>
-                                <input type=""text"" name=""finalDecisionNote"" placeholder=""例如：依{h(consensusRuleText)}團隊達成共識核定為 {suggestedPt} 點"" />
-                            </div>
-                        </div>
-                        <div style=""display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:8px;"">
-                            <label style=""display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;"" data-tip=""勾選後，若本次為「工項代表類型」定案，系統會一併同步更新所有尚未完成（且未曾手動微調過點數）的既有工項點數，並記錄點數變更歷程"" title=""勾選後，若本次為「工項代表類型」定案，系統會一併同步更新所有尚未完成（且未曾手動微調過點數）的既有工項點數，並記錄點數變更歷程"">
-                                <input type=""checkbox"" name=""syncExistingOpenWorkItem"" value=""true"" checked />
-                                <span>同步更新未完成（且未手動微調）之既有工項點數 <span class=""sp-tip-icon"">ⓘ</span></span>
-                            </label>
-                            <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
-                                <button type=""submit"" name=""controlAction"" value=""reveal"" class=""btn btn-warning"" data-tip=""翻開本回合所有參與者的盲投撲克牌，並自動計算平均、最高、最低與共識建議點數"" title=""翻開本回合所有參與者的盲投撲克牌，並自動計算平均、最高、最低與共識建議點數"">👁️ 1. 翻牌揭曉本回合點數</button>
-                                <button type=""submit"" name=""controlAction"" value=""nextRound"" class=""btn btn-outline"" data-tip=""儲存本回合討論摘要備註，並進入下一回合重新進行盲投出牌"" title=""儲存本回合討論摘要備註，並進入下一回合重新進行盲投出牌"">⏭️ 2. 開啟下一回合重新盲投</button>
-                                <button type=""submit"" name=""controlAction"" value=""finalize"" class=""btn btn-success"" data-tip=""以輸入的最終 Story Point 與核定理由正式拍板定案，並寫入點數稽核歷程"" title=""以輸入的最終 Story Point 與核定理由正式拍板定案，並寫入點數稽核歷程"">✅ 3. 拍板定案最終 Story Point</button>
-                            </div>
-                        </div>
-                    </form>
-                </div>");
-            }
-
-            // 顯示本議程各回合歷史紀錄
-            sb.Append("<div style='margin-top:22px;border-top:1px solid #e2e8f0;padding-top:14px;'>");
-            sb.Append($"<div style='font-weight:700;font-size:14px;margin-bottom:10px;'>📜 本議程各回合出牌與訂定過程紀錄（{(sStatus == "voting" ? "當前盲投回合他人蓋牌，全員投完自動翻牌揭曉" : "已翻牌揭曉各回合全體出牌紀錄")}）：</div>");
-            sb.Append("<table><thead><tr><th>回合</th><th>狀態</th><th>參與者</th><th>部門</th><th>投出點數</th><th>估算理由與備註</th><th>出牌時間</th></tr></thead><tbody>");
-            foreach (DataRow vr in voteRecordTable.Rows)
-            {
-                if (Convert.ToInt32(vr["votingSessionPk"]) != activeSessionPk) continue;
-                sb.Append($@"<tr>
-                    <td><strong>第 {vr["roundNumber"]} 回合</strong></td>
-                    <td>{h(vr["roundStatus"])}</td>
-                    <td><strong>{h(vr["employeeName"])}</strong> ({h(vr["employeeCode"])})</td>
-                    <td>{h(vr["departmentName"])}</td>
-                    <td><span class='badge badge-user' style='font-size:13px;'>{h(vr["displayCardValue"])}</span></td>
-                    <td>{h(vr["voteComment"])}</td>
-                    <td>{Convert.ToDateTime(vr["updatedAt"]):yyyy-MM-dd HH:mm:ss}</td>
-                </tr>");
-            }
-            sb.Append("</tbody></table></div>");
         }
         else
         {
             sb.Append(@"
-            <div style='padding:36px 20px;text-align:center;color:#475569;'>
-                <div style='font-size:38px;margin-bottom:10px;'>🃏</div>
-                <div style='font-size:16px;font-weight:700;color:#0f172a;margin-bottom:6px;'>目前尚無屬於您的進行中投票議程</div>
-                <div style='font-size:13px;color:#64748b;margin-bottom:16px;'>當管理者發起包含您的新盲投議程時，本畫面將自動即時更新並載入最新投票桌面；您也可隨時點擊下方按鈕手動重新整理。</div>
+            <div style='padding:32px 20px;text-align:center;color:#475569;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;margin-bottom:16px;'>
+                <div style='font-size:36px;margin-bottom:8px;'>🃏</div>
+                <div style='font-size:15.5px;font-weight:700;color:#0f172a;margin-bottom:6px;'>目前尚無進行中的盲投議程</div>
+                <div style='font-size:13px;color:#64748b;margin-bottom:14px;'>當管理者發起包含您的新盲投議程時，本大廳將自動即時更新，您即可點擊開啟獨立網頁參與該場盲投 Session。</div>
                 <button type='button' class='btn btn-primary' onclick='refreshVotingSessionsNow(this)'>🔄 重新整理投票議程</button>
             </div>");
         }
+
         sb.Append("</div>"); // end right column
         sb.Append("</div></div>"); // end Tab 1
 
@@ -4335,7 +4605,7 @@ public class portalController : Controller
                             </td>
                             <td>
                                 <div style='display:flex;gap:6px;flex-wrap:wrap;'>
-                                    <a href='/?tab=voting&sessionPk={sPk}' class='btn btn-primary' style='padding:4px 8px;font-size:12px;'>🃏 進入桌面</a>
+                                    <a href='/voting/session?sessionPk={sPk}' target='_blank' rel='noopener' onclick='return openIndependentVotingSession(event, {sPk})' class='btn btn-primary' style='padding:4px 8px;font-size:12px;'>🚀 進入獨立盲投網頁</a>
                                     {(isAdmin && sStatus != "finalized" ? $"<button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:12px;' onclick='openRoundSetupForSession({sPk})'>✏️ 載入設定</button>" : "")}
                                 </div>
                             </td>
@@ -4449,10 +4719,27 @@ public class portalController : Controller
         sb.Append($"<div id='pane-workitems' class='tab-pane {(currentTab == "workitems" ? "active" : "")}'>");
         if (isAdmin)
         {
-            sb.Append(@"
+            string defaultStartIso = DateTime.Now.ToString("yyyy-MM-ddTHH:mm");
+            string defaultEndIso = DateTime.Now.AddDays(14).ToString("yyyy-MM-ddTHH:mm");
+
+            sb.Append($@"
+            <div class='card' style='border:2px solid #93c5fd;background:linear-gradient(135deg,#eff6ff 0%,#ffffff 100%);margin-bottom:18px;'>
+                <div style='display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;'>
+                    <div style='flex:1;min-width:280px;'>
+                        <div style='font-size:15px;font-weight:800;color:#1e3a8a;margin-bottom:4px;'>⏰ 工項類型（專案 / 維運 / 顧問時數）與起訖時間到期自動轉態、扣減 Story Point 及 Email 寄信通知機制</div>
+                        <div style='font-size:13px;color:#334155;line-height:1.55;'>
+                            每一項工項皆支援設定類型（<strong>🚀 專案</strong>、<strong>🛠️ 維運</strong>、<strong>⏱️ 顧問時數</strong>）與<strong>起訖時間 (起時 ~ 迄時)</strong>。當工項達到<strong>迄時 (endDate)</strong> 時，系統背景排程與即時檢核會自動將該工項狀態轉換為「<strong>已完成 (已到期扣點)</strong>」、自動扣掉該工項與負責員工/部門身上的 <strong>Story Point</strong>，並透過 <strong>Email 寄信通知所屬部門管理層（部門經理）與 HR</strong>。
+                        </div>
+                    </div>
+                    <form method='post' action='/workitem/checkExpired' style='margin:0;'>
+                        <button type='submit' class='btn btn-primary' style='background:#1d4ed8;box-shadow:0 4px 12px rgba(29,78,216,0.22);white-space:nowrap;'>⚡ 立即檢核到期工項（自動轉態 + 扣減 Story Point + 寄信給部門管理層與 HR）</button>
+                    </form>
+                </div>
+            </div>
+
             <div class='grid-2'>
                 <div class='card'>
-                    <div class='card-title'><span>➕ 建立/修改工項（選擇「工項代表類型」自動帶入 Story Point 或手動調整）</span></div>
+                    <div class='card-title'><span>➕ 建立/修改工項（設定類型「專案/維運/顧問時數」、起訖時間與 Story Point）</span></div>
                     <form method='post' action='/workitem/save'>
                         <input type='hidden' name='workItemPk' id='wiPk' value='' />
                         <div class='form-row'>
@@ -4460,20 +4747,48 @@ public class portalController : Controller
                                 <label data-tip='工項唯一識別代碼（例如：WI-2026-001）' title='工項唯一識別代碼（例如：WI-2026-001）'>工項代碼 <span class='sp-tip-icon'>ⓘ</span></label>
                                 <input type='text' name='itemCode' id='wiCode' value='WI-2026-" + (itemTable.Rows.Count + 1).ToString("D3") + @"' required />
                             </div>
-                            <div style='grid-column: span 2;'>
+                            <div>
+                                <label data-tip='選擇工項性質類型：專案 (project)、維運 (maintenance) 或顧問時數 (consultingHour)' title='選擇工項性質類型：專案 (project)、維運 (maintenance) 或顧問時數 (consultingHour)'>工項類型 (專案/維運/顧問時數) <span class='sp-tip-icon'>ⓘ</span></label>
+                                <select name='workItemKind' id='wiKindSelect' required style='border-color:#2563eb;font-weight:700;background:#eff6ff;'>
+                                    <option value='project'>🚀 專案 (Project)</option>
+                                    <option value='maintenance'>🛠️ 維運 (Maintenance)</option>
+                                    <option value='consultingHour'>⏱️ 顧問時數 (Consulting Hours)</option>
+                                </select>
+                            </div>
+                            <div>
                                 <label data-tip='輸入工項標題與功能簡述' title='輸入工項標題與功能簡述'>工項標題 <span class='sp-tip-icon'>ⓘ</span></label>
                                 <input type='text' name='itemTitle' id='wiTitle' placeholder='請輸入工項名稱' required />
                             </div>
                         </div>
                         <div class='form-row'>
+                            <div>
+                                <label data-tip='設定工項開始時間（起時 startDate）' title='設定工項開始時間（起時 startDate）'>開始時間 (起時) <span class='sp-tip-icon'>ⓘ</span></label>
+                                <input type='datetime-local' name='startDate' id='wiStartDate' value='" + defaultStartIso + @"' required />
+                            </div>
+                            <div>
+                                <label data-tip='設定工項結束時間（迄時 endDate）：當達到迄時，系統自動轉換該工項狀態為已完成、扣掉該 Story Point，並寄信給部門管理層與 HR' title='設定工項結束時間（迄時 endDate）：當達到迄時，系統自動轉換該工項狀態為已完成、扣掉該 Story Point，並寄信給部門管理層與 HR'>結束時間 (迄時 - 到期自動扣點寄信) <span class='sp-tip-icon'>ⓘ</span></label>
+                                <input type='datetime-local' name='endDate' id='wiEndDate' value='" + defaultEndIso + @"' required style='border-color:#dc2626;font-weight:700;' />
+                            </div>
+                            <div>
+                                <label data-tip='快速設定工項起訖時間範圍，或設為已達迄時以立即測試自動轉態、扣點與寄信給部門管理層及 HR' title='快速設定工項起訖時間範圍，或設為已達迄時以立即測試自動轉態、扣點與寄信給部門管理層及 HR'>起訖時間快速設定 <span class='sp-tip-icon'>ⓘ</span></label>
+                                <div style='display:flex;gap:4px;flex-wrap:wrap;'>
+                                    <button type='button' class='btn btn-outline' style='padding:6px 8px;font-size:11.5px;flex:1;' onclick=""setWorkItemDatePreset(7)"">+7天</button>
+                                    <button type='button' class='btn btn-outline' style='padding:6px 8px;font-size:11.5px;flex:1;' onclick=""setWorkItemDatePreset(30)"">+30天</button>
+                                    <button type='button' class='btn btn-warning' style='padding:6px 8px;font-size:11.5px;flex:1.4;' onclick=""setWorkItemDatePreset(-1)"" title='將迄時設為已到期，儲存後立即驗證自動轉換狀態、扣減 Story Point 與寄信通知部門管理層及 HR'>⚡ 設為已到期(測試扣點寄信)</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class='form-row'>
                             <div style='grid-column: span 2;'>
-                                <label data-tip='選擇已賦予標準 Story Point 的「工項代表類型」，選擇後系統會自動帶入標準點數至右側欄位' title='選擇已賦予標準 Story Point 的「工項代表類型」，選擇後系統會自動帶入標準點數至右側欄位'>工項代表類型 <span class='sp-tip-icon'>ⓘ</span></label>
+                                <label data-tip='選擇已賦予標準 Story Point 的「工項代表類型」，選擇後系統會自動帶入標準點數與預設工項類型' title='選擇已賦予標準 Story Point 的「工項代表類型」，選擇後系統會自動帶入標準點數與預設工項類型'>工項代表類型 <span class='sp-tip-icon'>ⓘ</span></label>
                                 <select name='workItemTypePk' id='wiTypeSelect' onchange='onWorkItemTypeChange()'>
-                                    <option value='0' data-pt=''>-- 不使用代表類型（直接手動輸入點數） --</option>");
+                                    <option value='0' data-pt='' data-kind=''>-- 不使用代表類型（直接手動輸入點數） --</option>");
             foreach (DataRow tRow in typeTable.Rows)
             {
                 string ptVal = tRow["standardStoryPoint"] != DBNull.Value ? tRow["standardStoryPoint"].ToString()! : "";
-                sb.Append($"<option value='{tRow["workItemTypePk"]}' data-pt='{ptVal}'>{h(tRow["typeCode"])} - {h(tRow["typeName"])} (標準: {(string.IsNullOrEmpty(ptVal) ? "待估算" : ptVal + " pt")})</option>");
+                string dKind = tRow.Table.Columns.Contains("defaultWorkItemKind") ? (tRow["defaultWorkItemKind"]?.ToString() ?? "project") : "project";
+                string dKindText = tRow.Table.Columns.Contains("defaultWorkItemKindText") ? (tRow["defaultWorkItemKindText"]?.ToString() ?? "專案") : "專案";
+                sb.Append($"<option value='{tRow["workItemTypePk"]}' data-pt='{ptVal}' data-kind='{h(dKind)}'>[{h(dKindText)}] {h(tRow["typeCode"])} - {h(tRow["typeName"])} (標準: {(string.IsNullOrEmpty(ptVal) ? "待估算" : ptVal + " pt")})</option>");
             }
             sb.Append(@"
                                 </select>
@@ -4489,7 +4804,7 @@ public class portalController : Controller
                                 <input type='text' name='sprintName' id='wiSprint' value='2026-Q4 Sprint 2' />
                             </div>
                             <div>
-                                <label data-tip='設定工項目前的執行狀態：待處理 (To Do)、進行中 (In Progress) 或已完成 (Done)' title='設定工項目前的執行狀態：待處理 (To Do)、進行中 (In Progress) 或已完成 (Done)'>執行狀態 <span class='sp-tip-icon'>ⓘ</span></label>
+                                <label data-tip='設定工項目前的執行狀態：待處理 (To Do)、進行中 (In Progress) 或已完成 (Done)；當達到迄時將自動轉為已完成並扣點' title='設定工項目前的執行狀態：待處理 (To Do)、進行中 (In Progress) 或已完成 (Done)；當達到迄時將自動轉為已完成並扣點'>執行狀態 <span class='sp-tip-icon'>ⓘ</span></label>
                                 <select name='executionStatus' id='wiStatus'>
                                     <option value='todo'>待處理 (To Do)</option>
                                     <option value='inProgress'>進行中 (In Progress)</option>
@@ -4508,7 +4823,7 @@ public class portalController : Controller
                                     <option value='0'>-- 暫不指派（或稍後於右側指派） --</option>");
             foreach (DataRow eRow in empTable.Rows)
             {
-                sb.Append($"<option value='{eRow["employeePk"]}'>{h(eRow["employeeCode"])} - {h(eRow["employeeName"])} ({h(eRow["departmentName"])}｜目前 {eRow["totalAllocatedStoryPoint"]} pt)</option>");
+                sb.Append($"<option value='{eRow["employeePk"]}'>{h(eRow["employeeCode"])} - {h(eRow["employeeName"])} ({h(eRow["departmentName"])}｜{h(eRow["jobTitle"])}｜目前 {eRow["totalAllocatedStoryPoint"]} pt)</option>");
             }
             sb.Append(@"
                                 </select>
@@ -4518,7 +4833,7 @@ public class portalController : Controller
                                 <input type='number' step='5' name='primaryAllocationPercent' value='100' />
                             </div>
                         </div>
-                        <button type='submit' class='btn btn-primary'>💾 儲存工項並計算 Story Point</button>
+                        <button type='submit' class='btn btn-primary'>💾 儲存工項設定（若已達迄時將自動轉態扣點並寄信）</button>
                     </form>
                 </div>
 
@@ -4535,7 +4850,8 @@ public class portalController : Controller
             }
             foreach (DataRow wRow in itemTable.Rows)
             {
-                sb.Append($"<option value='{wRow["workItemPk"]}'>{h(wRow["itemCode"])} - {h(wRow["itemTitle"])} (總點數: {wRow["storyPoint"]} pt)</option>");
+                string wKindLabel = wRow.Table.Columns.Contains("workItemKindText") ? (wRow["workItemKindText"]?.ToString() ?? "專案") : "專案";
+                sb.Append($"<option value='{wRow["workItemPk"]}'>[{h(wKindLabel)}] {h(wRow["itemCode"])} - {h(wRow["itemTitle"])} (目前點數: {wRow["storyPoint"]} pt)</option>");
             }
             sb.Append(@"
                                 </select>
@@ -4547,7 +4863,7 @@ public class portalController : Controller
                                 <select name='employeePk' required>");
             foreach (DataRow eRow in empTable.Rows)
             {
-                sb.Append($"<option value='{eRow["employeePk"]}'>{h(eRow["employeeCode"])} - {h(eRow["employeeName"])} （部門：{h(eRow["departmentName"])}｜目前身上 {eRow["totalAllocatedStoryPoint"]} pt）</option>");
+                sb.Append($"<option value='{eRow["employeePk"]}'>{h(eRow["employeeCode"])} - {h(eRow["employeeName"])} （部門：{h(eRow["departmentName"])}｜職級：{h(eRow["jobTitle"])}｜目前身上 {eRow["totalAllocatedStoryPoint"]} pt）</option>");
             }
             sb.Append(@"
                                 </select>
@@ -4585,7 +4901,7 @@ public class portalController : Controller
             <!-- 批次匯入工項與 Story Point 面板 (提供 CSV 與 Excel 兩種匯入選項) -->
             <div class='card' style='border:1px solid #93c5fd;background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);'>
                 <div class='card-title'>
-                    <span>📤 批次匯入工項與 Story Point（提供 CSV、Excel 兩種匯入選項）</span>
+                    <span>📤 批次匯入工項與 Story Point（支援工項類型「專案/維運/顧問時數」與起訖時間，提供 CSV、Excel 兩種匯入選項）</span>
                     <div style='display:flex;gap:8px;flex-wrap:wrap;'>
                         <a href='/workitem/import/template?format=csv' class='btn btn-outline' style='padding:5px 12px;font-size:12px;'>📄 下載工項 CSV 範本</a>
                         <a href='/workitem/import/template?format=excel' class='btn btn-outline' style='padding:5px 12px;font-size:12px;'>📊 下載工項 Excel (.xlsx) 範本</a>
@@ -4616,7 +4932,7 @@ public class portalController : Controller
         sb.Append($@"
         <div class='card'>
             <div class='card-title'>
-                <span>📋 {(isAdmin ? "各工項的 Story Point 與員工賦予明細一覽表" : "我的工項與個人獲得分數一覽表（僅顯示賦予給我本人的工項與分數，不顯示其他人）")}</span>
+                <span>📋 {(isAdmin ? "各工項的類型（專案/維運/顧問時數）、起訖時間、Story Point 與到期自動扣點寄信一覽表" : "我的工項與個人獲得分數一覽表（僅顯示賦予給我本人的工項與分數，不顯示其他人）")}</span>
                 <div style='display:flex;gap:8px;flex-wrap:wrap;'>
                     <a href='/export/report?type=workitem&format=csv' class='btn btn-outline' style='padding:6px 12px;font-size:12.5px;'>📥 匯出 CSV</a>
                     <a href='/export/report?type=workitem&format=excel' class='btn btn-outline' style='padding:6px 12px;font-size:12.5px;'>📊 匯出 Excel (.xlsx)</a>
@@ -4627,12 +4943,13 @@ public class portalController : Controller
                 <thead>
                     <tr>
                         <th>工項代碼</th>
+                        <th>工項類型</th>
                         <th>工項標題</th>
+                        <th>起訖時間 (起時 ~ 迄時)</th>
                         <th>所屬代表類型</th>
-                        <th>代表類型標準點數</th>
-                        <th>工項總 Story Point</th>
-                        <th>點數來源與調整說明</th>
-                        <th>執行狀態</th>
+                        <th>工項 Story Point</th>
+                        <th>點數來源與到期扣點紀錄</th>
+                        <th>執行狀態與到期寄信通知</th>
                         <th>{(isAdmin ? "賦予員工與部門配額明細" : "我的分攤比例與個人獲得分數")}</th>");
         if (isAdmin) sb.Append("<th>編修</th>");
         sb.Append("</tr></thead><tbody>");
@@ -4640,22 +4957,69 @@ public class portalController : Controller
         foreach (DataRow wRow in itemTable.Rows)
         {
             bool isManual = Convert.ToBoolean(wRow["isManualAdjusted"]);
-            string srcBadge = isManual
-                ? $"<span class='badge badge-voting'>手動調整</span> <div style='font-size:11.5px;color:#64748b;'>{h(wRow["adjustmentReason"])}</div>"
-                : "<span class='badge badge-finalized'>代表類型自動帶入</span>";
+            bool isExpiredProc = wRow.Table.Columns.Contains("isExpiredProcessed") && wRow["isExpiredProcessed"] != DBNull.Value && Convert.ToBoolean(wRow["isExpiredProcessed"]);
+            bool notifSent = wRow.Table.Columns.Contains("expiryNotificationSent") && wRow["expiryNotificationSent"] != DBNull.Value && Convert.ToBoolean(wRow["expiryNotificationSent"]);
+            string notifRecipients = wRow.Table.Columns.Contains("expiryNotificationRecipient") ? (wRow["expiryNotificationRecipient"]?.ToString() ?? "") : "";
+            decimal curPt = wRow["storyPoint"] != DBNull.Value ? Convert.ToDecimal(wRow["storyPoint"]) : 0m;
+            decimal origPt = wRow.Table.Columns.Contains("originalStoryPoint") && wRow["originalStoryPoint"] != DBNull.Value ? Convert.ToDecimal(wRow["originalStoryPoint"]) : curPt;
+            decimal dedPt = wRow.Table.Columns.Contains("deductedStoryPoint") && wRow["deductedStoryPoint"] != DBNull.Value ? Convert.ToDecimal(wRow["deductedStoryPoint"]) : 0m;
+
+            string wKind = wRow.Table.Columns.Contains("workItemKind") ? (wRow["workItemKind"]?.ToString() ?? "project") : "project";
+            string wKindText = wRow.Table.Columns.Contains("workItemKindText") ? (wRow["workItemKindText"]?.ToString() ?? "專案") : "專案";
+            string kindBadge = wKind switch
+            {
+                "maintenance" => $"<span class='badge' style='background:#fef3c7;color:#b45309;border:1px solid #fde68a;'>🛠️ {h(wKindText)}</span>",
+                "consultingHour" => $"<span class='badge' style='background:#f3e8ff;color:#6b21a8;border:1px solid #d8b4fe;'>⏱️ {h(wKindText)}</span>",
+                _ => $"<span class='badge' style='background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;'>🚀 {h(wKindText)}</span>"
+            };
+
+            string startDisplay = wRow.Table.Columns.Contains("startDate") && wRow["startDate"] != DBNull.Value
+                ? Convert.ToDateTime(wRow["startDate"]).ToString("yyyy-MM-dd HH:mm")
+                : "-";
+            string endDisplay = wRow.Table.Columns.Contains("endDate") && wRow["endDate"] != DBNull.Value
+                ? Convert.ToDateTime(wRow["endDate"]).ToString("yyyy-MM-dd HH:mm")
+                : "-";
+            string startIsoJs = wRow.Table.Columns.Contains("startDate") && wRow["startDate"] != DBNull.Value
+                ? Convert.ToDateTime(wRow["startDate"]).ToString("yyyy-MM-ddTHH:mm")
+                : DateTime.Now.ToString("yyyy-MM-ddTHH:mm");
+            string endIsoJs = wRow.Table.Columns.Contains("endDate") && wRow["endDate"] != DBNull.Value
+                ? Convert.ToDateTime(wRow["endDate"]).ToString("yyyy-MM-ddTHH:mm")
+                : DateTime.Now.AddDays(14).ToString("yyyy-MM-ddTHH:mm");
+
+            string pointCellHtml = isExpiredProc
+                ? $"<div><strong style='font-size:16px;color:#dc2626;'>0.00 pt</strong> <span class='badge' style='background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;'>已扣 -{dedPt:0.##} pt</span></div><div style='font-size:11.5px;color:#64748b;margin-top:2px;'>原核定：{origPt:0.##} pt</div>"
+                : $"<strong style='font-size:17px;color:#2563eb;'>{curPt:0.##} pt</strong><div style='font-size:11px;color:#64748b;'>標準：{(wRow["defaultTypePoint"] != DBNull.Value ? wRow["defaultTypePoint"] + " pt" : "-")}</div>";
+
+            string srcBadge = isExpiredProc
+                ? $"<span class='badge' style='background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;'>⏰ 到期自動扣點</span><div style='font-size:11.5px;color:#334155;margin-top:3px;'>{h(wRow["adjustmentReason"])}</div>"
+                : (isManual
+                    ? $"<span class='badge badge-voting'>手動調整</span> <div style='font-size:11.5px;color:#64748b;'>{h(wRow["adjustmentReason"])}</div>"
+                    : "<span class='badge badge-finalized'>代表類型自動帶入</span>");
+
+            string statusAndMailHtml = isExpiredProc
+                ? $"<div><span class='badge badge-finalized'>✅ {h(wRow["executionStatusText"])}</span></div>" +
+                  (notifSent
+                      ? $"<div style='font-size:11px;color:#15803d;margin-top:4px;word-break:break-all;'>📧 已寄信通知部門管理層與 HR：<br/><code>{h(notifRecipients)}</code></div>"
+                      : "<div style='font-size:11px;color:#d97706;margin-top:4px;'>📧 待寄發到期通知信</div>")
+                : $"<div><span class='badge badge-user'>{h(wRow["executionStatusText"])}</span></div><div style='font-size:11px;color:#64748b;margin-top:3px;'>⏳ 達迄時將自動轉態扣點並寄信</div>";
 
             sb.Append($@"<tr>
                 <td><strong>{h(wRow["itemCode"])}</strong><div style='font-size:11px;color:#64748b;'>{h(wRow["sprintName"])}</div></td>
+                <td style='white-space:nowrap;'>{kindBadge}</td>
                 <td><strong>{h(wRow["itemTitle"])}</strong><div style='font-size:12px;color:#64748b;'>{h(wRow["itemDescription"])}</div></td>
+                <td style='white-space:nowrap;font-size:12px;'>
+                    <div>🟢 起：{h(startDisplay)}</div>
+                    <div style='color:{(isExpiredProc ? "#dc2626;font-weight:700" : "#1e293b")};'>🔴 迄：{h(endDisplay)}</div>
+                </td>
                 <td>{h(wRow["typeCode"])}<br/><strong>{h(wRow["typeName"])}</strong></td>
-                <td>{(wRow["defaultTypePoint"] != DBNull.Value ? wRow["defaultTypePoint"] + " pt" : "-")}</td>
-                <td><strong style='font-size:17px;color:#2563eb;'>{wRow["storyPoint"]} pt</strong></td>
+                <td data-sort-value='{curPt}'>{pointCellHtml}</td>
                 <td>{srcBadge}</td>
-                <td><span class='badge badge-user'>{h(wRow["executionStatusText"])}</span></td>
+                <td>{statusAndMailHtml}</td>
                 <td><strong>{h(wRow["assigneeSummary"])}</strong></td>");
             if (isAdmin)
             {
-                sb.Append($@"<td><button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:12px;' onclick=""loadWorkItemToForm({wRow["workItemPk"]},'{h(wRow["itemCode"])}','{h(wRow["itemTitle"])}',{(wRow["workItemTypePk"] != DBNull.Value ? wRow["workItemTypePk"] : 0)},{wRow["storyPoint"]},'{h(wRow["executionStatus"])}','{h(wRow["adjustmentReason"])}')"">✏️ 編修</button></td>");
+                decimal editPt = isExpiredProc ? origPt : curPt;
+                sb.Append($@"<td><button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:12px;' onclick=""loadWorkItemToForm({wRow["workItemPk"]},'{h(wRow["itemCode"])}','{h(wRow["itemTitle"])}',{(wRow["workItemTypePk"] != DBNull.Value ? wRow["workItemTypePk"] : 0)},{editPt.ToString(CultureInfo.InvariantCulture)},'{h(wRow["executionStatus"])}','{h(wRow["adjustmentReason"])}','{h(wKind)}','{h(startIsoJs)}','{h(endIsoJs)}')"">✏️ 編修</button></td>");
             }
             sb.Append("</tr>");
         }
@@ -4669,7 +5033,7 @@ public class portalController : Controller
         {
             sb.Append(@"
             <div class='card'>
-                <div class='card-title'><span>🏷️ 新增或修改「工項代表類型」（可設定標準 Story Point，或於頁籤 1 發起多人投票訂出點數）</span></div>
+                <div class='card-title'><span>🏷️ 新增或修改「工項代表類型」（可設定預設工項類型「專案/維運/顧問時數」與標準 Story Point）</span></div>
                 <form method='post' action='/workitem/type/save'>
                     <input type='hidden' name='workItemTypePk' id='typePk' value='' />
                     <div class='form-row'>
@@ -4680,6 +5044,14 @@ public class portalController : Controller
                         <div>
                             <label data-tip='工項代表類型的顯示名稱（例如：每日批次資料同步排程）' title='工項代表類型的顯示名稱（例如：每日批次資料同步排程）'>代表類型名稱 <span class='sp-tip-icon'>ⓘ</span></label>
                             <input type='text' name='typeName' id='typeName' placeholder='例如：每日批次資料同步排程' required />
+                        </div>
+                        <div>
+                            <label data-tip='設定此代表類型預設對應的工項類型：專案 (project)、維運 (maintenance) 或顧問時數 (consultingHour)' title='設定此代表類型預設對應的工項類型：專案 (project)、維運 (maintenance) 或顧問時數 (consultingHour)'>預設工項類型 (專案/維運/顧問時數) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <select name='defaultWorkItemKind' id='typeKind'>
+                                <option value='project'>🚀 專案 (Project)</option>
+                                <option value='maintenance'>🛠️ 維運 (Maintenance)</option>
+                                <option value='consultingHour'>⏱️ 顧問時數 (Consulting Hours)</option>
+                            </select>
                         </div>
                         <div>
                             <label data-tip='此工項代表類型所屬的技術或業務分類名稱' title='此工項代表類型所屬的技術或業務分類名稱'>分類名稱 <span class='sp-tip-icon'>ⓘ</span></label>
@@ -4711,15 +5083,18 @@ public class portalController : Controller
         <div class='card'>
             <div class='card-title'><span>🏷️ 工項代表類型與標準 Story Point 一覽表</span></div>
             <table>
-                <thead><tr><th>類型代碼</th><th>代表類型名稱</th><th>分類</th><th>複雜度與驗收說明</th><th>標準 Story Point</th><th>估算狀態</th><th>套用工項數</th>");
+                <thead><tr><th>類型代碼</th><th>代表類型名稱</th><th>預設工項類型</th><th>分類</th><th>複雜度與驗收說明</th><th>標準 Story Point</th><th>估算狀態</th><th>套用工項數</th>");
         if (isAdmin) sb.Append("<th>操作</th>");
         sb.Append("</tr></thead><tbody>");
         foreach (DataRow tRow in typeTable.Rows)
         {
             string stdPt = tRow["standardStoryPoint"] != DBNull.Value ? $"<strong style='font-size:16px;color:#2563eb;'>{tRow["standardStoryPoint"]} pt</strong>" : "<span style='color:#d97706;'>待投票定案</span>";
+            string dKind = tRow.Table.Columns.Contains("defaultWorkItemKind") ? (tRow["defaultWorkItemKind"]?.ToString() ?? "project") : "project";
+            string dKindText = tRow.Table.Columns.Contains("defaultWorkItemKindText") ? (tRow["defaultWorkItemKindText"]?.ToString() ?? "專案") : "專案";
             sb.Append($@"<tr>
                 <td><strong>{h(tRow["typeCode"])}</strong></td>
                 <td><strong>{h(tRow["typeName"])}</strong></td>
+                <td><span class='badge badge-user'>{h(dKindText)}</span></td>
                 <td>{h(tRow["categoryName"])}</td>
                 <td>{h(tRow["description"])}</td>
                 <td>{stdPt}</td>
@@ -4728,7 +5103,7 @@ public class portalController : Controller
             if (isAdmin)
             {
                 string ptJs = tRow["standardStoryPoint"] != DBNull.Value ? tRow["standardStoryPoint"].ToString()! : "";
-                sb.Append($@"<td><button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:12px;' onclick=""loadTypeToForm({tRow["workItemTypePk"]},'{h(tRow["typeCode"])}','{h(tRow["typeName"])}','{h(tRow["categoryName"])}','{h(tRow["description"])}','{ptJs}')"">✏️ 編修</button></td>");
+                sb.Append($@"<td><button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:12px;' onclick=""loadTypeToForm({tRow["workItemTypePk"]},'{h(tRow["typeCode"])}','{h(tRow["typeName"])}','{h(tRow["categoryName"])}','{h(tRow["description"])}','{ptJs}','{h(dKind)}')"">✏️ 編修</button></td>");
             }
             sb.Append("</tr>");
         }
@@ -4759,6 +5134,7 @@ public class portalController : Controller
                             <th>在職員工數</th>
                             <th>參與工項數</th>
                             <th>部門總 Story Point (分配加總)</th>
+                            <th>到期已扣除點數</th>
                             <th>待處理點數</th>
                             <th>進行中點數</th>
                             <th>已完成點數</th>
@@ -4768,6 +5144,9 @@ public class portalController : Controller
                     <tbody>");
             foreach (DataRow dRow in deptTable.Rows)
             {
+                decimal deptDed = dRow.Table.Columns.Contains("totalDeductedDepartmentStoryPoint") && dRow["totalDeductedDepartmentStoryPoint"] != DBNull.Value
+                    ? Convert.ToDecimal(dRow["totalDeductedDepartmentStoryPoint"])
+                    : 0m;
                 sb.Append($@"<tr>
                     <td><strong>{h(dRow["departmentCode"])}</strong></td>
                     <td><strong style='font-size:14.5px;'>{h(dRow["departmentName"])}</strong><div style='font-size:11.5px;color:#64748b;'>{h(dRow["departmentNote"])}</div></td>
@@ -4775,6 +5154,7 @@ public class portalController : Controller
                     <td>{dRow["activeEmployeeCount"]} 人</td>
                     <td>{dRow["distinctWorkItemCount"]} 件</td>
                     <td><strong style='font-size:18px;color:#2563eb;'>{dRow["totalDepartmentStoryPoint"]} pt</strong></td>
+                    <td>{(deptDed > 0 ? $"<span class='badge' style='background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;'>-{deptDed:0.##} pt</span>" : "<span style='color:#94a3b8;'>0 pt</span>")}</td>
                     <td>{dRow["todoDepartmentStoryPoint"]} pt</td>
                     <td><strong style='color:#d97706;'>{dRow["inProgressDepartmentStoryPoint"]} pt</strong></td>
                     <td><strong style='color:#16a34a;'>{dRow["doneDepartmentStoryPoint"]} pt</strong></td>
@@ -4803,10 +5183,11 @@ public class portalController : Controller
                         <th>員工編號</th>
                         <th>員工姓名</th>
                         <th>所屬部門</th>
-                        <th>職稱</th>
+                        <th>職級 / 職稱</th>
                         <th>角色</th>
                         <th>賦予工項數</th>
                         <th>{(isAdmin ? "員工身上總 Story Point" : "我身上的總 Story Point 分數")}</th>
+                        <th>到期已扣除點數</th>
                         <th>待處理 / 進行中 / 已完成點數</th>
                         <th>{(isAdmin ? "賦予給該員工的工項與點數明細" : "賦予給我本人的工項與分數明細")}</th>
                     </tr>
@@ -4814,14 +5195,23 @@ public class portalController : Controller
                 <tbody>");
         foreach (DataRow eRow in empTable.Rows)
         {
+            string empJobTitle = eRow["jobTitle"]?.ToString() ?? "";
+            bool isDeptMgr = empJobTitle.Contains("部門經理");
+            string titleHtml = isDeptMgr
+                ? $"<span class='badge' style='background:#fef3c7;color:#92400e;border:1px solid #f59e0b;margin-right:4px;'>👔 部門經理</span><strong>{h(empJobTitle)}</strong>"
+                : h(empJobTitle);
+            decimal empDed = eRow.Table.Columns.Contains("totalDeductedStoryPoint") && eRow["totalDeductedStoryPoint"] != DBNull.Value
+                ? Convert.ToDecimal(eRow["totalDeductedStoryPoint"])
+                : 0m;
             sb.Append($@"<tr>
                 <td><strong>{h(eRow["employeeCode"])}</strong></td>
                 <td><strong>{h(eRow["employeeName"])}</strong> ({h(eRow["loginAccount"])})</td>
                 <td><span class='badge badge-user'>{h(eRow["departmentName"])}</span></td>
-                <td>{h(eRow["jobTitle"])}</td>
+                <td>{titleHtml}</td>
                 <td>{h(eRow["roleDisplayName"])}</td>
                 <td><strong>{eRow["assignedItemCount"]} 件</strong></td>
                 <td><strong style='font-size:18px;color:#2563eb;'>{eRow["totalAllocatedStoryPoint"]} pt</strong></td>
+                <td>{(empDed > 0 ? $"<span class='badge' style='background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;'>-{empDed:0.##} pt</span>" : "<span style='color:#94a3b8;'>0 pt</span>")}</td>
                 <td>待處理: {eRow["todoAllocatedStoryPoint"]} ｜ 進行中: {eRow["inProgressAllocatedStoryPoint"]} ｜ 完成: {eRow["doneAllocatedStoryPoint"]}</td>
                 <td style='font-size:12.5px;color:#334155;'>{h(eRow["workItemListSummary"])}</td>
             </tr>");
@@ -4909,12 +5299,41 @@ public class portalController : Controller
                         </div>
                         <div class='form-row'>
                             <div>
-                                <label data-tip='員工公司電子郵件信箱' title='員工公司電子郵件信箱'>電子郵件 <span class='sp-tip-icon'>ⓘ</span></label>
+                                <label data-tip='員工公司電子郵件信箱（當工項到期扣點時，若為部門經理或 HR，系統將自動寄信至此信箱）' title='員工公司電子郵件信箱（當工項到期扣點時，若為部門經理或 HR，系統將自動寄信至此信箱）'>電子郵件 <span class='sp-tip-icon'>ⓘ</span></label>
                                 <input type='text' name='emailAddress' id='empMail' value='user@company.com' required />
                             </div>
                             <div>
-                                <label data-tip='員工職務名稱（例如：資深後端工程師、敏捷教練）' title='員工職務名稱（例如：資深後端工程師、敏捷教練）'>職稱 <span class='sp-tip-icon'>ⓘ</span></label>
-                                <input type='text' name='jobTitle' id='empTitle' value='資深工程師' required />
+                                <label data-tip='員工職級與職務名稱（包含「部門經理」等職級；設定為「部門經理」時，所屬部門工項到期自動扣點會寄信通知）' title='員工職級與職務名稱（包含「部門經理」等職級；設定為「部門經理」時，所屬部門工項到期自動扣點會寄信通知）'>職級 / 職稱 (含部門經理) <span class='sp-tip-icon'>ⓘ</span></label>
+                                <div style='display:flex;gap:6px;'>
+                                    <select id='empTitleQuickSelect' onchange=""if(this.value) document.getElementById('empTitle').value=this.value;"" style='width:138px;flex-shrink:0;background:#eff6ff;border-color:#93c5fd;font-weight:700;color:#1e3a8a;padding:6px 8px;font-size:12.5px;'>
+                                        <option value=''>⚡ 選擇職級...</option>
+                                        <option value='部門經理'>👔 部門經理</option>
+                                        <option value='董事長兼部門經理'>👑 董事長兼部門經理</option>
+                                        <option value='部門經理 / 資深架構師'>👔 部門經理 / 資深架構師</option>
+                                        <option value='部門經理 / 商業智慧資深顧問'>👔 部門經理 / BI 資深顧問</option>
+                                        <option value='部門經理 / 資料庫資深顧問'>👔 部門經理 / DB 資深顧問</option>
+                                        <option value='部門經理 / 人資'>👔 部門經理 / 人資 (HR)</option>
+                                        <option value='專案經理 (PM)'>📋 專案經理 (PM)</option>
+                                        <option value='資深架構師'>🏗️ 資深架構師</option>
+                                        <option value='資深工程師'>💻 資深工程師</option>
+                                        <option value='工程師'>👨‍💻 工程師</option>
+                                        <option value='人資專員 (HR)'>🤝 人資專員 (HR)</option>
+                                    </select>
+                                    <input type='text' name='jobTitle' id='empTitle' list='empJobTitleDatalist' value='部門經理' placeholder='請選擇或輸入職級（如：部門經理）' required />
+                                    <datalist id='empJobTitleDatalist'>
+                                        <option value='部門經理'></option>
+                                        <option value='董事長兼部門經理'></option>
+                                        <option value='部門經理 / 資深架構師'></option>
+                                        <option value='部門經理 / 商業智慧資深顧問'></option>
+                                        <option value='部門經理 / 資料庫資深顧問'></option>
+                                        <option value='部門經理 / 人資'></option>
+                                        <option value='專案經理 (PM)'></option>
+                                        <option value='資深架構師'></option>
+                                        <option value='資深工程師'></option>
+                                        <option value='工程師'></option>
+                                        <option value='人資專員 (HR)'></option>
+                                    </datalist>
+                                </div>
                             </div>
                             <div>
                                 <label data-tip='設定帳號啟用或停用狀態：停用後該帳號將無法登入系統與參與盲投' title='設定帳號啟用或停用狀態：停用後該帳號將無法登入系統與參與盲投'>帳號狀態 <span class='sp-tip-icon'>ⓘ</span></label>
@@ -5023,9 +5442,9 @@ public class portalController : Controller
                 <!-- 員工帳號多維度查詢與篩選列 -->
                 <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                     <div class='form-row' style='margin-bottom:0;align-items:end;'>
-                        <div style='grid-column: span 2;'>
-                            <label data-tip='輸入員工編號、姓名、登入帳號、電子郵件或職稱關鍵字，即時篩選下方員工列表' title='輸入員工編號、姓名、登入帳號、電子郵件或職稱關鍵字，即時篩選下方員工列表'>🔍 關鍵字搜尋 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' id='filterEmpKeyword' oninput='filterEmployeeTable()' placeholder='輸入員工編號 / 姓名 / 登入帳號 / 信箱 / 職稱...' />
+                        <div>
+                            <label data-tip='輸入員工編號、姓名、登入帳號、電子郵件或職級關鍵字，即時篩選下方員工列表' title='輸入員工編號、姓名、登入帳號、電子郵件或職級關鍵字，即時篩選下方員工列表'>🔍 關鍵字搜尋 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' id='filterEmpKeyword' oninput='filterEmployeeTable()' placeholder='輸入員工編號 / 姓名 / 登入帳號 / 信箱 / 職級...' />
                         </div>
                         <div>
                             <label data-tip='依員工所屬組織部門過濾員工列表' title='依員工所屬組織部門過濾員工列表'>🏢 所屬部門篩選 <span class='sp-tip-icon'>ⓘ</span></label>
@@ -5036,6 +5455,14 @@ public class portalController : Controller
                 sb.Append($"<option value='{h(dRow["departmentName"])}'>{h(dRow["departmentName"])}</option>");
             }
             sb.Append(@"
+                            </select>
+                        </div>
+                        <div>
+                            <label data-tip='依員工職級（如：部門經理、工程師等）過濾員工列表' title='依員工職級（如：部門經理、工程師等）過濾員工列表'>👔 職級篩選 (含部門經理) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <select id='filterEmpRank' onchange='filterEmployeeTable()'>
+                                <option value=''>全部職級</option>
+                                <option value='部門經理'>👔 部門經理 (含兼任部門經理)</option>
+                                <option value='一般職級'>👨‍💻 其他職級 (工程師 / 顧問 / 專員)</option>
                             </select>
                         </div>
                         <div>
@@ -5058,11 +5485,16 @@ public class portalController : Controller
                 </div>
 
                 <table id='empDataTable'>
-                    <thead><tr><th>員工編號</th><th>員工姓名</th><th>登入帳號</th><th>所屬部門</th><th>職稱</th><th>電子郵件</th><th>系統角色</th><th>帳號狀態</th><th>目前賦予 Story Point</th><th style='min-width:250px;'>管理操作 (修改 / 停用 / 刪除)</th></tr></thead><tbody>");
+                    <thead><tr><th>員工編號</th><th>員工姓名</th><th>登入帳號</th><th>所屬部門</th><th>職級 / 職稱</th><th>電子郵件</th><th>系統角色</th><th>帳號狀態</th><th>目前賦予 Story Point</th><th style='min-width:250px;'>管理操作 (修改 / 停用 / 刪除)</th></tr></thead><tbody>");
             foreach (DataRow eRow in empTable.Rows)
             {
                 int rowEmpPk = Convert.ToInt32(eRow["employeePk"]);
                 bool empActive = Convert.ToBoolean(eRow["isActive"]);
+                string empTitleStr = eRow["jobTitle"]?.ToString() ?? "";
+                bool isDeptMgrRow = empTitleStr.Contains("部門經理");
+                string titleCellHtml = isDeptMgrRow
+                    ? $"<span class='badge' style='background:#fef3c7;color:#92400e;border:1px solid #f59e0b;margin-right:4px;'>👔 部門經理</span><strong>{h(empTitleStr)}</strong>"
+                    : h(empTitleStr);
                 string rBadge = eRow["roleName"].ToString() == "admin"
                     ? "<span class='badge badge-admin'>👑 管理者</span>"
                     : "<span class='badge badge-user'>🙋 參與者</span>";
@@ -5070,14 +5502,14 @@ public class portalController : Controller
                     ? "<span class='badge badge-finalized'>🟢 啟用中</span>"
                     : "<span class='badge' style='background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;'>🚫 已停用</span>";
                 string rowStyle = empActive ? "" : "opacity:0.68;background:#fef2f2;";
-                string searchBlob = $"{eRow["employeeCode"]} {eRow["employeeName"]} {eRow["loginAccount"]} {eRow["emailAddress"]} {eRow["jobTitle"]}".ToLowerInvariant();
+                string searchBlob = $"{eRow["employeeCode"]} {eRow["employeeName"]} {eRow["loginAccount"]} {eRow["emailAddress"]} {empTitleStr}".ToLowerInvariant();
 
-                sb.Append($@"<tr class='emp-row' style='{rowStyle}' data-search='{h(searchBlob)}' data-dept='{h(eRow["departmentName"])}' data-role='{h(eRow["roleName"])}' data-active='{(empActive ? "1" : "0")}'>
+                sb.Append($@"<tr class='emp-row' style='{rowStyle}' data-search='{h(searchBlob)}' data-dept='{h(eRow["departmentName"])}' data-rank='{(isDeptMgrRow ? "部門經理" : "一般職級")}' data-role='{h(eRow["roleName"])}' data-active='{(empActive ? "1" : "0")}'>
                     <td><strong>{h(eRow["employeeCode"])}</strong></td>
                     <td><strong>{h(eRow["employeeName"])}</strong></td>
                     <td><code>{h(eRow["loginAccount"])}</code></td>
                     <td>{h(eRow["departmentName"])}</td>
-                    <td>{h(eRow["jobTitle"])}</td>
+                    <td>{titleCellHtml}</td>
                     <td>{h(eRow["emailAddress"])}</td>
                     <td>{rBadge}</td>
                     <td>{statusBadge}</td>
@@ -6361,14 +6793,42 @@ public class portalController : Controller
 
         function onWorkItemTypeChange() {
             const sel = document.getElementById('wiTypeSelect');
+            if (!sel) return;
             const opt = sel.options[sel.selectedIndex];
             const pt = opt ? opt.getAttribute('data-pt') : '';
+            const kind = opt ? opt.getAttribute('data-kind') : '';
             if (pt && pt !== '') {
                 document.getElementById('wiStoryPoint').value = pt;
             }
+            if (kind && kind !== '' && document.getElementById('wiKindSelect')) {
+                document.getElementById('wiKindSelect').value = kind;
+            }
         }
 
-        function loadWorkItemToForm(pk, code, title, typePk, pt, status, reason) {
+        function formatLocalIsoMinute(dt) {
+            const pad = n => String(n).padStart(2, '0');
+            return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()) + 'T' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+        }
+
+        function setWorkItemDatePreset(daysOffset) {
+            const now = new Date();
+            const startEl = document.getElementById('wiStartDate');
+            const endEl = document.getElementById('wiEndDate');
+            if (!startEl || !endEl) return;
+            if (daysOffset < 0) {
+                // 設為已到期（起時：7天前，迄時：10分鐘前），儲存後立即觸發自動轉換狀態為已完成、扣除 Story Point 並寄信給部門管理層與 HR
+                const pastStart = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+                const pastEnd = new Date(now.getTime() - 10 * 60 * 1000);
+                startEl.value = formatLocalIsoMinute(pastStart);
+                endEl.value = formatLocalIsoMinute(pastEnd);
+            } else {
+                const futureEnd = new Date(now.getTime() + daysOffset * 24 * 3600 * 1000);
+                startEl.value = formatLocalIsoMinute(now);
+                endEl.value = formatLocalIsoMinute(futureEnd);
+            }
+        }
+
+        function loadWorkItemToForm(pk, code, title, typePk, pt, status, reason, kind, startIso, endIso) {
             document.getElementById('wiPk').value = pk;
             document.getElementById('wiCode').value = code;
             document.getElementById('wiTitle').value = title;
@@ -6376,16 +6836,28 @@ public class portalController : Controller
             document.getElementById('wiStoryPoint').value = pt;
             document.getElementById('wiStatus').value = status;
             document.getElementById('wiReason').value = reason || '';
+            if (kind && document.getElementById('wiKindSelect')) {
+                document.getElementById('wiKindSelect').value = kind;
+            }
+            if (startIso && document.getElementById('wiStartDate')) {
+                document.getElementById('wiStartDate').value = startIso;
+            }
+            if (endIso && document.getElementById('wiEndDate')) {
+                document.getElementById('wiEndDate').value = endIso;
+            }
             window.scrollTo({ top: 150, behavior: 'smooth' });
         }
 
-        function loadTypeToForm(pk, code, name, cat, desc, pt) {
+        function loadTypeToForm(pk, code, name, cat, desc, pt, kind) {
             document.getElementById('typePk').value = pk;
             document.getElementById('typeCode').value = code;
             document.getElementById('typeName').value = name;
             document.getElementById('typeCat').value = cat;
             document.getElementById('typeDesc').value = desc;
             document.getElementById('typePt').value = pt;
+            if (kind && document.getElementById('typeKind')) {
+                document.getElementById('typeKind').value = kind;
+            }
             window.scrollTo({ top: 150, behavior: 'smooth' });
         }
 
@@ -6528,6 +7000,7 @@ public class portalController : Controller
         function filterEmployeeTable() {
             const kw = (document.getElementById('filterEmpKeyword')?.value || '').trim().toLowerCase();
             const dept = document.getElementById('filterEmpDept')?.value || '';
+            const rank = document.getElementById('filterEmpRank')?.value || '';
             const role = document.getElementById('filterEmpRole')?.value || '';
             const status = document.getElementById('filterEmpStatus')?.value || '';
 
@@ -6536,10 +7009,11 @@ public class portalController : Controller
             rows.forEach(r => {
                 const matchKw = !kw || (r.getAttribute('data-search') || '').indexOf(kw) !== -1;
                 const matchDept = !dept || r.getAttribute('data-dept') === dept;
+                const matchRank = !rank || r.getAttribute('data-rank') === rank;
                 const matchRole = !role || r.getAttribute('data-role') === role;
                 const matchStatus = !status || r.getAttribute('data-active') === status;
 
-                if (matchKw && matchDept && matchRole && matchStatus) {
+                if (matchKw && matchDept && matchRank && matchRole && matchStatus) {
                     r.style.display = '';
                     visibleCount++;
                 } else {
@@ -6581,25 +7055,128 @@ public class portalController : Controller
 
         function fillSampleBatchEmployees() {
             const sample = [
-                'EMP009,林志豪 (Leo),leo.lin,pass123,leo.lin@company.com,資深後端工程師,全端應用開發部,participant,1',
-                'EMP010,許雅筑 (Chloe),chloe.hsu,pass123,chloe.hsu@company.com,前端工程師,全端應用開發部,participant,1',
-                'EMP011,鄭家銘 (Mark),mark.cheng,admin123,mark.cheng@company.com,敏捷教練 (Agile Coach),產品規劃與專案管理部,admin,1'
+                'EMP009,林志豪 (Leo),leo.lin,pass123,leo.lin@company.com,部門經理,全端應用開發部,admin,1',
+                'EMP010,許雅筑 (Chloe),chloe.hsu,pass123,chloe.hsu@company.com,資深工程師,全端應用開發部,participant,1',
+                'EMP011,鄭家銘 (Mark),mark.cheng,admin123,mark.cheng@company.com,部門經理 / 敏捷教練,產品規劃與專案管理部,admin,1'
             ].join('\n');
             const box = document.getElementById('batchEmpTextarea');
             if (box) box.value = sample;
         }
 
-        // 建立 SignalR 即時連線、新議程自動偵測與自動翻牌同步機制：
+        // 建立 SignalR 即時連線、新議程自動偵測、多網頁跨 Session 參與與同 Session 防重複進入機制：
         // 1. 當有新的屬於該成員的議程出現時，自動更新並切換呈現新議程
         // 2. 提供手動「🔄 重新整理」按鈕，可隨時刷新呈現最新投票議程
-        // 3. 當所有人投完票自動翻牌、或管理者翻牌/開啟下一回合/定案時，所有人的畫面自動同步翻牌
+        // 3. 支援同一人同時以多個獨立網頁參與「不同」盲投 Session，並即時攔截「同一個 Session 重複進入」
+        const currentEmployeePk = " + curEmpPk + @";
         const currentVotingSessionPk = " + activeSessionPk + @";
         let currentSessionStatus = '" + (activeSessionRow != null ? (activeSessionRow["sessionStatus"]?.ToString() ?? "voting") : "") + @"';
         let currentRoundNumber = " + (activeSessionRow != null && activeSessionRow["currentRoundNumber"] != DBNull.Value ? Convert.ToInt32(activeSessionRow["currentRoundNumber"]) : 1) + @";
         let currentRoundVoteCount = " + (activeSessionRow != null && activeSessionRow.Table.Columns.Contains("currentRoundVoteCount") && activeSessionRow["currentRoundVoteCount"] != DBNull.Value ? Convert.ToInt32(activeSessionRow["currentRoundVoteCount"]) : 0) + @";
         const currentMemberSessionPks = [" + string.Join(",", sessionTable.Rows.Cast<DataRow>().Select(r => Convert.ToInt32(r["votingSessionPk"]))) + @"];
         const currentSessionListSignature = '" + string.Join("|", sessionTable.Rows.Cast<DataRow>().Select(r => $"{r["votingSessionPk"]}:{r["sessionStatus"]}:{r["currentRoundNumber"]}:{(r.Table.Columns.Contains("currentRoundVoteCount") && r["currentRoundVoteCount"] != DBNull.Value ? r["currentRoundVoteCount"] : 0)}:{(r.Table.Columns.Contains("participantCount") && r["participantCount"] != DBNull.Value ? r["participantCount"] : 0)}")) + @"';
+        let myActiveOpenSessionPks = [" + string.Join(",", sqlDataService.getActiveLockedSessionPksForEmployee(curEmpPk)) + @"];
         let isAutoReloading = false;
+
+        // 檢查某個 Session 是否目前正由本人在某個獨立網頁開啟中（結合後端 Lease 與前端 localStorage 心跳）
+        function isSessionCurrentlyOpenByMe(sessionPk) {
+            const pk = Number(sessionPk);
+            if (Array.isArray(myActiveOpenSessionPks) && myActiveOpenSessionPks.indexOf(pk) !== -1) {
+                return true;
+            }
+            try {
+                const raw = localStorage.getItem('sp_active_session_lock_' + currentEmployeePk + '_' + pk);
+                if (raw) {
+                    const obj = JSON.parse(raw);
+                    if (obj && obj.lastHeartbeatMs && (Date.now() - Number(obj.lastHeartbeatMs)) < 8000) {
+                        return true;
+                    }
+                }
+            } catch (e) { }
+            return false;
+        }
+
+        // 動態更新大廳中各盲投 Session 的「已在獨立網頁進行中 / 禁止重複進入」鎖定標章與按鈕狀態
+        function updateLobbyActiveSessionLocks(serverActivePks) {
+            if (Array.isArray(serverActivePks)) {
+                myActiveOpenSessionPks = serverActivePks.map(Number);
+            }
+            currentMemberSessionPks.forEach(function (pk) {
+                const isOpen = isSessionCurrentlyOpenByMe(pk);
+                const lockBadge = document.getElementById('lobbySessionLockBadge_' + pk);
+                const enterBtn = document.getElementById('btnEnterStandaloneSession_' + pk);
+                const pillTag = document.querySelector('#lobbyPill_' + pk + ' .session-open-lock-tag');
+
+                if (lockBadge) {
+                    if (isOpen) {
+                        lockBadge.style.display = 'inline-block';
+                        lockBadge.style.background = '#fee2e2';
+                        lockBadge.style.color = '#991b1b';
+                        lockBadge.style.border = '1px solid #fca5a5';
+                        lockBadge.textContent = '🔒 已在獨立網頁進行中 (禁重複進入)';
+                    } else {
+                        lockBadge.style.display = 'none';
+                    }
+                }
+                if (enterBtn) {
+                    if (isOpen) {
+                        enterBtn.className = 'btn btn-outline';
+                        enterBtn.style.background = '#fef2f2';
+                        enterBtn.style.color = '#b91c1c';
+                        enterBtn.style.borderColor = '#fca5a5';
+                        enterBtn.innerHTML = '🔒 已在獨立網頁進行中（禁止重複進入）';
+                    } else {
+                        enterBtn.className = 'btn btn-primary';
+                        enterBtn.style.background = '';
+                        enterBtn.style.color = '';
+                        enterBtn.style.borderColor = '';
+                        enterBtn.innerHTML = '🚀 以獨立網頁進入此盲投 Session ↗';
+                    }
+                }
+                if (pillTag) {
+                    pillTag.textContent = isOpen ? '🟢 獨立網頁進行中' : '';
+                }
+            });
+        }
+
+        // 點擊「進入獨立盲投網頁」時的前端防重複進入檢查：
+        // - 若該 Session 已經在另一個獨立網頁開啟中，立即提示並阻擋重複開啟
+        // - 若為不同 Session，則允許開啟新的獨立網頁，實現同時以多個網頁參與不同 Session
+        function openIndependentVotingSession(evt, sessionPk) {
+            const pk = Number(sessionPk);
+            if (isSessionCurrentlyOpenByMe(pk)) {
+                if (evt) evt.preventDefault();
+                alert('⚠️ 同一個盲投 Session (#' + pk + ') 您已經在另一個獨立網頁進行中，不能重複進入！\n\n💡 請直接切換至已開啟的獨立盲投網頁分頁繼續進行；\n若您需要參與「其他不同」的盲投 Session，則可直接點選其他議程開啟獨立網頁同時參與。');
+                updateLobbyActiveSessionLocks();
+                return false;
+            }
+            return true;
+        }
+
+        // 監聽跨分頁 BroadcastChannel 與 storage 事件，當獨立盲投網頁開啟或關閉時，大廳即時更新鎖定狀態
+        if (typeof BroadcastChannel !== 'undefined') {
+            try {
+                const lobbyGuardChannel = new BroadcastChannel('sp_voting_session_guard');
+                lobbyGuardChannel.onmessage = function (ev) {
+                    const msg = ev.data || {};
+                    if (Number(msg.employeePk) !== Number(currentEmployeePk)) return;
+                    const sPk = Number(msg.sessionPk);
+                    if (msg.type === 'SESSION_ACTIVE' && sPk > 0) {
+                        if (myActiveOpenSessionPks.indexOf(sPk) === -1) {
+                            myActiveOpenSessionPks.push(sPk);
+                        }
+                        updateLobbyActiveSessionLocks();
+                    } else if (msg.type === 'SESSION_CLOSED' && sPk > 0) {
+                        myActiveOpenSessionPks = myActiveOpenSessionPks.filter(function (id) { return id !== sPk; });
+                        updateLobbyActiveSessionLocks();
+                    }
+                };
+            } catch (e) { }
+        }
+        window.addEventListener('storage', function (ev) {
+            if (ev.key && ev.key.indexOf('sp_active_session_lock_' + currentEmployeePk + '_') === 0) {
+                updateLobbyActiveSessionLocks();
+            }
+        });
 
         function isVotingPaneActive() {
             const pane = document.getElementById('pane-voting');
@@ -6637,7 +7214,7 @@ public class portalController : Controller
                         const targetPk = newlyAddedPk || data.latestOngoingSessionPk || data.votingSessionPk || currentVotingSessionPk;
                         const msg = newlyAddedPk
                             ? '🆕 已重新整理並載入屬於您的新投票議程！'
-                            : '🔄 已重新整理最新投票議程清單與桌面狀態！';
+                            : '🔄 已重新整理最新投票議程清單與狀態！';
                         isAutoReloading = false;
                         triggerAutoFlipReload(targetPk, msg);
                     } else {
@@ -6649,13 +7226,17 @@ public class portalController : Controller
                 });
         }
 
-        // 檢查並自動同步屬於該成員的最新投票議程與翻牌狀態
+        // 檢查並自動同步屬於該成員的最新投票議程與大廳鎖定狀態
         function pollMemberVotingStatus(preferSessionPk, customNewSessionMsg) {
             if (isAutoReloading) return;
             fetch('/voting/liveStatus?sessionPk=' + currentVotingSessionPk + '&_t=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
                 .then(function (res) { return res.ok ? res.json() : null; })
                 .then(function (data) {
-                    if (!data || !data.found) return;
+                    if (!data) return;
+                    if (Array.isArray(data.myActiveOpenSessionPks)) {
+                        updateLobbyActiveSessionLocks(data.myActiveOpenSessionPks);
+                    }
+                    if (!data.found) return;
 
                     const allPks = Array.isArray(data.allSessionPks) ? data.allSessionPks.map(Number) : [];
                     // 1. 檢查是否有「新的屬於該成員的投票議程」出現
@@ -6675,18 +7256,13 @@ public class portalController : Controller
 
                     if (!isVotingPaneActive()) return;
 
-                    // 2. 檢查當前議程是否狀態變更 (例如全員投票自動翻牌 revealed、下一回合 nextRound、拍板定案 finalized)
+                    // 2. 檢查大廳議程清單狀態或票數是否變更
                     const statusChanged = data.sessionStatus && data.sessionStatus !== currentSessionStatus;
                     const roundChanged = Number(data.currentRoundNumber) !== Number(currentRoundNumber);
                     const voteCountChanged = Number(data.voteCount) !== Number(currentRoundVoteCount);
                     const listSigChanged = (data.sessionListSignature || '') !== currentSessionListSignature;
 
-                    if (statusChanged || roundChanged) {
-                        const msg = data.sessionStatus === 'revealed'
-                            ? '🎉 所有參與者已完成投票，畫面已自動翻牌揭曉！'
-                            : '';
-                        triggerAutoFlipReload(data.votingSessionPk || currentVotingSessionPk, msg);
-                    } else if ((voteCountChanged || listSigChanged) && !isUserTypingVoteComment()) {
+                    if ((statusChanged || roundChanged || voteCountChanged || listSigChanged) && !isUserTypingVoteComment()) {
                         const targetPk = (preferSessionPk && allPks.indexOf(Number(preferSessionPk)) !== -1)
                             ? Number(preferSessionPk)
                             : (currentVotingSessionPk || data.latestOngoingSessionPk || data.votingSessionPk);
@@ -6707,10 +7283,10 @@ public class portalController : Controller
                 if (banner) {
                     banner.style.display = 'block';
                     banner.innerHTML = '⚡ <strong>即時同步通知 (' + payload.timestamp + ')：</strong>' + payload.messageText +
-                        ' <a href=""/?tab=voting&sessionPk=' + payload.votingSessionPk + '"" class=""btn btn-primary"" style=""padding:4px 10px;font-size:12px;margin-left:10px;"">🔄 立即同步最新桌面</a>';
+                        ' <a href=""/voting/session?sessionPk=' + payload.votingSessionPk + '"" target=""_blank"" rel=""noopener"" onclick=""return openIndependentVotingSession(event, ' + payload.votingSessionPk + ')"" class=""btn btn-primary"" style=""padding:4px 10px;font-size:12px;margin-left:10px;"">🚀 開啟此 Session 獨立盲投網頁 ↗</a>';
                 }
 
-                // 若為新議程建立或回合設定更新，立即檢查該議程是否屬於本成員並自動切換呈現
+                // 若為新議程建立或回合設定更新，立即檢查該議程是否屬於本成員並自動更新大廳
                 if (payload.eventName === 'sessionCreated' || payload.eventName === 'roundSettingUpdated') {
                     setTimeout(function () {
                         pollMemberVotingStatus(payload.votingSessionPk, payload.messageText);
@@ -6718,26 +7294,7 @@ public class portalController : Controller
                     return;
                 }
 
-                const isSameSession = !currentVotingSessionPk || Number(payload.votingSessionPk) === Number(currentVotingSessionPk);
-                const isMajorFlipEvent = payload.isAutoRevealed === true
-                    || payload.eventName === 'autoRevealed'
-                    || payload.eventName === 'reveal'
-                    || payload.eventName === 'nextRound'
-                    || payload.eventName === 'finalize'
-                    || payload.sessionStatus === 'revealed'
-                    || payload.sessionStatus === 'finalized';
-
-                if (isVotingPaneActive() && isSameSession) {
-                    if (isMajorFlipEvent) {
-                        setTimeout(function () {
-                            triggerAutoFlipReload(payload.votingSessionPk, payload.messageText);
-                        }, 250);
-                    } else if (!isUserTypingVoteComment()) {
-                        setTimeout(function () {
-                            triggerAutoFlipReload(payload.votingSessionPk, '');
-                        }, 350);
-                    }
-                } else if (isVotingPaneActive()) {
+                if (isVotingPaneActive() && !isUserTypingVoteComment()) {
                     setTimeout(function () {
                         pollMemberVotingStatus(null, '');
                     }, 300);
@@ -6747,12 +7304,1258 @@ public class portalController : Controller
             conn.start().catch(function (err) { console.warn(err); });
         }
 
-        // 雙重保障：每 2 秒輕量輪詢 /voting/liveStatus，確保：
-        // 1. 當有新的屬於該成員的議程出現時，100% 自動更新並切換呈現新議程
-        // 2. 當所有人投完票時，所有開啟的畫面 100% 自動翻牌
+        // 每 2 秒輕量輪詢 /voting/liveStatus，同步新議程與獨立網頁鎖定狀態
         setInterval(function () {
             pollMemberVotingStatus(null, '');
         }, 2000);
+    </script>
+</body>
+</html>");
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// 當同一位使用者嘗試重複進入已在另一個網頁分頁開啟的「同一個盲投 Session」時，
+    /// 回傳專用的「禁止重複進入同一個盲投 Session」攔截網頁，並列出可開啟的其他不同 Session 供使用者多網頁並行參與。
+    /// </summary>
+    private string buildDuplicateVotingSessionBlockedHtml(
+        int targetSessionPk,
+        DataRow targetSessionRow,
+        sqlDataService.votingSessionPresenceLease conflictLease,
+        DataTable sessionTable)
+    {
+        string h(object? v) => WebUtility.HtmlEncode(v?.ToString() ?? string.Empty);
+        int currentEmployeePk = getCurrentEmployeePk();
+        string currentEmpName = User.FindFirstValue(ClaimTypes.Name) ?? "未知使用者";
+        string currentDeptName = User.FindFirstValue("departmentName") ?? "";
+        var myLockedPks = sqlDataService.getActiveLockedSessionPksForEmployee(currentEmployeePk);
+
+        var otherSessionsSb = new StringBuilder();
+        foreach (DataRow r in sessionTable.Rows)
+        {
+            int sPk = Convert.ToInt32(r["votingSessionPk"]);
+            if (sPk == targetSessionPk) continue;
+            bool isLocked = myLockedPks.Contains(sPk);
+            string sStatus = r["sessionStatus"]?.ToString() ?? "voting";
+            string sBadge = sStatus == "voting" ? "🙈 盲投進行中" : (sStatus == "revealed" ? "🎉 已翻牌揭曉" : "✅ 已拍板定案");
+            otherSessionsSb.Append($@"
+                <div style='display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;margin-bottom:10px;gap:12px;flex-wrap:wrap;'>
+                    <div>
+                        <div style='font-size:12px;color:#64748b;font-weight:700;'>{sBadge} ｜ 第 {h(r["currentRoundNumber"])} 回合 ｜ 標的：{h(r["targetDisplayName"])}</div>
+                        <div style='font-size:15px;font-weight:800;color:#0f172a;margin-top:2px;'>{h(r["sessionCode"])} - {h(r["sessionTitle"])}</div>
+                    </div>
+                    <div>
+                        {(isLocked
+                            ? "<span style='display:inline-block;padding:6px 12px;border-radius:8px;background:#fee2e2;color:#991b1b;font-size:12.5px;font-weight:700;border:1px solid #fca5a5;'>🔒 已在另一個獨立網頁進行中</span>"
+                            : $"<a href='/voting/session?sessionPk={sPk}' class='btn' style='display:inline-block;padding:8px 14px;border-radius:8px;background:#2563eb;color:#fff;text-decoration:none;font-weight:700;font-size:13px;'>🚀 在此網頁進入此不同 Session (#{sPk})</a>")}
+                    </div>
+                </div>");
+        }
+
+        return $@"<!DOCTYPE html>
+<html lang=""zh-TW"">
+<head>
+    <meta charset=""utf-8"" />
+    <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
+    <title>禁止重複進入同一個盲投 Session - {h(targetSessionRow["sessionCode"])}</title>
+    <style>
+        body {{ font-family: 'Microsoft JhengHei', 'PingFang TC', sans-serif; background:#0f172a; color:#1e293b; margin:0; padding:32px 16px; }}
+        .box {{ max-width:780px; margin:0 auto; background:#fff; border-radius:16px; padding:28px 32px; box-shadow:0 20px 40px rgba(0,0,0,0.35); border-top:6px solid #dc2626; }}
+        .badge-err {{ display:inline-block; background:#fee2e2; color:#991b1b; border:1px solid #f87171; padding:4px 12px; border-radius:999px; font-size:13px; font-weight:800; }}
+        .btn {{ cursor:pointer; transition:all 0.15s; }}
+    </style>
+</head>
+<body>
+    <div class=""box"">
+        <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px;"">
+            <span class=""badge-err"">🚫 同一個盲投 Session 禁止重複進入</span>
+            <span style=""font-size:13px;color:#64748b;"">👤 參與者：{h(currentEmpName)} ({h(currentDeptName)})</span>
+        </div>
+        <h2 style=""margin:0 0 10px 0;color:#991b1b;font-size:22px;"">⚠️ 您已經在另一個獨立網頁中參與此盲投 Session，不能重複進入！</h2>
+        <p style=""font-size:14.5px;color:#334155;line-height:1.65;margin:0 0 16px 0;"">
+            系統偵測到您的帳號（<strong>{h(currentEmpName)}</strong>）目前已開啟一個獨立網頁正在進行以下盲投議程。<br/>
+            依照系統規範：<strong>每一個盲投 Session 皆以獨立網頁進行，允許您同時開啟多個網頁參與「不同」的盲投 Session，但「同一個 Session」嚴禁重複進入</strong>。
+        </p>
+
+        <div style=""background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px 18px;margin-bottom:20px;"">
+            <div style=""font-size:13px;color:#991b1b;font-weight:800;margin-bottom:6px;"">📌 目前已在其他獨立網頁開啟中的盲投 Session：</div>
+            <div style=""font-size:17px;font-weight:800;color:#1e293b;margin-bottom:4px;"">{h(targetSessionRow["sessionCode"])} - {h(targetSessionRow["sessionTitle"])} (Session #{targetSessionPk})</div>
+            <div style=""font-size:13px;color:#475569;"">
+                估點標的：<strong>{h(targetSessionRow["targetDisplayName"])}</strong> ｜ 
+                首次進入時間：<strong>{conflictLease.enteredAtLocal:HH:mm:ss}</strong> ｜ 
+                最近心跳時間：<strong>{conflictLease.lastHeartbeatUtc.ToLocalTime():HH:mm:ss}</strong>
+            </div>
+        </div>
+
+        <div style=""display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px;"">
+            <button type=""button"" onclick=""notifyExistingTabAndClose()"" class=""btn"" style=""padding:10px 18px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-weight:700;font-size:14px;"">
+                🔦 閃爍提示已開啟的該 Session 網頁並關閉本重複分頁
+            </button>
+            <a href=""/?tab=voting"" class=""btn"" style=""padding:10px 18px;border-radius:8px;border:1px solid #cbd5e1;background:#f8fafc;color:#1e293b;text-decoration:none;font-weight:700;font-size:14px;"">
+                🏠 返回盲投議程大廳
+            </a>
+        </div>
+
+        <div style=""border-top:1px solid #e2e8f0;padding-top:18px;"">
+            <h3 style=""margin:0 0 8px 0;font-size:16px;color:#0f172a;"">🌐 您可在此網頁改為參與「其他不同」的盲投 Session：</h3>
+            <p style=""margin:0 0 12px 0;font-size:13px;color:#64748b;"">您可以同時開啟多個獨立網頁參與不同的盲投 Session，互不干擾：</p>
+            {(otherSessionsSb.Length > 0 ? otherSessionsSb.ToString() : "<div style='padding:12px;background:#f8fafc;border-radius:8px;color:#64748b;font-size:13px;'>目前沒有其他可參與的不同盲投議程。</div>")}
+        </div>
+    </div>
+    <script>
+        const targetSessionPk = {targetSessionPk};
+        const currentEmployeePk = {currentEmployeePk};
+        // 透過 BroadcastChannel 通知原本已開啟該 Session 的獨立網頁閃爍提示使用者
+        if (typeof BroadcastChannel !== 'undefined') {{
+            try {{
+                const ch = new BroadcastChannel('sp_voting_session_guard');
+                ch.postMessage({{
+                    type: 'DUPLICATE_ENTRY_ATTEMPT',
+                    employeePk: currentEmployeePk,
+                    sessionPk: targetSessionPk,
+                    timestamp: new Date().toLocaleTimeString()
+                }});
+            }} catch (e) {{ }}
+        }}
+
+        function notifyExistingTabAndClose() {{
+            if (typeof BroadcastChannel !== 'undefined') {{
+                try {{
+                    const ch = new BroadcastChannel('sp_voting_session_guard');
+                    ch.postMessage({{
+                        type: 'FOCUS_EXISTING_SESSION',
+                        employeePk: currentEmployeePk,
+                        sessionPk: targetSessionPk,
+                        timestamp: new Date().toLocaleTimeString()
+                    }});
+                }} catch (e) {{ }}
+            }}
+            window.close();
+            setTimeout(function () {{
+                window.location.href = '/?tab=voting';
+            }}, 300);
+        }}
+
+        // 持續檢查原本的獨立網頁是否已經關閉釋放鎖定，若已釋放則自動允許進入
+        setInterval(function () {{
+            fetch('/voting/liveStatus?sessionPk=' + targetSessionPk + '&_t=' + Date.now(), {{ credentials: 'same-origin', cache: 'no-store' }})
+                .then(function (r) {{ return r.ok ? r.json() : null; }})
+                .then(function (data) {{
+                    if (data && Array.isArray(data.myActiveOpenSessionPks)) {{
+                        if (data.myActiveOpenSessionPks.map(Number).indexOf(Number(targetSessionPk)) === -1) {{
+                            window.location.href = '/voting/session?sessionPk=' + targetSessionPk;
+                        }}
+                    }}
+                }})
+                .catch(function () {{ }});
+        }}, 2500);
+    </script>
+</body>
+</html>";
+    }
+
+    /// <summary>
+    /// 建構單一盲投 Session 的「專屬獨立網頁」（非 Modal 彈窗、非大廳內嵌）：
+    /// - 讓參與者在獨立網頁中完成整個盲投 Session（包含：盲投出牌、自動翻牌揭曉、共識度檢核、開啟下一回合、拍板定案、歷次統計與具名出牌明細）
+    /// - 支援同一人同時開啟多個獨立網頁參與「不同」的盲投 Session
+    /// - 透過後端 Lease 心跳 + 前端 BroadcastChannel 嚴格防止「同一個 Session 重複進入」
+    /// </summary>
+    private string buildStandaloneVotingSessionHtml(
+        int activeSessionPk,
+        string assignedTabInstanceId,
+        bool isAdmin,
+        string? msg,
+        string? err,
+        DataRow activeSessionRow,
+        DataTable sessionTable,
+        DataTable roundTable,
+        DataTable voteRecordTable,
+        DataTable participantTable,
+        DataTable deptTable,
+        DataTable empTable,
+        DataTable cardDeckTable)
+    {
+        string h(object? v) => WebUtility.HtmlEncode(v?.ToString() ?? string.Empty);
+        int currentEmployeePk = getCurrentEmployeePk();
+        string currentEmpName = User.FindFirstValue(ClaimTypes.Name) ?? "未知使用者";
+        string currentDeptName = User.FindFirstValue("departmentName") ?? "未分配部門";
+        string currentRoleText = isAdmin ? "👑 主持人 / 系統管理員 (admin)" : "🧑‍💻 一般參與成員 (participant)";
+
+        string status = activeSessionRow["sessionStatus"].ToString() ?? "voting";
+        int currentRoundNumber = Convert.ToInt32(activeSessionRow["currentRoundNumber"]);
+        var currentRoundStatRow = roundTable.AsEnumerable()
+            .FirstOrDefault(r => Convert.ToInt32(r["votingSessionPk"]) == activeSessionPk
+                              && Convert.ToInt32(r["roundNumber"]) == currentRoundNumber);
+        int currentRoundPk = currentRoundStatRow != null && currentRoundStatRow["votingRoundPk"] != DBNull.Value
+            ? Convert.ToInt32(currentRoundStatRow["votingRoundPk"]) : 0;
+
+        decimal sessionMinPt = activeSessionRow.Table.Columns.Contains("minStoryPoint") && activeSessionRow["minStoryPoint"] != DBNull.Value
+            ? Convert.ToDecimal(activeSessionRow["minStoryPoint"]) : 0m;
+        decimal sessionMaxPt = activeSessionRow.Table.Columns.Contains("maxStoryPoint") && activeSessionRow["maxStoryPoint"] != DBNull.Value
+            ? Convert.ToDecimal(activeSessionRow["maxStoryPoint"]) : 21m;
+        decimal sessionMaxSpread = activeSessionRow.Table.Columns.Contains("maxAllowedSpread") && activeSessionRow["maxAllowedSpread"] != DBNull.Value
+            ? Convert.ToDecimal(activeSessionRow["maxAllowedSpread"]) : 5m;
+        string consensusRule = activeSessionRow.Table.Columns.Contains("consensusRule") && activeSessionRow["consensusRule"] != DBNull.Value
+            ? (activeSessionRow["consensusRule"].ToString() ?? "nearestFibonacci") : "nearestFibonacci";
+        string consensusRuleText = activeSessionRow.Table.Columns.Contains("consensusRuleText") && activeSessionRow["consensusRuleText"] != DBNull.Value
+            ? (activeSessionRow["consensusRuleText"].ToString() ?? "對齊最接近費氏牌面") : "對齊最接近費氏牌面";
+        bool autoRevealWhenAllVoted = activeSessionRow.Table.Columns.Contains("autoRevealWhenAllVoted") && activeSessionRow["autoRevealWhenAllVoted"] != DBNull.Value
+            && Convert.ToBoolean(activeSessionRow["autoRevealWhenAllVoted"]);
+        int roundTimeLimitSecond = activeSessionRow.Table.Columns.Contains("roundTimeLimitSecond") && activeSessionRow["roundTimeLimitSecond"] != DBNull.Value
+            ? Convert.ToInt32(activeSessionRow["roundTimeLimitSecond"]) : 180;
+        string voteCommentPolicy = activeSessionRow.Table.Columns.Contains("voteCommentPolicy") && activeSessionRow["voteCommentPolicy"] != DBNull.Value
+            ? (activeSessionRow["voteCommentPolicy"].ToString() ?? "optional") : "optional";
+        string voteCommentPolicyText = activeSessionRow.Table.Columns.Contains("voteCommentPolicyText") && activeSessionRow["voteCommentPolicyText"] != DBNull.Value
+            ? (activeSessionRow["voteCommentPolicyText"].ToString() ?? "自由選填") : "自由選填";
+        bool restrictToParticipant = activeSessionRow.Table.Columns.Contains("restrictToParticipant") && activeSessionRow["restrictToParticipant"] != DBNull.Value
+            && Convert.ToBoolean(activeSessionRow["restrictToParticipant"]);
+        string roundTopicGoal = activeSessionRow.Table.Columns.Contains("roundGoalNote") && activeSessionRow["roundGoalNote"] != DBNull.Value
+            ? (activeSessionRow["roundGoalNote"].ToString() ?? "") : "";
+
+        var currentSessionParticipantRows = participantTable.AsEnumerable()
+            .Where(r => Convert.ToInt32(r["votingSessionPk"]) == activeSessionPk)
+            .ToList();
+        var currentSessionParticipantIds = currentSessionParticipantRows
+            .Select(r => Convert.ToInt32(r["employeePk"]))
+            .ToHashSet();
+        bool isCurrentUserAllowedToVote = !restrictToParticipant || isAdmin || currentSessionParticipantIds.Contains(currentEmployeePk);
+
+        var currentRoundVotes = voteRecordTable.AsEnumerable()
+            .Where(r => Convert.ToInt32(r["votingSessionPk"]) == activeSessionPk
+                     && Convert.ToInt32(r["roundNumber"]) == currentRoundNumber)
+            .ToList();
+
+        var myCurrentVote = currentRoundVotes.FirstOrDefault(r => Convert.ToInt32(r["employeePk"]) == currentEmployeePk);
+        string myVotedCardLabel = "";
+        if (myCurrentVote != null)
+        {
+            string rawDisp = (myCurrentVote["displayCardValue"]?.ToString() ?? "").Trim();
+            if (rawDisp.StartsWith("?")) myVotedCardLabel = "?";
+            else if (rawDisp.StartsWith("☕")) myVotedCardLabel = "☕";
+            else myVotedCardLabel = rawDisp.Replace(" pt", "").Trim();
+        }
+        string myVotedComment = myCurrentVote != null ? (myCurrentVote["voteComment"]?.ToString() ?? "") : "";
+
+        string statusBannerClass = status == "voting" ? "badge-voting" : (status == "revealed" ? "badge-revealed" : "badge-finalized");
+        int expectedVoterCount = restrictToParticipant && currentSessionParticipantRows.Count > 0
+            ? currentSessionParticipantRows.Count
+            : empTable.AsEnumerable().Count(r => Convert.ToBoolean(r["isActive"]));
+
+        var myActiveLockedPks = sqlDataService.getActiveLockedSessionPksForEmployee(currentEmployeePk);
+
+        var sb = new StringBuilder();
+        sb.Append(@"<!DOCTYPE html>
+<html lang=""zh-TW"">
+<head>
+    <meta charset=""utf-8"" />
+    <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
+    <title>🃏 [" + h(activeSessionRow["sessionCode"]) + @"] " + h(activeSessionRow["sessionTitle"]) + @" - 獨立盲投 Session 網頁</title>
+    <style>
+        :root {
+            --primary: #1e40af;
+            --primary-light: #3b82f6;
+            --bg: #f1f5f9;
+            --card-bg: #ffffff;
+            --text: #0f172a;
+            --muted: #64748b;
+            --border: #cbd5e1;
+            --success: #16a34a;
+            --warning: #d97706;
+            --danger: #dc2626;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: 'Microsoft JhengHei', 'PingFang TC', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+        header {
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+            color: #fff;
+            padding: 14px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+            position: sticky;
+            top: 0;
+            z-index: 200;
+        }
+        header h1 { margin: 0; font-size: 19px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .container { max-width: 1440px; margin: 18px auto; padding: 0 20px 48px 20px; }
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 6px rgba(15,23,42,0.05);
+        }
+        .card-title {
+            font-size: 17px;
+            font-weight: 700;
+            margin: 0 0 14px 0;
+            color: #1e293b;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+        .grid-2 { display: grid; grid-template-columns: 1.25fr 1fr; gap: 20px; }
+        @media (max-width: 1024px) { .grid-2 { grid-template-columns: 1fr; } }
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .badge-voting { background: #fef3c7; color: #b45309; border: 1px solid #f59e0b; }
+        .badge-revealed { background: #dbeafe; color: #1d4ed8; border: 1px solid #60a5fa; }
+        .badge-finalized { background: #dcfce7; color: #15803d; border: 1px solid #4ade80; }
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .alert-msg { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+        .alert-err { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+        .alert-live { background: #eff6ff; color: #1e40af; border: 1px solid #93c5fd; display: none; }
+        .poker-table-box {
+            background: radial-gradient(circle, #15803d 0%, #14532d 100%);
+            border: 8px solid #78350f;
+            border-radius: 24px;
+            padding: 24px;
+            color: #fff;
+            box-shadow: inset 0 0 30px rgba(0,0,0,0.45), 0 8px 20px rgba(0,0,0,0.18);
+            margin-bottom: 20px;
+        }
+        .seat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+            gap: 14px;
+            margin-top: 16px;
+        }
+        .seat-card {
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.28);
+            border-radius: 12px;
+            padding: 12px;
+            text-align: center;
+            backdrop-filter: blur(4px);
+        }
+        .playing-card {
+            width: 68px;
+            height: 94px;
+            margin: 8px auto;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 22px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+            transition: transform 0.25s;
+        }
+        .playing-card-hidden {
+            background: repeating-linear-gradient(45deg, #1e3a8a, #1e3a8a 8px, #1d4ed8 8px, #1d4ed8 16px);
+            border: 2px solid #fff;
+            color: #fbbf24;
+        }
+        .playing-card-revealed {
+            background: #ffffff;
+            border: 3px solid #f59e0b;
+            color: #0f172a;
+        }
+        .playing-card-empty {
+            background: rgba(255,255,255,0.08);
+            border: 2px dashed rgba(255,255,255,0.4);
+            color: rgba(255,255,255,0.6);
+            font-size: 13px;
+        }
+        .deck-bar { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+        .deck-card-btn {
+            width: 82px;
+            min-height: 112px;
+            padding: 6px 4px;
+            border-radius: 10px;
+            border: 2px solid #94a3b8;
+            background: #fff;
+            color: #0f172a;
+            font-size: 21px;
+            font-weight: 800;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.08);
+            transition: all 0.15s;
+        }
+        .deck-card-btn span {
+            font-size: 11px;
+            font-weight: 700;
+            color: #475569;
+            margin-top: 5px;
+            line-height: 1.25;
+            text-align: center;
+            word-break: keep-all;
+        }
+        .deck-card-btn:hover, .deck-card-btn.selected {
+            border-color: #2563eb;
+            background: #eff6ff;
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(37,99,235,0.25);
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+        th, td { border: 1px solid #e2e8f0; padding: 9px 11px; text-align: left; vertical-align: top; }
+        th { background: #f8fafc; color: #334155; font-weight: 700; }
+        tr:nth-child(even) { background: #fcfcfd; }
+        .table-scroll-wrap {
+            max-height: 520px;
+            overflow: auto;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #fff;
+        }
+        .table-scroll-wrap table { border-collapse: separate; border-spacing: 0; }
+        th.sp-sortable-th { position: relative; transition: background 0.15s; }
+        th.sp-sortable-th:hover { background: #eef2ff; }
+        th.sp-th-locked {
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 25 !important;
+            background: #eff6ff !important;
+            box-shadow: 0 2px 5px rgba(30, 64, 175, 0.15);
+            border-bottom: 2px solid #3b82f6 !important;
+        }
+        .sp-th-toolbar { display: inline-flex; align-items: center; gap: 3px; margin-left: 5px; vertical-align: middle; }
+        .sp-th-btn {
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            color: #475569;
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-size: 11px;
+            line-height: 1.2;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.15s;
+        }
+        .sp-th-btn:hover { background: #dbeafe; color: #1e40af; border-color: #93c5fd; }
+        .sp-th-btn.active-sort { background: #2563eb; color: #ffffff; border-color: #1d4ed8; font-weight: 800; }
+        .sp-th-btn.active-lock { background: #fef3c7; color: #b45309; border-color: #f59e0b; font-weight: 800; }
+        input[type=text], input[type=number], select, textarea {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            color: #334155;
+            white-space: nowrap;
+        }
+        .caption-help-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #e0e7ff;
+            color: #1d4ed8;
+            font-size: 11px;
+            font-weight: 800;
+            cursor: help;
+            position: relative;
+            flex-shrink: 0;
+            user-select: none;
+        }
+        .caption-help-icon:hover::after {
+            content: attr(data-tip);
+            position: absolute;
+            left: 0;
+            bottom: calc(100% + 6px);
+            background: #0f172a;
+            color: #f8fafc;
+            padding: 8px 11px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: normal;
+            width: max-content;
+            max-width: 320px;
+            line-height: 1.5;
+            z-index: 9999;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.28);
+            pointer-events: none;
+        }
+        .btn {
+            display: inline-block;
+            padding: 9px 16px;
+            border-radius: 8px;
+            border: none;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .btn-primary { background: #2563eb; color: #fff; }
+        .btn-success { background: #16a34a; color: #fff; }
+        .btn-warning { background: #d97706; color: #fff; }
+        .btn-danger { background: #dc2626; color: #fff; }
+        .btn-outline { background: #fff; color: #1e293b; border: 1px solid #cbd5e1; }
+        .form-row { margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>
+                <span>🃏 獨立盲投 Session 網頁</span>
+                <span style=""background:#2563eb;padding:3px 10px;border-radius:999px;font-size:12.5px;"">" + h(activeSessionRow["sessionCode"]) + @" - " + h(activeSessionRow["sessionTitle"]) + @"</span>
+                <span style=""background:#16a34a;padding:3px 10px;border-radius:999px;font-size:12px;"">🔒 單一 Session 防重複進入保護生效中</span>
+            </h1>
+            <div style=""font-size:12px;color:#cbd5e1;margin-top:4px;"">
+                💡 您目前在獨立網頁中進行此盲投 Session；您可以同時開啟多個獨立網頁參與「不同」Session，但同一個 Session 禁止重複進入。
+            </div>
+        </div>
+        <div style=""display:flex;align-items:center;gap:10px;flex-wrap:wrap;"">
+            <div style=""background:rgba(255,255,255,0.14);padding:6px 12px;border-radius:8px;font-size:12.5px;"">
+                👤 <strong>" + h(currentEmpName) + @"</strong> (" + h(currentDeptName) + @") ｜ " + currentRoleText + @"
+            </div>
+            <button type=""button"" onclick=""refreshStandaloneSessionNow(this)"" class=""btn btn-outline"" style=""padding:6px 12px;font-size:12.5px;background:rgba(255,255,255,0.15);color:#fff;border-color:rgba(255,255,255,0.35);"">
+                🔄 重新整理本頁
+            </button>
+            <a href=""/voting/session/leave?sessionPk=" + activeSessionPk + @"&tabInstanceId=" + h(assignedTabInstanceId) + @""" onclick=""window.__isInternalSessionNavigation=true;"" class=""btn btn-danger"" style=""padding:6px 12px;font-size:12.5px;"">
+                🚪 離開此 Session 並返回大廳
+            </a>
+        </div>
+    </header>
+
+    <div class=""container"">
+        <div id=""duplicateAttemptBanner"" class=""alert"" style=""display:none;background:#fef3c7;color:#92400e;border:2px solid #f59e0b;""></div>
+        <div id=""liveSignalRBanner"" class=""alert alert-live""></div>");
+
+        if (!string.IsNullOrWhiteSpace(msg))
+        {
+            sb.Append($"<div class='alert alert-msg'>✅ {h(msg)}</div>");
+        }
+        if (!string.IsNullOrWhiteSpace(err))
+        {
+            sb.Append($"<div class='alert alert-err'>⚠️ {h(err)}</div>");
+        }
+
+        // 頂部快速開啟「其他不同盲投 Session」橫條（支援同時以多個獨立網頁參與不同 Session）
+        sb.Append(@"
+        <div class=""card"" style=""padding:14px 18px;margin-bottom:18px;background:linear-gradient(135deg,#f8fafc 0%,#eff6ff 100%);"">
+            <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;"">
+                <div style=""font-size:13px;font-weight:700;color:#1e3a8a;"">
+                    🌐 多網頁並行參與不同 Session 導覽列（點擊「其他不同 Session」將在新的獨立網頁開啟，本網頁繼續保持進行）：
+                </div>
+                <div style=""display:flex;gap:8px;flex-wrap:wrap;"">");
+
+        foreach (DataRow sRow in sessionTable.Rows)
+        {
+            int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
+            string sCode = sRow["sessionCode"]?.ToString() ?? "";
+            string sTitle = sRow["sessionTitle"]?.ToString() ?? "";
+            bool isCurrent = sPk == activeSessionPk;
+            bool isOtherLocked = !isCurrent && myActiveLockedPks.Contains(sPk);
+
+            if (isCurrent)
+            {
+                sb.Append($@"
+                    <span style='padding:5px 11px;border-radius:8px;background:#1e40af;color:#fff;font-size:12px;font-weight:800;'>
+                        📍 目前本網頁進行中：{h(sCode)} - {h(sTitle)}
+                    </span>");
+            }
+            else
+            {
+                sb.Append($@"
+                    <a href='/voting/session?sessionPk={sPk}' target='_blank' rel='noopener' onclick='return openOtherIndependentSession(event, {sPk})' id='otherSessionLink_{sPk}' style='padding:5px 11px;border-radius:8px;background:{(isOtherLocked ? "#fee2e2" : "#ffffff")};color:{(isOtherLocked ? "#991b1b" : "#1e293b")};border:1px solid {(isOtherLocked ? "#fca5a5" : "#cbd5e1")};font-size:12px;font-weight:700;text-decoration:none;'>
+                        {(isOtherLocked ? "🟢 已在另一獨立網頁進行中" : "🚀 新網頁開啟不同 Session")}：{h(sCode)} - {h(sTitle)} ↗
+                    </a>");
+            }
+        }
+
+        sb.Append(@"
+                </div>
+            </div>
+        </div>");
+
+        // 綠色撲克牌桌面區塊
+        sb.Append($@"
+        <div class=""poker-table-box"">
+            <div style=""display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;"">
+                <div>
+                    <span class=""badge {statusBannerClass}"">{h(activeSessionRow["sessionStatusText"])}</span>
+                    <span style=""margin-left:8px;font-size:13px;opacity:0.9;"">議程代碼：{h(activeSessionRow["sessionCode"])} ｜ 第 <strong>{currentRoundNumber}</strong> 回合</span>
+                    <h2 style=""margin:8px 0 4px 0;font-size:22px;"">{h(activeSessionRow["sessionTitle"])}</h2>
+                    <div style=""font-size:14px;color:#fde68a;"">
+                        🎯 估點標的類型：<strong>{h(activeSessionRow["targetKindText"])}</strong> ｜ 標的名稱：<strong>{h(activeSessionRow["targetDisplayName"])}</strong>
+                        {(activeSessionRow["finalStoryPoint"] != DBNull.Value ? $" ｜ 🏆 已拍板最終點數：<strong>{activeSessionRow["finalStoryPoint"]} pt</strong>" : "")}
+                    </div>
+                    <div style=""margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;font-size:12px;"">
+                        <span style=""background:rgba(0,0,0,0.35);padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.25);"">📏 點數範圍：<strong>{sessionMinPt:0.##} ~ {sessionMaxPt:0.##} pt</strong></span>
+                        <span style=""background:rgba(0,0,0,0.35);padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.25);"">🤝 共識規則：<strong>{h(consensusRuleText)}</strong> (極差 ≤ {sessionMaxSpread:0.##} pt)</span>
+                        <span style=""background:rgba(0,0,0,0.35);padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.25);"">⚡ 全員投完自動翻牌：<strong>{(autoRevealWhenAllVoted ? "開啟" : "關閉")}</strong></span>
+                        <span style=""background:rgba(0,0,0,0.35);padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.25);"">⏱️ 單回合時限：<strong>{(roundTimeLimitSecond > 0 ? $"{roundTimeLimitSecond} 秒" : "不限時")}</strong></span>
+                        <span style=""background:rgba(0,0,0,0.35);padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.25);"">💬 出牌理由政策：<strong>{h(voteCommentPolicyText)}</strong></span>
+                        <span style=""background:rgba(0,0,0,0.35);padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.25);"">👥 參與模式：<strong>{(restrictToParticipant ? $"僅限指定參與者 ({currentSessionParticipantRows.Count} 人)" : $"全體在職員工 ({expectedVoterCount} 人)")}</strong></span>
+                    </div>
+                    {(!string.IsNullOrWhiteSpace(roundTopicGoal) ? $@"<div style=""margin-top:8px;background:rgba(254,243,199,0.18);border-left:4px solid #fbbf24;padding:6px 12px;border-radius:6px;font-size:13px;color:#fef08a;"">📢 <strong>本回合聚焦目標 (第 {currentRoundNumber} 回合)：</strong>{h(roundTopicGoal)}</div>" : "")}
+                </div>
+                <div style=""text-align:right;font-size:13px;opacity:0.9;"">
+                    主持人：{h(activeSessionRow["hostEmployeeName"])}<br/>
+                    本回合已出牌：<strong>{currentRoundVotes.Count} / {expectedVoterCount}</strong> 人
+                    {(roundTimeLimitSecond > 0 && status == "voting" ? $@"<div id=""roundCountdownBox"" data-limit=""{roundTimeLimitSecond}"" style=""margin-top:6px;background:#991b1b;color:#fef08a;padding:4px 10px;border-radius:8px;font-weight:800;font-size:13px;display:inline-block;"">⏳ 倒數計時：{roundTimeLimitSecond} 秒</div>" : "")}
+                </div>
+            </div>
+
+            <div class=""seat-grid"">");
+
+        var seatEmployees = restrictToParticipant && currentSessionParticipantRows.Count > 0
+            ? empTable.AsEnumerable().Where(r => Convert.ToBoolean(r["isActive"]) && currentSessionParticipantIds.Contains(Convert.ToInt32(r["employeePk"]))).ToList()
+            : empTable.AsEnumerable().Where(r => Convert.ToBoolean(r["isActive"])).ToList();
+
+        foreach (DataRow emp in seatEmployees)
+        {
+            int empPk = Convert.ToInt32(emp["employeePk"]);
+            string empName = emp["employeeName"].ToString() ?? "";
+            string deptName = emp["departmentName"].ToString() ?? "";
+            var vote = currentRoundVotes.FirstOrDefault(v => Convert.ToInt32(v["employeePk"]) == empPk);
+            bool isSelf = empPk == currentEmployeePk;
+            string voteCleanCard = "";
+            if (vote != null)
+            {
+                string rawDisp = (vote["displayCardValue"]?.ToString() ?? "").Trim();
+                if (rawDisp.StartsWith("?")) voteCleanCard = "?";
+                else if (rawDisp.StartsWith("☕")) voteCleanCard = "☕";
+                else voteCleanCard = rawDisp.Replace(" pt", "").Trim();
+            }
+
+            sb.Append($@"<div class=""seat-card"" style=""{(isSelf ? "border:2px solid #fbbf24;background:rgba(251,191,36,0.18);" : "")}"">
+                <div style=""font-size:13px;font-weight:700;"">{h(empName)} {(isSelf ? "<span style='color:#fde047;'>(您)</span>" : "")}</div>
+                <div style=""font-size:11px;opacity:0.8;"">{h(deptName)}</div>");
+
+            if (vote == null)
+            {
+                sb.Append(@"<div class=""playing-card playing-card-empty"">思考中...</div>
+                            <div style=""font-size:11.5px;color:#cbd5e1;"">尚未出牌</div>");
+            }
+            else if (status == "voting")
+            {
+                sb.Append($@"<div class=""playing-card playing-card-hidden"">🃏</div>
+                            <div style=""font-size:12px;color:#fde047;font-weight:700;"">✅ 已蓋牌{(isSelf ? $" ({h(voteCleanCard)})" : " (盲投保密)")}</div>");
+            }
+            else
+            {
+                string cardMeaningSeat = getPokerCardMeaning(voteCleanCard).shortMeaning;
+                sb.Append($@"<div class=""playing-card playing-card-revealed"" title=""{h(cardMeaningSeat)}"">
+                                <div>{h(voteCleanCard)}</div>
+                                <div style=""font-size:10px;font-weight:700;color:#475569;margin-top:3px;line-height:1.15;padding:0 2px;"">{h(cardMeaningSeat)}</div>
+                            </div>
+                            <div style=""font-size:11.5px;color:#fef08a;"">{h(vote["voteComment"])}</div>");
+            }
+
+            sb.Append("</div>");
+        }
+
+        sb.Append("</div></div>"); // end seat-grid & poker-table-box
+
+        // 下方左右雙欄：左側為「出牌區 + 主持人控制台」，右側為「本 Session 歷次出牌統計與具名明細」
+        sb.Append("<div class='grid-2'>");
+
+        // 左欄
+        sb.Append("<div>");
+        if (status == "voting")
+        {
+            if (!isCurrentUserAllowedToVote)
+            {
+                sb.Append($@"
+                <div class=""card"" style=""border-left:5px solid #f59e0b;"">
+                    <div class=""card-title""><span>🔒 本議程採「僅限指定參與者名單」投票模式</span></div>
+                    <div style=""font-size:14px;color:#475569;line-height:1.6;"">
+                        您目前不在本議程的指定投票參與者名單中，可於上方撲克牌桌即時觀看盲投進度。
+                    </div>
+                </div>");
+            }
+            else
+            {
+                bool isCommentMandatory = voteCommentPolicy == "requiredAll" || voteCommentPolicy == "mandatoryAll";
+                string commentPlaceholder = (voteCommentPolicy == "requiredExtreme" || voteCommentPolicy == "mandatoryExtreme")
+                    ? "當出極端牌（最高/最低）或特殊牌（? / ☕）時必填理由；一般牌可選填..."
+                    : (isCommentMandatory ? "【必填】請輸入您的複雜度評估依據與風險假設..." : "例如：需串接舊版 SOAP API 與處理重試交易，建議預留測試工時...");
+
+                string? rawCardCsv = activeSessionRow.Table.Columns.Contains("cardValueCsv") && activeSessionRow["cardValueCsv"] != DBNull.Value
+                    ? activeSessionRow["cardValueCsv"].ToString()
+                    : "0,0.5,1,2,3,5,8,13,21,?,☕";
+                string normalizedDeckCsv = normalizeCardDeckCsv(rawCardCsv);
+                string[] deckCards = normalizedDeckCsv.Split(',', StringSplitOptions.RemoveEmptyEntries);
+
+                sb.Append($@"
+                <div class=""card"">
+                    <div class=""card-title"">
+                        <span>🖐️ 選擇您的撲克牌進行盲投（第 {currentRoundNumber} 回合）</span>
+                        <span style=""font-size:12px;color:#64748b;"">範圍：{sessionMinPt:0.##} ~ {sessionMaxPt:0.##} pt ｜ 理由政策：{h(voteCommentPolicyText)}</span>
+                    </div>
+                    <form method=""post"" action=""/voting/cast"" id=""formCastVote"" onsubmit=""window.__isInternalSessionNavigation=true;"">
+                        <input type=""hidden"" name=""votingSessionPk"" value=""{activeSessionPk}"" />
+                        <input type=""hidden"" name=""fromStandalone"" value=""true"" />
+                        <input type=""hidden"" name=""tabInstanceId"" value=""{h(assignedTabInstanceId)}"" />
+                        <input type=""hidden"" name=""cardValue"" id=""inputCardLabel"" value=""{(string.IsNullOrEmpty(myVotedCardLabel) ? "5" : h(myVotedCardLabel))}"" />
+
+                        <div class=""form-row"">
+                            <label>1. 點選撲克牌面（依本議程允許點數範圍 {sessionMinPt:0.##} ~ {sessionMaxPt:0.##} pt 過濾）：<span class=""caption-help-icon"" data-tip=""點擊下方撲克牌選擇您預估的 Story Point。翻牌前所有人僅看得到您『已蓋牌』而看不到點數；在主持人翻牌前您可隨時改牌重投。"">ⓘ</span></label>
+                            <div class=""deck-bar"">");
+
+                foreach (string rawToken in deckCards)
+                {
+                    string cLabel = rawToken.Trim();
+                    if (decimal.TryParse(cLabel, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal ptVal))
+                    {
+                        if (ptVal < sessionMinPt || ptVal > sessionMaxPt)
+                        {
+                            continue;
+                        }
+                    }
+
+                    string cMeaning = getPokerCardMeaning(cLabel).shortMeaning;
+                    bool isSelected = (!string.IsNullOrEmpty(myVotedCardLabel) && myVotedCardLabel == cLabel)
+                                      || (string.IsNullOrEmpty(myVotedCardLabel) && cLabel == "5");
+                    sb.Append($@"
+                                <button type=""button"" class=""deck-card-btn {(isSelected ? "selected" : "")}"" onclick=""selectCard('{h(cLabel)}', this)"" title=""{h(cLabel)}：{h(cMeaning)}"">
+                                    {h(cLabel)}
+                                    <span>{h(cMeaning)}</span>
+                                </button>");
+                }
+
+                sb.Append($@"
+                            </div>
+                        </div>
+                        <div class=""form-row"">
+                            <label>2. 出牌理由 / 風險假設備註（{h(voteCommentPolicyText)}）：<span class=""caption-help-icon"" data-tip=""填寫您給出此點數的技術評估依據、未知風險或邊界條件，翻牌後將協助團隊快速聚焦最高/最低票差異原因。"">ⓘ</span></label>
+                            <input type=""text"" name=""voteComment"" id=""inputVoteComment"" value=""{h(myVotedComment)}"" placeholder=""{h(commentPlaceholder)}"" {(isCommentMandatory ? "required" : "")} />
+                        </div>
+                        <button type=""submit"" class=""btn btn-primary"" style=""width:100%;padding:11px;"">
+                            🃏 送出盲投出牌（目前已選：<span id=""selectedCardText"">{(string.IsNullOrEmpty(myVotedCardLabel) ? "5" : h(myVotedCardLabel))}</span>）
+                        </button>
+                    </form>
+                </div>");
+            }
+        }
+
+        if (isAdmin)
+        {
+            decimal curMin = currentRoundStatRow != null && currentRoundStatRow["minPoint"] != DBNull.Value
+                ? Convert.ToDecimal(currentRoundStatRow["minPoint"]) : 0m;
+            decimal curMax = currentRoundStatRow != null && currentRoundStatRow["maxPoint"] != DBNull.Value
+                ? Convert.ToDecimal(currentRoundStatRow["maxPoint"]) : 0m;
+            decimal curSpread = curMax - curMin;
+            bool isSpreadOverLimit = status == "revealed" && curSpread > sessionMaxSpread;
+
+            decimal suggestedFinalPt = 5m;
+            if (currentRoundStatRow != null && currentRoundStatRow["averagePoint"] != DBNull.Value)
+            {
+                decimal avgVal = Convert.ToDecimal(currentRoundStatRow["averagePoint"]);
+                decimal[] fibDeck = new[] { 0m, 0.5m, 1m, 2m, 3m, 5m, 8m, 13m, 21m, 34m, 55m, 89m };
+                if (consensusRule == "nearestFibonacci" || consensusRule == "averageNearest")
+                {
+                    suggestedFinalPt = fibDeck.OrderBy(f => Math.Abs(f - avgVal)).First();
+                }
+                else
+                {
+                    suggestedFinalPt = Math.Round(avgVal, 1);
+                }
+            }
+
+            sb.Append($@"
+            <div class=""card"">
+                <div class=""card-title"">
+                    <span>🎛️ 議程主持人控制台（翻牌揭曉 / 進入下一輪重投 / 拍板定案）</span>
+                    <span class=""badge badge-revealed"">僅主持人 / 管理員可見</span>
+                </div>
+                {(isSpreadOverLimit ? $@"<div style=""background:#fef2f2;border:1px solid #f87171;color:#991b1b;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;font-weight:700;"">⚠️ 分歧度超標提醒：本回合點數極差為 <strong>{curSpread:0.##} pt</strong>，超過門檻 (<strong>{sessionMaxSpread:0.##} pt</strong>)！建議邀請最高票與最低票成員說明後，點擊「🔄 開啟下一回合重新盲投」。</div>" : "")}
+                <form method=""post"" action=""/voting/control"" id=""formControlSession"" onsubmit=""window.__isInternalSessionNavigation=true;"">
+                    <input type=""hidden"" name=""votingSessionPk"" value=""{activeSessionPk}"" />
+                    <input type=""hidden"" name=""fromStandalone"" value=""true"" />
+                    <input type=""hidden"" name=""tabInstanceId"" value=""{h(assignedTabInstanceId)}"" />
+                    <input type=""hidden"" name=""actionType"" id=""controlActionType"" value=""reveal"" />
+                    <div class=""form-row"">
+                        <label>本回合討論紀錄 / 下回合聚焦目標（翻牌、開啟下一回合或定案時皆會保存）：<span class=""caption-help-icon"" data-tip=""記錄本回合翻牌後的團隊討論共識；若開啟下一回合，此欄內容也會作為下一回合桌面頂部的聚焦目標提示。"">ⓘ</span></label>
+                        <input type=""text"" name=""roundDiscussionNote"" placeholder=""例如：第一輪極差較大(3 vs 13)，請最高與最低分同仁說明後進行第二輪盲投..."" />
+                    </div>
+                    <div style=""display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;"">
+                        <button type=""submit"" class=""btn btn-warning"" onclick=""document.getElementById('controlActionType').value='reveal'"">
+                            👀 1. 立即翻牌揭曉 (Reveal Cards)
+                        </button>
+                        <button type=""submit"" class=""btn btn-primary"" onclick=""document.getElementById('controlActionType').value='nextRound'"">
+                            🔄 2. 開啟下一回合重新盲投 (Next Round)
+                        </button>
+                    </div>
+                    <div style=""background:#f8fafc;border:1px solid #cbd5e1;padding:12px;border-radius:8px;"">
+                        <div style=""font-weight:700;margin-bottom:8px;color:#15803d;"">
+                            ✅ 3. 達成共識拍板定案（自動回寫工項之最終 Story Point｜依「{h(consensusRuleText)}」推薦值：<strong>{suggestedFinalPt:0.##} pt</strong>）
+                        </div>
+                        <div style=""display:grid;grid-template-columns:140px 1fr auto;gap:8px;align-items:end;"">
+                            <div>
+                                <label>最終定案點數<span class=""caption-help-icon"" data-tip=""團隊達成共識後拍板的最終 Story Point，定案後將自動回寫至對應工項。"">ⓘ</span></label>
+                                <input type=""number"" step=""0.5"" min=""{sessionMinPt:0.##}"" max=""{sessionMaxPt:0.##}"" name=""finalStoryPoint"" value=""{(activeSessionRow["finalStoryPoint"] != DBNull.Value ? activeSessionRow["finalStoryPoint"] : suggestedFinalPt)}"" />
+                            </div>
+                            <div>
+                                <label>定案決議說明<span class=""caption-help-icon"" data-tip=""記錄團隊最終拍板此點數的決議理由與驗收前提假設。"">ⓘ</span></label>
+                                <input type=""text"" name=""finalDecisionNote"" placeholder=""例如：團隊第 {currentRoundNumber} 輪全數收斂於 {suggestedFinalPt:0.##} 點，包含單元測試與 API 文件"" />
+                            </div>
+                            <button type=""submit"" class=""btn btn-success"" onclick=""document.getElementById('controlActionType').value='finalize'"">
+                                🏆 拍板定案
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>");
+        }
+        else
+        {
+            sb.Append(@"
+            <div class=""card"" style=""background:#f8fafc;border-style:dashed;"">
+                <div style=""font-size:13.5px;color:#475569;"">
+                    💡 <strong>參與者提示：</strong>您目前以「一般參與成員」身分在獨立網頁參與此盲投 Session。當所有參與者皆完成投票（且開啟自動翻牌）或主持人點擊翻牌時，本網頁將即時自動翻牌揭曉！
+                </div>
+            </div>");
+        }
+        sb.Append("</div>"); // end 左欄
+
+        // 右欄：本議程各回合統計與出牌明細
+        sb.Append("<div>");
+        sb.Append($@"
+        <div class=""card"">
+            <div class=""card-title"">
+                <span>📊 本 Session 歷次盲投回合統計與{(isAdmin ? "全體具名" : "您個人")}出牌明細</span>
+            </div>
+            <div class=""table-scroll-wrap"">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>回合</th>
+                            <th>狀態</th>
+                            <th>投票數</th>
+                            <th>最低 / 最高 / 平均 / 極差</th>
+                            <th>回合討論紀錄</th>
+                        </tr>
+                    </thead>
+                    <tbody>");
+
+        var sessionRounds = roundTable.AsEnumerable()
+            .Where(r => Convert.ToInt32(r["votingSessionPk"]) == activeSessionPk)
+            .OrderBy(r => Convert.ToInt32(r["roundNumber"]))
+            .ToList();
+
+        foreach (DataRow rRow in sessionRounds)
+        {
+            int rNum = Convert.ToInt32(rRow["roundNumber"]);
+            string rStatus = rRow["roundStatus"].ToString() ?? "";
+            string rStatusText = rStatus == "voting" ? "🙈 盲投進行中" : "🎉 已翻牌揭曉";
+            bool isMasked = rStatus == "voting" && status == "voting";
+            decimal rMin = rRow["minPoint"] != DBNull.Value ? Convert.ToDecimal(rRow["minPoint"]) : 0m;
+            decimal rMax = rRow["maxPoint"] != DBNull.Value ? Convert.ToDecimal(rRow["maxPoint"]) : 0m;
+            decimal rSpread = rMax - rMin;
+
+            sb.Append($@"
+                        <tr>
+                            <td><strong>第 {rNum} 回合</strong></td>
+                            <td>{rStatusText}</td>
+                            <td>{rRow["voteCount"]} 票</td>
+                            <td>{(isMasked ? "<span style='color:#b45309;'>🙈 盲投保密中</span>" : $"Min: <strong>{rRow["minPoint"]}</strong> / Max: <strong>{rRow["maxPoint"]}</strong> / Avg: <strong>{rRow["averagePoint"]}</strong> / 極差: <strong style='color:#dc2626;'>{rSpread:0.##}</strong>")}</td>
+                            <td>{h(rRow["roundDiscussionNote"])}</td>
+                        </tr>");
+        }
+
+        sb.Append(@"
+                    </tbody>
+                </table>
+            </div>
+
+            <div style=""margin-top:14px;font-weight:700;font-size:14px;margin-bottom:6px;"">
+                🔍 本議程各回合具名投票明細（盲投階段他人蓋牌，翻牌後公開點數與理由）：
+            </div>
+            <div class=""table-scroll-wrap"">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>回合</th>
+                            <th>投票員工（部門 / 職稱）</th>
+                            <th>出牌</th>
+                            <th>出牌理由與技術假設</th>
+                            <th>投票時間</th>
+                        </tr>
+                    </thead>
+                    <tbody>");
+
+        var sessionVotes = voteRecordTable.AsEnumerable()
+            .Where(r => Convert.ToInt32(r["votingSessionPk"]) == activeSessionPk)
+            .ToList();
+
+        foreach (DataRow vRow in sessionVotes)
+        {
+            string rStatus = vRow["roundStatus"].ToString() ?? "";
+            string displayCard = vRow["displayCardValue"]?.ToString() ?? "";
+            string displayComment = h(vRow["voteComment"]);
+            sb.Append($@"
+                        <tr>
+                            <td>第 {vRow["roundNumber"]} 回合</td>
+                            <td><strong>{h(vRow["employeeName"])}</strong> <span style='color:#64748b;font-size:12px;'>({h(vRow["departmentName"])} / {h(vRow["jobTitle"])})</span></td>
+                            <td><span class='badge {(rStatus == "voting" ? "badge-voting" : "badge-revealed")}'>{h(displayCard)}</span></td>
+                            <td>{displayComment}</td>
+                            <td style='font-size:12px;color:#64748b;'>{Convert.ToDateTime(vRow["votedAt"]):MM-dd HH:mm:ss}</td>
+                        </tr>");
+        }
+
+        sb.Append(@"
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        </div>
+        </div>"); // end 右欄 & grid-2
+
+        // JavaScript：單一 Session 獨立網頁防重複進入保護、心跳續約、自動翻牌同步、跨表排序與鎖定
+        sb.Append(@"
+    </div>
+    <script src=""https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js""></script>
+    <script>
+        const currentEmployeePk = " + currentEmployeePk + @";
+        const currentVotingSessionPk = " + activeSessionPk + @";
+        const assignedTabInstanceId = '" + h(assignedTabInstanceId) + @"';
+        let currentSessionStatus = '" + h(status) + @"';
+        let currentRoundNumber = " + currentRoundNumber + @";
+        let currentRoundVoteCount = " + currentRoundVotes.Count + @";
+        let myActiveOpenSessionPks = [" + string.Join(",", myActiveLockedPks) + @"];
+        let isAutoReloading = false;
+        window.__isInternalSessionNavigation = false;
+
+        // 1. 確保本分頁 window.name 綁定 assignedTabInstanceId，並將網址列清理為乾淨的 /voting/session?sessionPk=X
+        //    如此使用者若複製網址列貼到新分頁開啟，新分頁不會帶有 tabInstanceId，後端與前端會立即攔截重複進入！
+        try {
+            window.name = assignedTabInstanceId;
+            if (window.history && window.history.replaceState) {
+                const urlObj = new URL(window.location.href);
+                if (urlObj.searchParams.has('tabInstanceId')) {
+                    urlObj.searchParams.delete('tabInstanceId');
+                    window.history.replaceState(null, '', urlObj.pathname + urlObj.search);
+                }
+            }
+        } catch (e) { }
+
+        // 2. 寫入前端 localStorage 與 BroadcastChannel 鎖定宣告，讓大廳與其他分頁即時得知本 Session 已在獨立網頁進行中
+        function writeLocalSessionPresenceLock() {
+            try {
+                localStorage.setItem('sp_active_session_lock_' + currentEmployeePk + '_' + currentVotingSessionPk, JSON.stringify({
+                    employeePk: currentEmployeePk,
+                    sessionPk: currentVotingSessionPk,
+                    tabInstanceId: assignedTabInstanceId,
+                    lastHeartbeatMs: Date.now()
+                }));
+            } catch (e) { }
+        }
+        writeLocalSessionPresenceLock();
+
+        let guardChannel = null;
+        if (typeof BroadcastChannel !== 'undefined') {
+            try {
+                guardChannel = new BroadcastChannel('sp_voting_session_guard');
+                guardChannel.postMessage({
+                    type: 'SESSION_ACTIVE',
+                    employeePk: currentEmployeePk,
+                    sessionPk: currentVotingSessionPk,
+                    tabInstanceId: assignedTabInstanceId
+                });
+
+                guardChannel.onmessage = function (ev) {
+                    const msg = ev.data || {};
+                    if (Number(msg.employeePk) !== Number(currentEmployeePk)) return;
+                    if ((msg.type === 'DUPLICATE_ENTRY_ATTEMPT' || msg.type === 'FOCUS_EXISTING_SESSION') && Number(msg.sessionPk) === Number(currentVotingSessionPk)) {
+                        const b = document.getElementById('duplicateAttemptBanner');
+                        if (b) {
+                            b.style.display = 'block';
+                            b.innerHTML = '🔔 <strong>防重複進入提醒 (' + (msg.timestamp || '') + ')：</strong>系統剛才已自動攔截您在另一個分頁重複開啟本盲投 Session (#' + currentVotingSessionPk + ')，請直接在本獨立網頁繼續進行！';
+                        }
+                        try { window.focus(); } catch (e) { }
+                    }
+                };
+            } catch (e) { }
+        }
+
+        // 3. 當分頁重新整理(F5)、表單送出或關閉時：
+        //    - 寫入短效 5 秒 cookie (sp_reload_inst_{sessionPk})，讓同分頁 F5 重新整理或表單重導向可無縫續用同一個 tabInstanceId
+        //    - 若為真正關閉分頁（非內部重新載入/表單送出），透過 sendBeacon 通知後端釋放鎖定並廣播 SESSION_CLOSED
+        window.addEventListener('beforeunload', function () {
+            try {
+                document.cookie = 'sp_reload_inst_' + currentVotingSessionPk + '=' + encodeURIComponent(assignedTabInstanceId) + '; path=/; max-age=5; SameSite=Lax';
+                if (!window.__isInternalSessionNavigation) {
+                    localStorage.removeItem('sp_active_session_lock_' + currentEmployeePk + '_' + currentVotingSessionPk);
+                    if (guardChannel) {
+                        guardChannel.postMessage({
+                            type: 'SESSION_CLOSED',
+                            employeePk: currentEmployeePk,
+                            sessionPk: currentVotingSessionPk,
+                            tabInstanceId: assignedTabInstanceId
+                        });
+                    }
+                    if (navigator.sendBeacon) {
+                        const fd = new FormData();
+                        fd.append('sessionPk', String(currentVotingSessionPk));
+                        fd.append('tabInstanceId', assignedTabInstanceId);
+                        navigator.sendBeacon('/voting/session/leave', fd);
+                    }
+                }
+            } catch (e) { }
+        });
+
+        // 4. 點擊上方導覽列開啟「其他不同 Session」時，若該不同 Session 也已經在某個獨立網頁開啟中，先予以攔截提醒
+        function openOtherIndependentSession(evt, otherSessionPk) {
+            const pk = Number(otherSessionPk);
+            if (Array.isArray(myActiveOpenSessionPks) && myActiveOpenSessionPks.indexOf(pk) !== -1) {
+                if (evt) evt.preventDefault();
+                alert('⚠️ 盲投 Session (#' + pk + ') 您已經在另一個獨立網頁進行中，不能重複進入！\n請直接切換至已開啟的該 Session 網頁分頁。');
+                return false;
+            }
+            return true;
+        }
+
+        function selectCard(label, btnEl) {
+            const input = document.getElementById('inputCardLabel');
+            const text = document.getElementById('selectedCardText');
+            if (input) input.value = label;
+            if (text) text.textContent = label;
+            document.querySelectorAll('.deck-card-btn').forEach(b => b.classList.remove('selected'));
+            if (btnEl) btnEl.classList.add('selected');
+        }
+
+        // 5. 表格標題排序与鎖定 (Sticky Header)
+        function parseCellSortValue(rawText) {
+            const cleaned = (rawText || '').replace(/,/g, '').trim();
+            if (!cleaned) return { type: 'empty', val: '' };
+            const numMatch = cleaned.match(/^[-+]?\d+(\.\d+)?(\s*(pt|點|票|秒|%))?$/i);
+            if (numMatch) return { type: 'num', val: parseFloat(cleaned) };
+            const roundMatch = cleaned.match(/^第\s*(\d+)\s*回合$/);
+            if (roundMatch) return { type: 'num', val: parseInt(roundMatch[1], 10) };
+            const dateMatch = cleaned.match(/^(\d{4}[-/])?\d{2}[-/]\d{2}(\s+\d{2}:\d{2}(:\d{2})?)?$/);
+            if (dateMatch) {
+                const norm = cleaned.length <= 14 && !/^\d{4}/.test(cleaned) ? ('2026-' + cleaned.replace(/\//g, '-')) : cleaned.replace(/\//g, '-');
+                const ts = Date.parse(norm);
+                if (!isNaN(ts)) return { type: 'num', val: ts };
+            }
+            return { type: 'str', val: cleaned.toLowerCase() };
+        }
+
+        function sortTableByColumn(table, colIdx, sortBtn) {
+            const tbody = table.tBodies[0];
+            if (!tbody) return;
+            const currentDir = sortBtn.getAttribute('data-sort-dir') || 'none';
+            const nextDir = currentDir === 'asc' ? 'desc' : 'asc';
+            table.querySelectorAll('thead .sp-sort-btn').forEach(btn => {
+                btn.setAttribute('data-sort-dir', 'none');
+                btn.classList.remove('active-sort');
+                btn.textContent = '⇅';
+            });
+            sortBtn.setAttribute('data-sort-dir', nextDir);
+            sortBtn.classList.add('active-sort');
+            sortBtn.textContent = nextDir === 'asc' ? '▲' : '▼';
+            const rows = Array.from(tbody.rows);
+            rows.sort((rowA, rowB) => {
+                const cellA = rowA.cells[colIdx] ? rowA.cells[colIdx].innerText : '';
+                const cellB = rowB.cells[colIdx] ? rowB.cells[colIdx].innerText : '';
+                const a = parseCellSortValue(cellA);
+                const b = parseCellSortValue(cellB);
+                if (a.type === 'empty' && b.type === 'empty') return 0;
+                if (a.type === 'empty') return 1;
+                if (b.type === 'empty') return -1;
+                let cmp = 0;
+                if (a.type === 'num' && b.type === 'num') cmp = a.val - b.val;
+                else cmp = String(a.val).localeCompare(String(b.val), 'zh-Hant-TW', { numeric: true });
+                return nextDir === 'asc' ? cmp : -cmp;
+            });
+            rows.forEach(r => tbody.appendChild(r));
+        }
+
+        function toggleTableHeaderLock(table) {
+            const isLocked = table.getAttribute('data-header-locked') === 'true';
+            const nextState = !isLocked;
+            table.setAttribute('data-header-locked', nextState ? 'true' : 'false');
+            table.querySelectorAll('thead th').forEach(th => {
+                if (nextState) th.classList.add('sp-th-locked');
+                else th.classList.remove('sp-th-locked');
+            });
+            table.querySelectorAll('thead .sp-lock-btn').forEach(btn => {
+                if (nextState) {
+                    btn.classList.add('active-lock');
+                    btn.textContent = '🔒';
+                } else {
+                    btn.classList.remove('active-lock');
+                    btn.textContent = '📌';
+                }
+            });
+        }
+
+        function initUniversalTableSortAndLock() {
+            document.querySelectorAll('table').forEach(table => {
+                const thead = table.querySelector('thead');
+                const tbody = table.querySelector('tbody');
+                if (!thead || !tbody) return;
+                table.setAttribute('data-header-locked', 'true');
+                thead.querySelectorAll('tr').forEach(tr => {
+                    Array.from(tr.cells).forEach((th, colIdx) => {
+                        if (th.tagName.toLowerCase() !== 'th') return;
+                        th.classList.add('sp-sortable-th', 'sp-th-locked');
+                        const toolbar = document.createElement('span');
+                        toolbar.className = 'sp-th-toolbar';
+                        const sortBtn = document.createElement('button');
+                        sortBtn.type = 'button';
+                        sortBtn.className = 'sp-th-btn sp-sort-btn';
+                        sortBtn.textContent = '⇅';
+                        sortBtn.addEventListener('click', e => { e.stopPropagation(); sortTableByColumn(table, colIdx, sortBtn); });
+                        const lockBtn = document.createElement('button');
+                        lockBtn.type = 'button';
+                        lockBtn.className = 'sp-th-btn sp-lock-btn active-lock';
+                        lockBtn.textContent = '🔒';
+                        lockBtn.addEventListener('click', e => { e.stopPropagation(); toggleTableHeaderLock(table); });
+                        toolbar.appendChild(sortBtn);
+                        toolbar.appendChild(lockBtn);
+                        th.appendChild(toolbar);
+                    });
+                });
+            });
+        }
+        initUniversalTableSortAndLock();
+
+        // 6. 單回合倒數計時器
+        (function initRoundCountdown() {
+            const box = document.getElementById('roundCountdownBox');
+            if (!box) return;
+            let remain = parseInt(box.getAttribute('data-limit') || '0', 10);
+            if (isNaN(remain) || remain <= 0) return;
+            const timer = setInterval(function () {
+                remain--;
+                if (remain <= 0) {
+                    clearInterval(timer);
+                    box.textContent = '⏰ 本回合計時已到！請儘速完成出牌或由主持人翻牌';
+                    box.style.background = '#dc2626';
+                } else {
+                    const m = Math.floor(remain / 60);
+                    const s = remain % 60;
+                    box.textContent = '⏳ 倒數計時：' + (m > 0 ? (m + '分 ' + s + '秒') : (s + ' 秒'));
+                }
+            }, 1000);
+        })();
+
+        function isUserTypingInStandalone() {
+            const activeEl = document.activeElement;
+            if (!activeEl) return false;
+            const id = activeEl.id || '';
+            const name = activeEl.name || '';
+            return id === 'inputVoteComment' || name === 'roundDiscussionNote' || name === 'finalDecisionNote' || name === 'finalStoryPoint';
+        }
+
+        function triggerStandaloneAutoReload(reasonMsg) {
+            if (isAutoReloading) return;
+            isAutoReloading = true;
+            window.__isInternalSessionNavigation = true;
+            const nextUrl = '/voting/session?sessionPk=' + currentVotingSessionPk +
+                '&tabInstanceId=' + encodeURIComponent(assignedTabInstanceId) +
+                (reasonMsg ? '&msg=' + encodeURIComponent(reasonMsg) : '');
+            window.location.href = nextUrl;
+        }
+
+        function refreshStandaloneSessionNow(btnEl) {
+            if (btnEl) {
+                btnEl.disabled = true;
+                btnEl.textContent = '⏳ 重新整理中...';
+            }
+            triggerStandaloneAutoReload('🔄 已重新整理本盲投 Session 最新桌面狀態！');
+        }
+
+        // 7. 每 2 秒向後端發送心跳續約並檢查本 Session 是否有新出牌或自動翻牌
+        function pollStandaloneSessionStatus() {
+            if (isAutoReloading) return;
+            writeLocalSessionPresenceLock();
+            fetch('/voting/liveStatus?sessionPk=' + currentVotingSessionPk + '&tabInstanceId=' + encodeURIComponent(assignedTabInstanceId) + '&_t=' + Date.now(), {
+                credentials: 'same-origin',
+                cache: 'no-store'
+            })
+                .then(function (res) { return res.ok ? res.json() : null; })
+                .then(function (data) {
+                    if (!data || !data.found) return;
+                    if (Array.isArray(data.myActiveOpenSessionPks)) {
+                        myActiveOpenSessionPks = data.myActiveOpenSessionPks.map(Number);
+                    }
+                    const statusChanged = data.sessionStatus && data.sessionStatus !== currentSessionStatus;
+                    const roundChanged = Number(data.currentRoundNumber) !== Number(currentRoundNumber);
+                    const voteCountChanged = Number(data.voteCount) !== Number(currentRoundVoteCount);
+
+                    if (statusChanged || roundChanged) {
+                        const msg = data.sessionStatus === 'revealed'
+                            ? '🎉 所有參與者已完成投票，畫面已自動翻牌揭曉！'
+                            : '';
+                        triggerStandaloneAutoReload(msg);
+                    } else if (voteCountChanged && !isUserTypingInStandalone()) {
+                        triggerStandaloneAutoReload('');
+                    }
+                })
+                .catch(function () { });
+        }
+
+        if (window.signalR) {
+            const conn = new signalR.HubConnectionBuilder()
+                .withUrl('/votingHub')
+                .withAutomaticReconnect()
+                .build();
+
+            conn.on('onVotingSessionUpdated', function (payload) {
+                if (Number(payload.votingSessionPk) !== Number(currentVotingSessionPk)) {
+                    return;
+                }
+                const isMajorFlipEvent = payload.isAutoRevealed === true
+                    || payload.eventName === 'autoRevealed'
+                    || payload.eventName === 'reveal'
+                    || payload.eventName === 'nextRound'
+                    || payload.eventName === 'finalize'
+                    || payload.sessionStatus === 'revealed'
+                    || payload.sessionStatus === 'finalized';
+
+                if (isMajorFlipEvent) {
+                    setTimeout(function () {
+                        triggerStandaloneAutoReload(payload.messageText);
+                    }, 200);
+                } else if (!isUserTypingInStandalone()) {
+                    setTimeout(function () {
+                        triggerStandaloneAutoReload('');
+                    }, 300);
+                }
+            });
+
+            conn.start().catch(function (err) { console.warn(err); });
+        }
+
+        setInterval(pollStandaloneSessionStatus, 2000);
     </script>
 </body>
 </html>");

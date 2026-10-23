@@ -207,6 +207,40 @@
     1. `ps/manageEmployee.ps1` 新增 `-actionType 'updateSelfCredential'`（搭配 `-employeePk`、`-newLoginAccount`、`-plainPassword`、`-currentPlainPassword`），直接呼叫 `storyPoint.spUpdateEmployeeSelfCredential`。
     2. `ps/ui/uiMain.ps1` 於頂部標題列右側新增「**`🔑 修改我的帳密`**」按鈕 (`showChangeOwnCredentialDialog`)，供任何登入者在 GUI 視窗中隨時修改自己的帳號與密碼。
 
+### 2.14 盲投 Session 獨立網頁進行、多網頁並行參與不同 Session 與同 Session 防重複進入規範 (Dedicated Standalone Session Webpage & Anti-Duplicate Entry Guard)
+* **核心原則**：
+    1. **以專屬獨立網頁進行整個盲投 Session（非 Modal 彈窗、非大廳內嵌）**：
+        * 當使用者進入任一盲投議程 (`storyPoint.tbVotingSession`) 時，一律透過專屬獨立網頁路由 `GET /voting/session?sessionPk={sessionPk}`（或 `GET /voting/session/{sessionPk}`）開啟並進行整個 Session 的完整生命週期，絕不使用 Modal 對話框或內嵌於主大廳頁籤中。
+        * 獨立盲投網頁內完整包含：綠色撲克牌桌與參與者座位區、單回合倒數計時器、撲克牌出牌區（含中文意義標示與理由輸入）、主持人控制台（立即翻牌揭曉、開啟下一回合重新盲投、達成共識拍板定案）、該 Session 歷次盲投回合統計表與具名出牌明細表（支援通用欄位排序 `⇅/▲/▼` 與標題列鎖定 `📌/🔒`）、以及 SignalR + 2 秒輪詢即時自動翻牌同步機制。
+        * 在獨立網頁中執行出牌 (`POST /voting/cast`)、主持控制 (`POST /voting/control`) 或修改設定 (`POST /voting/create`) 時，皆帶入 `fromStandalone=true` 與 `tabInstanceId`，處理完成後直接重導向回該獨立盲投網頁，確保整個 Session 全程在該獨立網頁內完成。
+    2. **支援同一人同時以多個獨立網頁參與「不同」盲投 Session**：
+        * 主系統大廳 (`/?tab=voting`) 轉型為「多人即時盲投議程大廳（多 Session 總覽與獨立網頁入口）」，列出所有可參與的盲投 Session 卡片與狀態摘要；點擊任一「不同」的 `sessionPk` 皆可在新的獨立瀏覽器分頁 (`target="_blank"`) 開啟對應的獨立盲投網頁。
+        * 獨立盲投網頁頂部亦提供「🌐 多網頁並行參與不同 Session 導覽列」，讓使用者可同時開啟多個獨立網頁分別參與不同的盲投 Session（例如：分頁 A 參與 `sessionPk=1`、分頁 B 同時參與 `sessionPk=2`），彼此獨立運作、互不干擾。
+    3. **嚴格禁止重複進入「同一個」盲投 Session (`同一個 session 不能重複進入`)**：
+        * **後端即時佔用鎖定 (`sqlDataService.votingSessionPresenceLease`)**：以 `(employeePk, votingSessionPk)` 為複合鍵建立執行緒安全的獨立網頁佔用鎖定（8 秒心跳續約 TTL）。當某位員工已在分頁 `tabInstanceId_1` 進入 `sessionPk=X` 時，每 2 秒透過 `/voting/liveStatus` 或 `/voting/session/heartbeat` 續約心跳；同分頁重新整理（F5）或表單送出時透過短效 Reload Cookie (`sp_reload_inst_{sessionPk}`) 與 `tabInstanceId` 無縫續用同一鎖定；關閉分頁或點擊「🚪 離開此 Session 並返回大廳 (`/voting/session/leave`)」時透過 `navigator.sendBeacon` 立即釋放鎖定。
+        * **後端與前端雙重攔截重複進入**：當同一位員工嘗試在第二個網頁分頁重複進入已在進行中的同一個 `sessionPk=X` 時：
+            1. 在大廳點擊時，前端 (`openIndependentVotingSession` 結合 `BroadcastChannel('sp_voting_session_guard')`、`localStorage` 與後端 `myActiveOpenSessionPks`) 立即顯示「`🔒 已在獨立網頁進行中 (禁重複進入)`」並攔截重複開啟。
+            2. 若使用者直接於新分頁貼上 `/voting/session?sessionPk=X` 網址強制進入，後端 `votingSessionStandalonePage` 立即偵測到該 `(employeePk, sessionPk)` 已被另一活躍分頁鎖定，回傳專屬「`🚫 同一個盲投 Session 禁止重複進入`」攔截頁面 (`buildDuplicateVotingSessionBlockedHtml`)，同時透過 `BroadcastChannel` 通知原本已開啟該 Session 的獨立網頁顯示提醒橫幅並聚焦，並於攔截頁提供一鍵切換參與「其他不同盲投 Session」的入口。
+
+### 2.15 工項類型（專案 / 維運 / 顧問時數）、起訖時間設定、到期自動轉態扣減 Story Point 與 Email 寄信通知部門管理層與 HR，以及職級含部門經理規範
+* **工項類型與起訖時間設定 (`workItemKind` / `startDate` / `endDate`)**：
+    1. **三種工項類型**：所有實際工項 (`storyPoint.tbWorkItem`) 與工項代表類型預設值 (`storyPoint.tbWorkItemType.defaultWorkItemKind`) 皆支援以下三種類型設定：
+        * **`project`（🚀 專案）**
+        * **`maintenance`（🛠️ 維運）**
+        * **`consultingHour`（⏱️ 顧問時數）**
+    2. **起訖時間 (`startDate` ~ `endDate`)**：每一筆工項皆具備明確的「開始時間（起時 `startDate`）」與「結束時間（迄時 `endDate`）」，並於 Web 介面 (`/?tab=workitems`)、批次匯入/匯出 (CSV / Excel / 互動 HTML) 與 PowerShell (`ps/manageWorkItem.ps1` / `ps/ui/tabWorkItem.ps1`) 提供完整設定與查詢。
+* **達到迄時自動轉換工項狀態、扣減 Story Point 並透過 Email 寄信給部門管理層與 HR**：
+    1. **自動偵測與轉換狀態 (`storyPoint.spProcessExpiredWorkItem`)**：
+        * 當系統時間達到或超過工項的迄時 (`endDate <= dateadd(hour, 8, sysutcdatetime())`) 且尚未處理 (`isExpiredProcessed = 0`) 時，系統（透過 `workItemExpiryBackgroundService` 背景定時排程、頁面載入/工項儲存自動觸發、或手動點擊 `POST /workitem/checkExpired`）自動將該工項之 `executionStatus` 轉換為 `'done'`（顯示為「已完成 (已到期扣點)」）。
+    2. **自動扣減工項、員工與部門之 Story Point**：
+        * 將該到期工項原本的點數完整記錄於 `originalStoryPoint` 與 `deductedStoryPoint`，並將工項目前點數扣減歸零 (`storyPoint = 0.00`)。
+        * 同步將該工項指派給各負責員工 (`storyPoint.tbWorkItemAssignment`) 的配額點數記錄於 `originalAllocatedStoryPoint` 與 `deductedAllocatedStoryPoint`，並將有效配額扣減歸零 (`allocatedStoryPoint = 0.00`)，使負責員工與所屬部門身上的有效總 Story Point 立即扣除該筆到期工項點數，同時於 `storyPoint.tbPointHistory` 寫入 `changeSource = 'autoExpireDeduct'` 之完整稽核紀錄。
+    3. **透過 Email 寄信通知部門管理層（部門經理）與 HR (`emailNotificationService` + `storyPoint.spMarkWorkItemExpiryNotified`)**：
+        * 系統自動解析該到期工項負責員工所屬部門之**部門管理層**（職級 `jobTitle` 包含「部門經理」之主管，或對應 `tbDepartment.managerName` 之部門主管，以及管理部主管）與 **HR 部門 (`departmentCode = 'HR'` 或職稱含人資/HR)** 之電子郵件信箱。
+        * 透過 Azure Communication Services (ACS) Email REST API (`mailProviderSetting`) 寄發繁體中文 HTML 通知信予部門管理層與 HR，信件內詳列工項代碼、名稱、工項類型（專案/維運/顧問時數）、起訖時間、原核定點數、本次自動扣除之 Story Point、以及受影響部門與負責員工明細，並將寄信時間與收件人名單記錄於 `expiryNotificationSent`、`expiryNotificationSentAt`、`expiryNotificationRecipient` 與 `storyPoint.tbLog`。
+* **員工職級包含「部門經理」(`jobTitle`)**：
+    1. 員工資料表 (`storyPoint.tbEmployee.jobTitle`)、預設種子資料 (`sql/seedData.sql`)、Web 員工管理表單 (`#pane-employees` 快速職級選單與 `datalist`)、員工清單職級篩選器 (`#filterEmpRank`) 及 PowerShell 員工管理介面 (`ps/ui/tabEmployee.ps1`) 均明確包含「**部門經理**」（以及「董事長兼部門經理」、「部門經理 / 資深架構師」、「部門經理 / 商業智慧資深顧問」、「部門經理 / 資料庫資深顧問」、「部門經理 / 人資」等職級），各部門主管帳號皆具備「部門經理」職級並顯示專屬徽章。
+
 ---
 
 ## 3. 系統架構與技術開發規範
@@ -253,4 +287,4 @@
 * **錯誤重試與雙軌 Log 系統**：具備自動 Retry 機制、執行進度呈現 (`write-progress`)，並提供 **DB (`storyPoint.tbLog`)** 與 **CSV (`logs/` 目錄下含日期時間檔名，可直接由 `bcp.exe` 載入)** 雙軌 Log 記錄，遵循 .NET Log 層級 `0` (不寫) ~ `4` (任何訊息)。
 * **Git 與 GitHub 版本控制**：
     * 專案根目錄包含 `.gitignore`，忽略系統暫存檔 (`Thumbs.db`, `.DS_Store`)、編輯器設定 (`.vscode/`, `.idea/`, `.vs/`)、建置輸出 (`bin/`, `obj/`, `publish/`)、執行期間 Log 與匯出報表 (`logs/`, `*.log`, `*.csv`)、開發測試暫存目錄 (`temp/`)，以及含敏感設定之 `config.json`。
-    * 遠端儲存庫建立並推送至 GitHub Repository (`https://github.com/ByronHul/storyPoint`)，提交訊息清楚說明變更目的。
+    * 遠端儲存庫建立並推送至 GitHub Repository (`https://github.com/ByronHul/storyPoint`)，每次執行 `git commit` 與 `git push` 時，提交訊息與說明皆須清楚說明變更目的與具體變更內容。

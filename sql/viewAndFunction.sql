@@ -50,12 +50,41 @@ select
     isnull(wit.typeCode, '') as typeCode,
     isnull(wit.typeName, N'未分類(自訂工項)') as typeName,
     isnull(wit.categoryName, N'一般') as categoryName,
+    wi.workItemKind,
+    isnull(
+        wik.kindName,
+        case
+            when wi.workItemKind = 'maintenance' then N'維運'
+            when wi.workItemKind = 'consultingHour' then N'顧問時數'
+            when wi.workItemKind = 'project' then N'專案'
+            else cast(wi.workItemKind as nvarchar(128))
+        end
+    ) as workItemKindText,
+    isnull(
+        wik.badgeIcon,
+        case
+            when wi.workItemKind = 'maintenance' then N'🛠️'
+            when wi.workItemKind = 'consultingHour' then N'⏳'
+            else N'🏗️'
+        end
+    ) as workItemKindIcon,
+    isnull(
+        wik.badgeColor,
+        case
+            when wi.workItemKind = 'maintenance' then 'amber'
+            when wi.workItemKind = 'consultingHour' then 'purple'
+            else 'blue'
+        end
+    ) as workItemKindColor,
     wi.sprintName,
     wi.priorityLevel,
     wi.defaultTypePoint,
     wi.storyPoint,
+    wi.originalStoryPoint,
+    wi.deductedStoryPoint,
     wi.isManualAdjusted,
     case
+        when wi.isExpiredProcessed = 1 then concat(N'迄時到期自動扣點 (原 ', cast(isnull(wi.originalStoryPoint, wi.deductedStoryPoint) as varchar(32)), N' pt → 扣 ', cast(wi.deductedStoryPoint as varchar(32)), N' pt)')
         when wi.isManualAdjusted = 1 then N'手動調整'
         when wi.workItemTypePk is not null then N'代表類型自動帶入'
         else N'獨立估算/設定'
@@ -63,7 +92,20 @@ select
     wi.adjustmentReason,
     wi.estimationStatus,
     wi.executionStatus,
+    case
+        when wi.executionStatus = 'expired' or wi.isExpiredProcessed = 1 then N'已到期結案(已扣點)'
+        when wi.executionStatus = 'done' then N'已完成'
+        when wi.executionStatus = 'inProgress' then N'進行中'
+        else N'待處理'
+    end as executionStatusText,
+    wi.startDate,
+    wi.endDate,
     wi.dueDate,
+    wi.isExpiredProcessed,
+    wi.expiredProcessedAt,
+    wi.expiryNotificationSent,
+    wi.expiryNotificationSentAt,
+    wi.expiryNotificationRecipient,
     wi.createdByEmployeePk,
     isnull(empCreator.employeeName, N'系統管理員') as createdByEmployeeName,
     isnull(assignStat.assigneeCount, 0) as assigneeCount,
@@ -75,6 +117,8 @@ select
 from storyPoint.tbWorkItem as wi
 left join storyPoint.tbWorkItemType as wit
     on wi.workItemTypePk = wit.pk
+left join storyPoint.tbWorkItemKind as wik
+    on wi.workItemKind = wik.kindCode
 left join storyPoint.tbEmployee as empCreator
     on wi.createdByEmployeePk = empCreator.pk
 outer apply (
@@ -87,7 +131,13 @@ outer apply (
                 d.departmentName,
                 N': ',
                 cast(wia.allocatedStoryPoint as varchar(32)),
-                N' pt / ',
+                N' pt',
+                case
+                    when wia.deductedAllocatedStoryPoint > 0
+                    then concat(N' [已扣 ', cast(wia.deductedAllocatedStoryPoint as varchar(32)), N' pt]')
+                    else N''
+                end,
+                N' / ',
                 cast(wia.allocationPercent as varchar(32)),
                 N'%)'
             ),
@@ -105,7 +155,7 @@ go
 
 -- ============================================================================
 -- 3. 員工個人 Story Point 負載與工項統計檢視表 (storyPoint.vwEmployeePointSummary)
--- 用途: 查詢每位員工身上有多少工項與多少 Story Point (含分攤點數與原始工項總點數)
+-- 用途: 查詢每位員工身上有多少工項與多少 Story Point (含分攤點數、已到期扣點與原始工項總點數)
 -- ============================================================================
 create or alter view storyPoint.vwEmployeePointSummary
 as
@@ -130,6 +180,7 @@ select
     isnull(empWork.todoAllocatedStoryPoint, 0.00) as todoAllocatedStoryPoint,
     isnull(empWork.inProgressAllocatedStoryPoint, 0.00) as inProgressAllocatedStoryPoint,
     isnull(empWork.doneAllocatedStoryPoint, 0.00) as doneAllocatedStoryPoint,
+    isnull(empWork.totalDeductedStoryPoint, 0.00) as totalDeductedStoryPoint,
     isnull(empWork.totalRawWorkItemPoint, 0.00) as totalRawWorkItemPoint,
     isnull(empWork.workItemListSummary, N'無指派工項') as workItemListSummary
 from storyPoint.tbEmployee as e
@@ -145,9 +196,23 @@ outer apply (
         sum(case when wi.executionStatus = 'todo' then wia.allocatedStoryPoint else 0.00 end) as todoAllocatedStoryPoint,
         sum(case when wi.executionStatus = 'inProgress' then wia.allocatedStoryPoint else 0.00 end) as inProgressAllocatedStoryPoint,
         sum(case when wi.executionStatus = 'done' then wia.allocatedStoryPoint else 0.00 end) as doneAllocatedStoryPoint,
+        sum(wia.deductedAllocatedStoryPoint) as totalDeductedStoryPoint,
         sum(wi.storyPoint) as totalRawWorkItemPoint,
         string_agg(
-            concat(wi.itemCode, N' ', wi.itemTitle, N' (', cast(wia.allocatedStoryPoint as varchar(32)), N' pt)'),
+            concat(
+                wi.itemCode,
+                N' ',
+                wi.itemTitle,
+                N' (',
+                cast(wia.allocatedStoryPoint as varchar(32)),
+                N' pt',
+                case
+                    when wi.isExpiredProcessed = 1 and wia.deductedAllocatedStoryPoint > 0
+                    then concat(N'，迄時扣 ', cast(wia.deductedAllocatedStoryPoint as varchar(32)), N' pt')
+                    else N''
+                end,
+                N')'
+            ),
             N'；'
         ) within group (order by wi.pk desc) as workItemListSummary
     from storyPoint.tbWorkItemAssignment as wia
@@ -181,6 +246,7 @@ select
     isnull(deptWork.todoDepartmentStoryPoint, 0.00) as todoDepartmentStoryPoint,
     isnull(deptWork.inProgressDepartmentStoryPoint, 0.00) as inProgressDepartmentStoryPoint,
     isnull(deptWork.doneDepartmentStoryPoint, 0.00) as doneDepartmentStoryPoint,
+    isnull(deptWork.totalDeductedDepartmentStoryPoint, 0.00) as totalDeductedDepartmentStoryPoint,
     isnull(deptWork.distinctWorkItemRawPointSum, 0.00) as distinctWorkItemRawPointSum,
     case
         when isnull(empStat.activeEmployeeCount, 0) > 0
@@ -205,6 +271,7 @@ outer apply (
         sum(case when wi.executionStatus = 'todo' then wia.allocatedStoryPoint else 0.00 end) as todoDepartmentStoryPoint,
         sum(case when wi.executionStatus = 'inProgress' then wia.allocatedStoryPoint else 0.00 end) as inProgressDepartmentStoryPoint,
         sum(case when wi.executionStatus = 'done' then wia.allocatedStoryPoint else 0.00 end) as doneDepartmentStoryPoint,
+        sum(wia.deductedAllocatedStoryPoint) as totalDeductedDepartmentStoryPoint,
         (
             select sum(distinctWi.storyPoint)
             from storyPoint.tbWorkItem as distinctWi

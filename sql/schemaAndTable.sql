@@ -32,6 +32,7 @@ drop table if exists storyPoint.tbPreserveVotingSession;
 drop table if exists storyPoint.tbPreserveWorkItemAssignment;
 drop table if exists storyPoint.tbPreserveWorkItem;
 drop table if exists storyPoint.tbPreserveWorkItemType;
+drop table if exists storyPoint.tbPreserveWorkItemKind;
 drop table if exists storyPoint.tbPreserveCardDeck;
 drop table if exists storyPoint.tbPreserveEmployee;
 drop table if exists storyPoint.tbPreserveDepartment;
@@ -66,10 +67,26 @@ begin
     from storyPoint.tbCardDeck;
 end
 
+if object_id('storyPoint.tbWorkItemKind', 'u') is not null
+begin
+    select
+        pk, kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        description, isActive, createdAt, updatedAt
+    into storyPoint.tbPreserveWorkItemKind
+    from storyPoint.tbWorkItemKind;
+end
+
+if object_id('storyPoint.tbWorkItemType', 'u') is not null
+begin
+    if col_length('storyPoint.tbWorkItemType', 'defaultWorkItemKind') is null
+        alter table storyPoint.tbWorkItemType add defaultWorkItemKind varchar(64) not null constraint dfMigrateTypeKind default ('project');
+end
+go
+
 if object_id('storyPoint.tbWorkItemType', 'u') is not null
 begin
     select
-        pk, typeCode, typeName, categoryName, description,
+        pk, typeCode, typeName, categoryName, defaultWorkItemKind, description,
         standardStoryPoint, defaultCardDeckPk, estimationStatus,
         lastVotingSessionPk, isActive, createdAt, updatedAt
     into storyPoint.tbPreserveWorkItemType
@@ -78,22 +95,58 @@ end
 
 if object_id('storyPoint.tbWorkItem', 'u') is not null
 begin
+    if col_length('storyPoint.tbWorkItem', 'workItemKind') is null
+        alter table storyPoint.tbWorkItem add workItemKind varchar(64) not null constraint dfMigrateWorkItemKind default ('project');
+    if col_length('storyPoint.tbWorkItem', 'startDate') is null
+        alter table storyPoint.tbWorkItem add startDate datetime2(0) null;
+    if col_length('storyPoint.tbWorkItem', 'endDate') is null
+        alter table storyPoint.tbWorkItem add endDate datetime2(0) null;
+    if col_length('storyPoint.tbWorkItem', 'originalStoryPoint') is null
+        alter table storyPoint.tbWorkItem add originalStoryPoint decimal(8,2) null;
+    if col_length('storyPoint.tbWorkItem', 'deductedStoryPoint') is null
+        alter table storyPoint.tbWorkItem add deductedStoryPoint decimal(8,2) not null constraint dfMigrateDeductedPoint default (0.00);
+    if col_length('storyPoint.tbWorkItem', 'isExpiredProcessed') is null
+        alter table storyPoint.tbWorkItem add isExpiredProcessed bit not null constraint dfMigrateExpiredProcessed default (0);
+    if col_length('storyPoint.tbWorkItem', 'expiredProcessedAt') is null
+        alter table storyPoint.tbWorkItem add expiredProcessedAt datetime2(3) null;
+    if col_length('storyPoint.tbWorkItem', 'expiryNotificationSent') is null
+        alter table storyPoint.tbWorkItem add expiryNotificationSent bit not null constraint dfMigrateExpiryNotified default (0);
+    if col_length('storyPoint.tbWorkItem', 'expiryNotificationSentAt') is null
+        alter table storyPoint.tbWorkItem add expiryNotificationSentAt datetime2(3) null;
+    if col_length('storyPoint.tbWorkItem', 'expiryNotificationRecipient') is null
+        alter table storyPoint.tbWorkItem add expiryNotificationRecipient nvarchar(1024) null;
+end
+go
+
+if object_id('storyPoint.tbWorkItem', 'u') is not null
+begin
     select
         pk, itemCode, itemTitle, itemDescription, workItemTypePk,
-        sprintName, priorityLevel, defaultTypePoint, storyPoint,
-        isManualAdjusted, adjustmentReason, estimationStatus,
-        executionStatus, dueDate, createdByEmployeePk, isActive,
-        createdAt, updatedAt
+        workItemKind, sprintName, priorityLevel, defaultTypePoint, storyPoint,
+        originalStoryPoint, deductedStoryPoint, isManualAdjusted, adjustmentReason,
+        estimationStatus, executionStatus, startDate, endDate, dueDate,
+        isExpiredProcessed, expiredProcessedAt, expiryNotificationSent,
+        expiryNotificationSentAt, expiryNotificationRecipient,
+        createdByEmployeePk, isActive, createdAt, updatedAt
     into storyPoint.tbPreserveWorkItem
     from storyPoint.tbWorkItem;
 end
 
 if object_id('storyPoint.tbWorkItemAssignment', 'u') is not null
 begin
+    if col_length('storyPoint.tbWorkItemAssignment', 'originalAllocatedStoryPoint') is null
+        alter table storyPoint.tbWorkItemAssignment add originalAllocatedStoryPoint decimal(8,2) null;
+    if col_length('storyPoint.tbWorkItemAssignment', 'deductedAllocatedStoryPoint') is null
+        alter table storyPoint.tbWorkItemAssignment add deductedAllocatedStoryPoint decimal(8,2) not null constraint dfMigrateAssignDeductedPoint default (0.00);
+end
+go
+
+if object_id('storyPoint.tbWorkItemAssignment', 'u') is not null
+begin
     select
         pk, workItemPk, employeePk, assignmentRole, allocationPercent,
-        allocatedStoryPoint, assignmentNote, assignedByEmployeePk,
-        assignedAt, updatedAt
+        allocatedStoryPoint, originalAllocatedStoryPoint, deductedAllocatedStoryPoint,
+        assignmentNote, assignedByEmployeePk, assignedAt, updatedAt
     into storyPoint.tbPreserveWorkItemAssignment
     from storyPoint.tbWorkItemAssignment;
 end
@@ -198,6 +251,7 @@ drop table if exists storyPoint.tbVotingSession;
 drop table if exists storyPoint.tbWorkItemAssignment;
 drop table if exists storyPoint.tbWorkItem;
 drop table if exists storyPoint.tbWorkItemType;
+drop table if exists storyPoint.tbWorkItemKind;
 drop table if exists storyPoint.tbCardDeck;
 drop table if exists storyPoint.tbEmployee;
 drop table if exists storyPoint.tbDepartment;
@@ -286,6 +340,24 @@ create table storyPoint.tbCardDeck (
 );
 go
 
+-- 4.5 工項類型設定資料表 (storyPoint.tbWorkItemKind)
+-- 支援增刪修工項類型（預設含：project 專案、maintenance 維運、consultingHour 顧問時數，並可自訂新增）
+create table storyPoint.tbWorkItemKind (
+    pk int identity(1,1) not null,
+    kindCode varchar(64) not null,
+    kindName nvarchar(128) not null,
+    badgeIcon nvarchar(32) not null constraint dfTbWorkItemKindIcon default (N'📌'),
+    badgeColor varchar(32) not null constraint dfTbWorkItemKindColor default ('blue'),
+    sortOrder int not null constraint dfTbWorkItemKindSortOrder default (100),
+    description nvarchar(512) null,
+    isActive bit not null constraint dfTbWorkItemKindIsActive default (1),
+    createdAt datetime2(3) not null constraint dfTbWorkItemKindCreatedAt default (sysdatetime()),
+    updatedAt datetime2(3) not null constraint dfTbWorkItemKindUpdatedAt default (sysdatetime()),
+    constraint pkTbWorkItemKind primary key clustered (pk asc),
+    constraint uqTbWorkItemKindCode unique nonclustered (kindCode asc)
+);
+go
+
 -- 5. 工項代表類型資料表 (storyPoint.tbWorkItemType)
 -- 投票時可針對工項代表類型進行 Story Point 估算，建立實際工項時可選擇此類型自動帶入點數
 create table storyPoint.tbWorkItemType (
@@ -293,6 +365,7 @@ create table storyPoint.tbWorkItemType (
     typeCode varchar(64) not null,
     typeName nvarchar(128) not null,
     categoryName nvarchar(128) not null,
+    defaultWorkItemKind varchar(64) not null constraint dfTbWorkItemTypeDefaultKind default ('project'),
     description nvarchar(1024) null,
     standardStoryPoint decimal(8,2) null,
     defaultCardDeckPk int null,
@@ -308,21 +381,32 @@ create table storyPoint.tbWorkItemType (
 go
 
 -- 6. 實際工項資料表 (storyPoint.tbWorkItem)
+-- workItemKind 對應 storyPoint.tbWorkItemKind.kindCode (預設含 project 專案 / maintenance 維運 / consultingHour 顧問時數，並支援自訂)
 create table storyPoint.tbWorkItem (
     pk int identity(1,1) not null,
     itemCode varchar(64) not null,
     itemTitle nvarchar(256) not null,
     itemDescription nvarchar(max) null,
     workItemTypePk int null,
+    workItemKind varchar(64) not null constraint dfTbWorkItemKind default ('project'),
     sprintName nvarchar(128) null,
     priorityLevel varchar(32) not null constraint dfTbWorkItemPriority default ('medium'),
     defaultTypePoint decimal(8,2) null,
     storyPoint decimal(8,2) not null constraint dfTbWorkItemStoryPoint default (0),
+    originalStoryPoint decimal(8,2) null,
+    deductedStoryPoint decimal(8,2) not null constraint dfTbWorkItemDeductedPoint default (0.00),
     isManualAdjusted bit not null constraint dfTbWorkItemIsManual default (0),
     adjustmentReason nvarchar(512) null,
     estimationStatus varchar(32) not null constraint dfTbWorkItemEstimationStatus default ('finalized'),
     executionStatus varchar(32) not null constraint dfTbWorkItemExecutionStatus default ('todo'),
+    startDate datetime2(0) null,
+    endDate datetime2(0) null,
     dueDate date null,
+    isExpiredProcessed bit not null constraint dfTbWorkItemExpiredProcessed default (0),
+    expiredProcessedAt datetime2(3) null,
+    expiryNotificationSent bit not null constraint dfTbWorkItemExpiryNotified default (0),
+    expiryNotificationSentAt datetime2(3) null,
+    expiryNotificationRecipient nvarchar(1024) null,
     createdByEmployeePk int null,
     isActive bit not null constraint dfTbWorkItemIsActive default (1),
     createdAt datetime2(3) not null constraint dfTbWorkItemCreatedAt default (sysdatetime()),
@@ -345,6 +429,8 @@ create table storyPoint.tbWorkItemAssignment (
     assignmentRole nvarchar(64) not null constraint dfTbAssignmentRole default (N'主要負責'),
     allocationPercent decimal(5,2) not null constraint dfTbAssignmentPercent default (100.00),
     allocatedStoryPoint decimal(8,2) not null constraint dfTbAssignmentPoint default (0.00),
+    originalAllocatedStoryPoint decimal(8,2) null,
+    deductedAllocatedStoryPoint decimal(8,2) not null constraint dfTbAssignmentDeductedPoint default (0.00),
     assignmentNote nvarchar(512) null,
     assignedByEmployeePk int null,
     assignedAt datetime2(3) not null constraint dfTbAssignmentAssignedAt default (sysdatetime()),
@@ -528,16 +614,30 @@ begin
     set identity_insert storyPoint.tbCardDeck off;
 end
 
+if object_id('storyPoint.tbPreserveWorkItemKind', 'u') is not null
+begin
+    set identity_insert storyPoint.tbWorkItemKind on;
+    insert into storyPoint.tbWorkItemKind (
+        pk, kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        description, isActive, createdAt, updatedAt
+    )
+    select
+        pk, kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        description, isActive, createdAt, updatedAt
+    from storyPoint.tbPreserveWorkItemKind;
+    set identity_insert storyPoint.tbWorkItemKind off;
+end
+
 if object_id('storyPoint.tbPreserveWorkItemType', 'u') is not null
 begin
     set identity_insert storyPoint.tbWorkItemType on;
     insert into storyPoint.tbWorkItemType (
-        pk, typeCode, typeName, categoryName, description,
+        pk, typeCode, typeName, categoryName, defaultWorkItemKind, description,
         standardStoryPoint, defaultCardDeckPk, estimationStatus,
         lastVotingSessionPk, isActive, createdAt, updatedAt
     )
     select
-        pk, typeCode, typeName, categoryName, description,
+        pk, typeCode, typeName, categoryName, isnull(defaultWorkItemKind, 'project'), description,
         standardStoryPoint, defaultCardDeckPk, estimationStatus,
         lastVotingSessionPk, isActive, createdAt, updatedAt
     from storyPoint.tbPreserveWorkItemType;
@@ -549,17 +649,28 @@ begin
     set identity_insert storyPoint.tbWorkItem on;
     insert into storyPoint.tbWorkItem (
         pk, itemCode, itemTitle, itemDescription, workItemTypePk,
-        sprintName, priorityLevel, defaultTypePoint, storyPoint,
-        isManualAdjusted, adjustmentReason, estimationStatus,
-        executionStatus, dueDate, createdByEmployeePk, isActive,
-        createdAt, updatedAt
+        workItemKind, sprintName, priorityLevel, defaultTypePoint, storyPoint,
+        originalStoryPoint, deductedStoryPoint, isManualAdjusted, adjustmentReason,
+        estimationStatus, executionStatus, startDate, endDate, dueDate,
+        isExpiredProcessed, expiredProcessedAt, expiryNotificationSent,
+        expiryNotificationSentAt, expiryNotificationRecipient,
+        createdByEmployeePk, isActive, createdAt, updatedAt
     )
     select
         pk, itemCode, itemTitle, itemDescription, workItemTypePk,
-        sprintName, priorityLevel, defaultTypePoint, storyPoint,
-        isManualAdjusted, adjustmentReason, estimationStatus,
-        executionStatus, dueDate, createdByEmployeePk, isActive,
-        createdAt, updatedAt
+        isnull(workItemKind, 'project'), sprintName, priorityLevel, defaultTypePoint, storyPoint,
+        originalStoryPoint, isnull(deductedStoryPoint, 0.00), isManualAdjusted, adjustmentReason,
+        estimationStatus, executionStatus,
+        isnull(startDate, cast(createdAt as datetime2(0))),
+        case
+            when endDate is not null then endDate
+            when dueDate is not null then dateadd(second, 86399, cast(dueDate as datetime2(0)))
+            else null
+        end,
+        dueDate,
+        isnull(isExpiredProcessed, 0), expiredProcessedAt, isnull(expiryNotificationSent, 0),
+        expiryNotificationSentAt, expiryNotificationRecipient,
+        createdByEmployeePk, isActive, createdAt, updatedAt
     from storyPoint.tbPreserveWorkItem;
     set identity_insert storyPoint.tbWorkItem off;
 end
@@ -569,13 +680,13 @@ begin
     set identity_insert storyPoint.tbWorkItemAssignment on;
     insert into storyPoint.tbWorkItemAssignment (
         pk, workItemPk, employeePk, assignmentRole, allocationPercent,
-        allocatedStoryPoint, assignmentNote, assignedByEmployeePk,
-        assignedAt, updatedAt
+        allocatedStoryPoint, originalAllocatedStoryPoint, deductedAllocatedStoryPoint,
+        assignmentNote, assignedByEmployeePk, assignedAt, updatedAt
     )
     select
         pk, workItemPk, employeePk, assignmentRole, allocationPercent,
-        allocatedStoryPoint, assignmentNote, assignedByEmployeePk,
-        assignedAt, updatedAt
+        allocatedStoryPoint, originalAllocatedStoryPoint, isnull(deductedAllocatedStoryPoint, 0.00),
+        assignmentNote, assignedByEmployeePk, assignedAt, updatedAt
     from storyPoint.tbPreserveWorkItemAssignment;
     set identity_insert storyPoint.tbWorkItemAssignment off;
 end
@@ -687,6 +798,7 @@ drop table if exists storyPoint.tbPreserveVotingSession;
 drop table if exists storyPoint.tbPreserveWorkItemAssignment;
 drop table if exists storyPoint.tbPreserveWorkItem;
 drop table if exists storyPoint.tbPreserveWorkItemType;
+drop table if exists storyPoint.tbPreserveWorkItemKind;
 drop table if exists storyPoint.tbPreserveCardDeck;
 drop table if exists storyPoint.tbPreserveEmployee;
 drop table if exists storyPoint.tbPreserveDepartment;

@@ -38,6 +38,214 @@ public class sqlDataService
     /// </summary>
     public static readonly string serverBootAuthToken = Guid.NewGuid().ToString("N");
 
+    /// <summary>
+    /// 員工進入獨立盲投 Session 網頁之即時佔用鎖定紀錄（允許同一人同時以多個獨立網頁參與不同 Session，但嚴格禁止重複進入同一個 Session）
+    /// </summary>
+    public sealed class votingSessionPresenceLease
+    {
+        public int employeePk { get; set; }
+        public string employeeName { get; set; } = string.Empty;
+        public int votingSessionPk { get; set; }
+        public string tabInstanceId { get; set; } = string.Empty;
+        public DateTime enteredAtLocal { get; set; }
+        public DateTime lastHeartbeatUtc { get; set; }
+    }
+
+    private static readonly ConcurrentDictionary<string, votingSessionPresenceLease> _activeVotingSessionLeases = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly object _leaseSyncLock = new();
+    private const double _leaseExpirationSeconds = 8.0;
+
+    /// <summary>
+    /// 嘗試進入或續約特定員工對特定盲投議程之獨立網頁佔用鎖定。
+    /// 若同一位員工已在另一個活躍中的獨立網頁進入同一個 votingSessionPk，則拒絕重複進入；
+    /// 若為不同 votingSessionPk 則互不衝突，可同時開啟多個獨立網頁參與不同盲投議程。
+    /// </summary>
+    public static (bool isAllowed, string assignedTabInstanceId, votingSessionPresenceLease? conflictLease) tryEnterOrRefreshVotingSessionLease(
+        int employeePk,
+        string employeeName,
+        int votingSessionPk,
+        string? requestedTabInstanceId,
+        string? reloadTokenTabInstanceId = null)
+    {
+        if (employeePk <= 0 || votingSessionPk <= 0)
+        {
+            return (false, string.Empty, null);
+        }
+
+        string key = $"{employeePk}_{votingSessionPk}";
+        DateTime nowUtc = DateTime.UtcNow;
+
+        lock (_leaseSyncLock)
+        {
+            if (_activeVotingSessionLeases.TryGetValue(key, out var existing))
+            {
+                if ((nowUtc - existing.lastHeartbeatUtc).TotalSeconds > _leaseExpirationSeconds)
+                {
+                    _activeVotingSessionLeases.TryRemove(key, out _);
+                    existing = null;
+                }
+            }
+
+            string cleanReqId = (requestedTabInstanceId ?? string.Empty).Trim();
+            string cleanReloadId = (reloadTokenTabInstanceId ?? string.Empty).Trim();
+
+            if (existing != null)
+            {
+                bool isSameTabInstance = (!string.IsNullOrEmpty(cleanReqId) &&
+                                          string.Equals(existing.tabInstanceId, cleanReqId, StringComparison.OrdinalIgnoreCase))
+                                         || (!string.IsNullOrEmpty(cleanReloadId) &&
+                                             string.Equals(existing.tabInstanceId, cleanReloadId, StringComparison.OrdinalIgnoreCase));
+
+                if (isSameTabInstance)
+                {
+                    existing.lastHeartbeatUtc = nowUtc;
+                    if (!string.IsNullOrWhiteSpace(employeeName))
+                    {
+                        existing.employeeName = employeeName;
+                    }
+                    return (true, existing.tabInstanceId, null);
+                }
+
+                // 同一位員工已在另一個活躍中的獨立網頁進入此 Session，禁止重複進入
+                return (false, string.Empty, existing);
+            }
+
+            string assignedId = !string.IsNullOrEmpty(cleanReqId)
+                ? cleanReqId
+                : ("spTab_" + Guid.NewGuid().ToString("N")[..12]);
+
+            var newLease = new votingSessionPresenceLease
+            {
+                employeePk = employeePk,
+                employeeName = employeeName ?? string.Empty,
+                votingSessionPk = votingSessionPk,
+                tabInstanceId = assignedId,
+                enteredAtLocal = DateTime.Now,
+                lastHeartbeatUtc = nowUtc
+            };
+            _activeVotingSessionLeases[key] = newLease;
+            return (true, assignedId, null);
+        }
+    }
+
+    /// <summary>
+    /// 獨立盲投 Session 網頁定時發送心跳續約鎖定。
+    /// 回傳 (isStillOwner, ownerTabInstanceId)，若為 false 代表該分頁並非合法持有者。
+    /// </summary>
+    public static (bool isOwner, string currentOwnerTabInstanceId) refreshVotingSessionHeartbeat(
+        int employeePk,
+        string employeeName,
+        int votingSessionPk,
+        string? tabInstanceId)
+    {
+        if (employeePk <= 0 || votingSessionPk <= 0 || string.IsNullOrWhiteSpace(tabInstanceId))
+        {
+            return (false, string.Empty);
+        }
+
+        string key = $"{employeePk}_{votingSessionPk}";
+        string cleanId = tabInstanceId.Trim();
+        DateTime nowUtc = DateTime.UtcNow;
+
+        lock (_leaseSyncLock)
+        {
+            if (_activeVotingSessionLeases.TryGetValue(key, out var existing))
+            {
+                if ((nowUtc - existing.lastHeartbeatUtc).TotalSeconds > _leaseExpirationSeconds)
+                {
+                    existing.tabInstanceId = cleanId;
+                    existing.employeeName = employeeName ?? existing.employeeName;
+                    existing.lastHeartbeatUtc = nowUtc;
+                    return (true, cleanId);
+                }
+
+                if (string.Equals(existing.tabInstanceId, cleanId, StringComparison.OrdinalIgnoreCase))
+                {
+                    existing.lastHeartbeatUtc = nowUtc;
+                    return (true, existing.tabInstanceId);
+                }
+
+                return (false, existing.tabInstanceId);
+            }
+
+            var recreated = new votingSessionPresenceLease
+            {
+                employeePk = employeePk,
+                employeeName = employeeName ?? string.Empty,
+                votingSessionPk = votingSessionPk,
+                tabInstanceId = cleanId,
+                enteredAtLocal = DateTime.Now,
+                lastHeartbeatUtc = nowUtc
+            };
+            _activeVotingSessionLeases[key] = recreated;
+            return (true, cleanId);
+        }
+    }
+
+    /// <summary>
+    /// 當使用者關閉或離開獨立盲投 Session 網頁時，立即釋放該 Session 之佔用鎖定
+    /// </summary>
+    public static bool releaseVotingSessionLease(int employeePk, int votingSessionPk, string? tabInstanceId)
+    {
+        if (employeePk <= 0 || votingSessionPk <= 0)
+        {
+            return false;
+        }
+
+        string key = $"{employeePk}_{votingSessionPk}";
+        string cleanId = (tabInstanceId ?? string.Empty).Trim();
+
+        lock (_leaseSyncLock)
+        {
+            if (_activeVotingSessionLeases.TryGetValue(key, out var existing))
+            {
+                if (string.IsNullOrEmpty(cleanId) ||
+                    string.Equals(existing.tabInstanceId, cleanId, StringComparison.OrdinalIgnoreCase))
+                {
+                    _activeVotingSessionLeases.TryRemove(key, out _);
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 取得指定員工目前正在獨立網頁中開啟進行的所有盲投 Session 主鍵清單
+    /// </summary>
+    public static List<int> getActiveLockedSessionPksForEmployee(int employeePk)
+    {
+        var result = new List<int>();
+        if (employeePk <= 0)
+        {
+            return result;
+        }
+
+        DateTime nowUtc = DateTime.UtcNow;
+        string prefix = $"{employeePk}_";
+
+        lock (_leaseSyncLock)
+        {
+            foreach (var kv in _activeVotingSessionLeases)
+            {
+                if (!kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                if ((nowUtc - kv.Value.lastHeartbeatUtc).TotalSeconds <= _leaseExpirationSeconds)
+                {
+                    result.Add(kv.Value.votingSessionPk);
+                }
+                else
+                {
+                    _activeVotingSessionLeases.TryRemove(kv.Key, out _);
+                }
+            }
+        }
+        result.Sort();
+        return result;
+    }
+
     public sqlDataService(IConfiguration configuration, ILogger<sqlDataService> logger)
     {
         _configuration = configuration;
