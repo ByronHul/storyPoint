@@ -1043,6 +1043,20 @@ public class portalController : Controller
         int targetSessionPk = votingSessionPk ?? sessionPk ?? 0;
         string? resolvedTabId = !string.IsNullOrWhiteSpace(tabInstanceId) ? tabInstanceId : formTabInstanceId;
 
+        if (Request.HasFormContentType)
+        {
+            if (targetSessionPk <= 0 &&
+                int.TryParse(Request.Form["sessionPk"].FirstOrDefault() ?? Request.Form["votingSessionPk"].FirstOrDefault(), out int formSpk) &&
+                formSpk > 0)
+            {
+                targetSessionPk = formSpk;
+            }
+            if (string.IsNullOrWhiteSpace(resolvedTabId))
+            {
+                resolvedTabId = Request.Form["tabInstanceId"].FirstOrDefault() ?? Request.Form["formTabInstanceId"].FirstOrDefault();
+            }
+        }
+
         if (targetSessionPk > 0 && empPk > 0)
         {
             sqlDataService.releaseVotingSessionLease(empPk, targetSessionPk, resolvedTabId);
@@ -1050,7 +1064,7 @@ public class portalController : Controller
 
         if (redirectLobby)
         {
-            return Redirect("/?tab=voting&msg=" + Uri.EscapeDataString($"您已離開盲投議程 (#{targetSessionPk}) 獨立網頁並釋放鎖定，可隨時重新進入或參與其他議程。"));
+            return Redirect("/?tab=voting&msg=" + Uri.EscapeDataString($"您已結束盲投議程 (#{targetSessionPk}) 的「參與中」獨立網頁狀態，該議程已移回「📂 待參與」清單。"));
         }
 
         return Json(new
