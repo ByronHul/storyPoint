@@ -1,0 +1,33 @@
+# 忽略作業系統暫存檔
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# 忽略編輯器與 IDE 設定檔
+.vscode/
+.idea/
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# 忽略 .NET 建置輸出目錄
+bin/
+obj/
+publish/
+out/
+
+# 忽略執行期間產生的 Log 檔案與匯出報表
+logs/
+*.log
+reports/
+*.csv
+
+# 忽略開發與測試過程臨時目錄
+temp/
+
+# 忽略含敏感連線字串與金鑰之正式設定檔 (保留 config/config.template.json)
+config.json
+web/storyPointPortal/appsettings.Production.json

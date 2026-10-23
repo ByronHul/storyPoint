@@ -1,0 +1,40 @@
+﻿{
+  "systemSetting": {
+    "applicationName": "azureStoryPointSystem",
+    "environmentName": "development",
+    "portalBaseUrl": "https://localhost:5088",
+    "uiMode": "full",
+    "defaultCardDeckCode": "fibonacciStandard"
+  },
+  "databaseSetting": {
+    "serverName": "localhost",
+    "databaseName": "storyPointDb",
+    "applicationName": "azureStoryPointSystem",
+    "useIntegratedSecurity": true,
+    "encryptedConnectionString": "",
+    "plainConnectionStringForDev": "Server=localhost;Database=storyPointDb;Integrated Security=True;Application Name=azureStoryPointSystem;TrustServerCertificate=True;",
+    "commandTimeoutSecond": 60,
+    "maxRetryCount": 3,
+    "retryDelayMillisecond": 1500
+  },
+  "azureSetting": {
+    "resourceGroupName": "storyPoint",
+    "location": "eastasia",
+    "sqlServerName": "sql-storypoint-964764",
+    "sqlDatabaseName": "storyPointDb",
+    "appServicePlanName": "asp-storypoint-964764",
+    "webAppName": "app-storypoint-964764"
+  },
+  "securitySetting": {
+    "passwordSaltKey": "storyPointEnterpriseSalt2026",
+    "sessionTimeoutMinute": 480,
+    "cookieName": "storyPointAuthSession"
+  },
+  "logSetting": {
+    "logLevel": 4,
+    "enableDbLog": true,
+    "enableCsvLog": true,
+    "logDirectory": "logs",
+    "reportOutputDirectory": "reports"
+  }
+}
