@@ -183,6 +183,10 @@
     1. **新議程自動偵測與自動切換呈現**：當有新的屬於該成員的投票議程建立（或既有議程新增該成員至參與名單）時，前端透過 SignalR (`sessionCreated` / `roundSettingUpdated`) 與 `GET /voting/liveStatus` 全議程清單比對 (`allSessionPks` / `sessionListSignature`) 自動偵測，立即自動更新並切換畫面以呈現新的投票議程。
     2. **提供手動重新整理 (`🔄 重新整理`) 按鈕**：於左側「📌 投票議程清單」標題列與右側投票議程桌面提供「`🔄 重新整理` / `🔄 重新整理議程`」按鈕 (`refreshVotingSessionsNow`)，點擊後立即向後端查詢並重新載入屬於該成員的最新投票議程清單與桌面。
     3. **「📁 已拍板定案議程」預設一律收合**：左側投票議程清單中之「`📁 已拍板定案議程`」資料夾 (`#folder-finalized`) 及其內部邊項詳情預設一律收合 (`collapsed`)，讓畫面聚焦於「`📂 投票中與討論中議程`」。
+* **盲投回合設定外鍵完整性防呆與零代表類型/零工項時自動建立估算標的機制**：
+    1. **前端下拉選單支援自動建立新代表類型/新工項**：於「`⚙️ 1-2. 設定盲投回合`」頁面中，「目標工項代表類型 (`#setupWorkItemTypePk`)」與「目標特定工項 (`#setupWorkItemPk`)」下拉選單除列出既有項目外，固定提供「`➕ 依下方「盲投議程標題」自動建立新工項代表類型`」與「`➕ 依下方「盲投議程標題」自動建立新實際工項`」選項（`value='0'`），即使資料庫處於 `0 種代表類型` 或 `0 個實際工項` 的初始狀態，下拉選單亦不會空白且可直接發起盲投議程。
+    2. **Stored Procedure (`storyPoint.spCreateVotingSession` 等) 完整外鍵防呆**：執行建立或更新盲投議程時，自動驗證 `@workItemTypePk`、`@workItemPk`、`@cardDeckPk`、`@hostEmployeePk` 是否存在於對應主表；若未選擇、傳入 `0`/`null` 或因舊分頁殘留失效主鍵，系統自動依 `@sessionTitle` 比對同名代表類型/工項或自動新增對應之 `storyPoint.tbWorkItemType` / `storyPoint.tbWorkItem` 紀錄並綁定新 `pk`，徹底杜絕 `fkTbVotingSessionWorkItemType` 等外鍵衝突錯誤。
+    3. **支援修改既有議程時清空重設當前盲投回合選票 (`@resetCurrentRoundVotes`)**：勾選「修改既有議程時，一併清空本回合出牌重新盲投」時，自動清除當前回合已投出之撲克牌紀錄並將回合狀態重設為 `voting`。
 
 ---
 
