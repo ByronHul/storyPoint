@@ -214,7 +214,7 @@ create table storyPoint.tbLog (
     logTime datetime2(3) not null constraint dfTbLogLogTime default (sysdatetime()),
     logLevel tinyint not null constraint dfTbLogLogLevel default (3),
     sourceName varchar(128) not null,
-    objectName varchar(128) not null,
+    objectName nvarchar(128) not null,
     durationMillisecond int not null constraint dfTbLogDuration default (0),
     executionResult nvarchar(256) not null,
     errorCode int null,

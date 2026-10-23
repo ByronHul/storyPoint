@@ -37,7 +37,7 @@ go
 create or alter procedure storyPoint.spWriteLog
     @logLevel tinyint = 3,
     @sourceName varchar(128) = 'tsql',
-    @objectName varchar(128),
+    @objectName nvarchar(128),
     @durationMillisecond int = 0,
     @executionResult nvarchar(256),
     @errorCode int = null,
@@ -58,7 +58,7 @@ begin
                 sysdatetime(),
                 @logLevel,
                 isnull(@sourceName, 'tsql'),
-                isnull(@objectName, 'unknown'),
+                isnull(@objectName, N'unknown'),
                 isnull(@durationMillisecond, 0),
                 isnull(@executionResult, N'完成'),
                 @errorCode,
@@ -813,12 +813,20 @@ begin
             where typeCode = @typeCode;
         end
 
-        if isnull(@defaultCardDeckPk, 0) <= 0
+        if isnull(@defaultCardDeckPk, 0) <= 0 or not exists (select 1 from storyPoint.tbCardDeck where pk = @defaultCardDeckPk)
         begin
             select top 1 @defaultCardDeckPk = pk
             from storyPoint.tbCardDeck
             where isActive = 1
             order by isDefault desc, pk asc;
+        end
+
+        if @changedByEmployeePk is not null and not exists (select 1 from storyPoint.tbEmployee where pk = @changedByEmployeePk)
+        begin
+            set @changedByEmployeePk = null;
+            select top 1 @changedByEmployeePk = pk
+            from storyPoint.tbEmployee
+            where loginAccount = @operatorAccount;
         end
 
         if isnull(@targetPk, 0) > 0 and exists (select 1 from storyPoint.tbWorkItemType where pk = @targetPk)
@@ -1043,7 +1051,7 @@ begin
             where itemCode = @itemCode;
         end
 
-        if isnull(@workItemTypePk, 0) > 0
+        if isnull(@workItemTypePk, 0) > 0 and exists (select 1 from storyPoint.tbWorkItemType where pk = @workItemTypePk)
         begin
             select @typeStandardPoint = standardStoryPoint
             from storyPoint.tbWorkItemType
@@ -1052,6 +1060,14 @@ begin
         else
         begin
             set @workItemTypePk = null;
+        end
+
+        if @createdByEmployeePk is not null and not exists (select 1 from storyPoint.tbEmployee where pk = @createdByEmployeePk)
+        begin
+            set @createdByEmployeePk = null;
+            select top 1 @createdByEmployeePk = pk
+            from storyPoint.tbEmployee
+            where loginAccount = @operatorAccount;
         end
 
         -- 決定最終 Story Point：若未傳入 @storyPoint 或與代表類型標準點數相同且未強制手動調整，則自動帶入代表類型點數
@@ -1238,6 +1254,13 @@ begin
     declare @allocatedPoint decimal(8,2) = 0.00;
 
     begin try
+        if @assignedByEmployeePk is not null and not exists (select 1 from storyPoint.tbEmployee where pk = @assignedByEmployeePk)
+        begin
+            select top 1 @assignedByEmployeePk = pk
+            from storyPoint.tbEmployee
+            where loginAccount = @operatorAccount;
+        end
+
         select @workItemPoint = storyPoint
         from storyPoint.tbWorkItem
         where pk = @workItemPk;
@@ -1378,10 +1401,12 @@ go
     @voteCommentPolicy      varchar(32)    : 出牌理由規範 ('optional','requiredAll','requiredExtreme')
     @restrictToParticipant  bit            : 是否僅限勾選之授權參與人員出牌
     @roundGoalNote          nvarchar(1024) : 本回合估算範圍與驗收重點提示說明
+    @resetCurrentRoundVotes bit            : 更新既有議程設定時是否一併清空並重設當前盲投回合已投出之選票
     @operatorAccount        varchar(128)   : 操作者帳號
 修改歷程:
     2026-10-23 初版建立
     2026-10-23 擴充支援盲投回合完整設定選項與既有議程設定更新
+    2026-10-23 強化外鍵完整性防呆與零工項代表類型/零實際工項時自動建立估算標的機制
 */
 create or alter procedure storyPoint.spCreateVotingSession
     @votingSessionPk int = null,
@@ -1404,6 +1429,7 @@ create or alter procedure storyPoint.spCreateVotingSession
     @voteCommentPolicy varchar(32) = 'optional',
     @restrictToParticipant bit = 1,
     @roundGoalNote nvarchar(1024) = null,
+    @resetCurrentRoundVotes bit = 0,
     @operatorAccount varchar(128) = 'system'
 as
 begin
@@ -1423,17 +1449,88 @@ begin
             set @cleanMax = @tmpPt;
         end
 
-        if isnull(@cardDeckPk, 0) <= 0
+        if isnull(@cardDeckPk, 0) <= 0 or not exists (select 1 from storyPoint.tbCardDeck where pk = @cardDeckPk)
         begin
             select top 1 @cardDeckPk = pk
             from storyPoint.tbCardDeck
             where isActive = 1
             order by isDefault desc, pk asc;
+
+            if isnull(@cardDeckPk, 0) <= 0
+            begin
+                insert into storyPoint.tbCardDeck (
+                    deckCode, deckName, cardValueCsv, description, isDefault, isActive, createdAt, updatedAt
+                )
+                values (
+                    'FIBO_STD', N'標準費氏數列撲克牌', '0,0.5,1,2,3,5,8,13,21,34,55,89,?,☕',
+                    N'Scrum Planning Poker 標準費氏數列牌組', 1, 1, sysdatetime(), sysdatetime()
+                );
+                set @cardDeckPk = scope_identity();
+            end
+        end
+
+        if isnull(@hostEmployeePk, 0) <= 0 or not exists (select 1 from storyPoint.tbEmployee where pk = @hostEmployeePk)
+        begin
+            set @hostEmployeePk = null;
+            select top 1 @hostEmployeePk = pk
+            from storyPoint.tbEmployee
+            where loginAccount = @operatorAccount
+            order by isActive desc, pk asc;
+
+            if @hostEmployeePk is null
+            begin
+                select top 1 @hostEmployeePk = pk
+                from storyPoint.tbEmployee
+                order by isActive desc, case when roleName = 'admin' then 0 else 1 end asc, pk asc;
+            end
         end
 
         if @targetKind = 'workItemType'
         begin
             set @workItemPk = null;
+
+            if isnull(@workItemTypePk, 0) <= 0 or not exists (select 1 from storyPoint.tbWorkItemType where pk = @workItemTypePk)
+            begin
+                set @workItemTypePk = null;
+                declare @autoTypeName nvarchar(128) = ltrim(rtrim(replace(replace(isnull(@sessionTitle, N''), N'【代表類型估算】', N''), N'標準點數訂定', N'')));
+                if @autoTypeName = N''
+                begin
+                    set @autoTypeName = N'未命名工項代表類型';
+                end
+
+                select top 1 @workItemTypePk = pk
+                from storyPoint.tbWorkItemType
+                where typeName = @autoTypeName
+                order by isActive desc, pk desc;
+
+                if @workItemTypePk is null
+                begin
+                    declare @autoTypeCode varchar(64) = 'TYPE_' + format(sysdatetime(), 'yyyyMMddHHmmss');
+                    if exists (select 1 from storyPoint.tbWorkItemType where typeCode = @autoTypeCode)
+                    begin
+                        set @autoTypeCode = @autoTypeCode + '_' + right(cast(abs(checksum(newid())) as varchar(16)), 3);
+                    end
+
+                    insert into storyPoint.tbWorkItemType (
+                        typeCode, typeName, categoryName, description,
+                        standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
+                    )
+                    values (
+                        @autoTypeCode,
+                        left(@autoTypeName, 128),
+                        N'一般代表類型',
+                        isnull(nullif(ltrim(rtrim(@roundGoalNote)), N''), N'由盲投回合設定自動建立之工項代表類型'),
+                        null,
+                        @cardDeckPk,
+                        'voting',
+                        1,
+                        sysdatetime(),
+                        sysdatetime()
+                    );
+                    set @workItemTypePk = scope_identity();
+                end
+            end
+
             update storyPoint.tbWorkItemType
             set estimationStatus = 'voting',
                 updatedAt = sysdatetime()
@@ -1443,6 +1540,83 @@ begin
         begin
             set @targetKind = 'workItem';
             set @workItemTypePk = null;
+
+            if isnull(@workItemPk, 0) <= 0 or not exists (select 1 from storyPoint.tbWorkItem where pk = @workItemPk)
+            begin
+                set @workItemPk = null;
+                declare @autoItemTitle nvarchar(256) = ltrim(rtrim(replace(isnull(@sessionTitle, N''), N'【特定工項估算】', N'')));
+                if @autoItemTitle = N''
+                begin
+                    set @autoItemTitle = N'未命名實際工項';
+                end
+
+                select top 1 @workItemPk = pk
+                from storyPoint.tbWorkItem
+                where itemTitle = @autoItemTitle
+                order by isActive desc, pk desc;
+
+                if @workItemPk is null
+                begin
+                    declare @fallbackTypePk int = null;
+                    select top 1 @fallbackTypePk = pk
+                    from storyPoint.tbWorkItemType
+                    where isActive = 1
+                    order by pk asc;
+
+                    if @fallbackTypePk is null
+                    begin
+                        declare @fallbackTypeCode varchar(64) = 'TYPE_DEF_' + format(sysdatetime(), 'yyyyMMddHHmmss');
+                        insert into storyPoint.tbWorkItemType (
+                            typeCode, typeName, categoryName, description,
+                            standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
+                        )
+                        values (
+                            @fallbackTypeCode,
+                            N'通用預設工項代表類型',
+                            N'一般代表類型',
+                            N'系統自動建立之預設工項代表類型',
+                            null,
+                            @cardDeckPk,
+                            'pendingVote',
+                            1,
+                            sysdatetime(),
+                            sysdatetime()
+                        );
+                        set @fallbackTypePk = scope_identity();
+                    end
+
+                    declare @autoItemCode varchar(64) = 'WI-' + format(sysdatetime(), 'yyyyMMdd-HHmmss');
+                    if exists (select 1 from storyPoint.tbWorkItem where itemCode = @autoItemCode)
+                    begin
+                        set @autoItemCode = @autoItemCode + '-' + right(cast(abs(checksum(newid())) as varchar(16)), 3);
+                    end
+
+                    insert into storyPoint.tbWorkItem (
+                        itemCode, itemTitle, itemDescription, workItemTypePk, sprintName,
+                        priorityLevel, defaultTypePoint, storyPoint, isManualAdjusted,
+                        estimationStatus, executionStatus, createdByEmployeePk, isActive, createdAt, updatedAt
+                    )
+                    values (
+                        @autoItemCode,
+                        left(@autoItemTitle, 256),
+                        isnull(nullif(ltrim(rtrim(@roundGoalNote)), N''), N'由盲投回合設定自動建立之實際工項'),
+                        @fallbackTypePk,
+                        N'待排程 Sprint',
+                        'P2',
+                        0.00,
+                        0.00,
+                        0,
+                        'voting',
+                        'backlog',
+                        @hostEmployeePk,
+                        1,
+                        sysdatetime(),
+                        sysdatetime()
+                    );
+                    set @workItemPk = scope_identity();
+                end
+            end
+
             update storyPoint.tbWorkItem
             set estimationStatus = 'voting',
                 updatedAt = sysdatetime()
@@ -1471,6 +1645,42 @@ begin
                 updatedAt = sysdatetime()
             where pk = @sessionPk;
 
+            if isnull(@resetCurrentRoundVotes, 0) = 1
+            begin
+                declare @resetRoundNum int = 1;
+                declare @resetRoundPk int = 0;
+
+                select @resetRoundNum = currentRoundNumber
+                from storyPoint.tbVotingSession
+                where pk = @sessionPk;
+
+                select @resetRoundPk = pk
+                from storyPoint.tbVotingRound
+                where votingSessionPk = @sessionPk
+                  and roundNumber = @resetRoundNum;
+
+                if @resetRoundPk > 0
+                begin
+                    delete from storyPoint.tbVoteRecord
+                    where votingRoundPk = @resetRoundPk;
+
+                    update storyPoint.tbVotingRound
+                    set roundStatus = 'voting',
+                        voteCount = 0,
+                        averagePoint = null,
+                        minPoint = null,
+                        maxPoint = null,
+                        revealedAt = null,
+                        startedAt = sysdatetime()
+                    where pk = @resetRoundPk;
+                end
+
+                update storyPoint.tbVotingSession
+                set sessionStatus = 'voting',
+                    updatedAt = sysdatetime()
+                where pk = @sessionPk;
+            end
+
             delete from storyPoint.tbVotingSessionParticipant
             where votingSessionPk = @sessionPk;
         end
@@ -1479,6 +1689,10 @@ begin
             if isnull(ltrim(rtrim(@sessionCode)), '') = ''
             begin
                 set @sessionCode = 'VOTE-' + format(sysdatetime(), 'yyyyMMdd-HHmmss');
+            end
+            if exists (select 1 from storyPoint.tbVotingSession where sessionCode = @sessionCode)
+            begin
+                set @sessionCode = @sessionCode + '-' + right(cast(abs(checksum(newid())) as varchar(16)), 3);
             end
 
             insert into storyPoint.tbVotingSession (
@@ -1568,7 +1782,7 @@ begin
         from storyPoint.tbVotingSession
         where pk = @sessionPk;
 
-        if @curSessStatus = 'voting'
+        if @curSessStatus = 'voting' and isnull(@autoRevealWhenAllVoted, 1) = 1
         begin
             select @curRoundPk = pk
             from storyPoint.tbVotingRound
@@ -1710,6 +1924,15 @@ begin
     declare @cleanComment nvarchar(512) = ltrim(rtrim(isnull(@voteComment, N'')));
 
     begin try
+        if isnull(@employeePk, 0) <= 0 or not exists (select 1 from storyPoint.tbEmployee where pk = @employeePk)
+        begin
+            select top 1 @employeePk = pk
+            from storyPoint.tbEmployee
+            where loginAccount = @operatorAccount
+              and isActive = 1
+            order by pk asc;
+        end
+
         select
             @currentRound = currentRoundNumber,
             @sessionStatus = sessionStatus,
@@ -1980,6 +2203,14 @@ begin
     declare @oldPoint decimal(8,2) = null;
 
     begin try
+        if @operatorEmployeePk is not null and not exists (select 1 from storyPoint.tbEmployee where pk = @operatorEmployeePk)
+        begin
+            set @operatorEmployeePk = null;
+            select top 1 @operatorEmployeePk = pk
+            from storyPoint.tbEmployee
+            where loginAccount = @operatorAccount;
+        end
+
         select
             @currentRound = currentRoundNumber,
             @targetKind = targetKind,
@@ -2331,8 +2562,8 @@ begin
           and (@workItemPk is null or v.workItemPk = @workItemPk)
           and (
               @isViewerAdmin = 1
-              or v.targetKind = 'workItemType'
               or v.restrictToParticipant = 0
+              or v.hostEmployeePk = @viewerEmployeePk
               or exists (
                   select 1
                   from storyPoint.tbVotingSessionParticipant as vsp
@@ -2345,9 +2576,19 @@ begin
                   where wia.workItemPk = v.workItemPk
                     and wia.employeePk = @viewerEmployeePk
               )
+              or exists (
+                  select 1
+                  from storyPoint.tbVoteRecord as vrec
+                  where vrec.votingSessionPk = v.votingSessionPk
+                    and vrec.employeePk = @viewerEmployeePk
+              )
           )
         order by
-            case when v.sessionStatus in ('voting', 'revealed') then 0 else 1 end asc,
+            case
+                when v.sessionStatus = 'voting' then 0
+                when v.sessionStatus = 'revealed' then 1
+                else 2
+            end asc,
             v.votingSessionPk desc;
 
         -- Result Set 2: 各回合統計紀錄 (盲投進行中隱藏統計分數；一旦翻牌揭曉或定案，所有參與者畫面皆顯示翻牌統計結果)

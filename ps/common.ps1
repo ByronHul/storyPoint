@@ -360,7 +360,7 @@ function writeSystemLog {
                 try {
                     $conn.open()
                     $cmd = $conn.createcommand()
-                    $cmd.commandtext = "exec sp_executesql N'exec storyPoint.spWriteLog @logLevel = @pLevel, @sourceName = @pSource, @objectName = @pObj, @durationMillisecond = @pDur, @executionResult = @pRes, @errorCode = @pErrCode, @errorLine = @pErrLine, @errorMessage = @pErrMsg, @operatorAccount = @pOp', N'@pLevel tinyint, @pSource varchar(128), @pObj varchar(128), @pDur int, @pRes nvarchar(256), @pErrCode int, @pErrLine int, @pErrMsg nvarchar(max), @pOp varchar(128)', @pLevel = @pLevel, @pSource = @pSource, @pObj = @pObj, @pDur = @pDur, @pRes = @pRes, @pErrCode = @pErrCode, @pErrLine = @pErrLine, @pErrMsg = @pErrMsg, @pOp = @pOp"
+                    $cmd.commandtext = "exec sp_executesql N'exec storyPoint.spWriteLog @logLevel = @pLevel, @sourceName = @pSource, @objectName = @pObj, @durationMillisecond = @pDur, @executionResult = @pRes, @errorCode = @pErrCode, @errorLine = @pErrLine, @errorMessage = @pErrMsg, @operatorAccount = @pOp', N'@pLevel tinyint, @pSource varchar(128), @pObj nvarchar(128), @pDur int, @pRes nvarchar(256), @pErrCode int, @pErrLine int, @pErrMsg nvarchar(max), @pOp varchar(128)', @pLevel = @pLevel, @pSource = @pSource, @pObj = @pObj, @pDur = @pDur, @pRes = @pRes, @pErrCode = @pErrCode, @pErrLine = @pErrLine, @pErrMsg = @pErrMsg, @pOp = @pOp"
                     $null = $cmd.parameters.addwithvalue('@pLevel', [byte]$logLevel)
                     $null = $cmd.parameters.addwithvalue('@pSource', $sourceScript)
                     $null = $cmd.parameters.addwithvalue('@pObj', $objectName)

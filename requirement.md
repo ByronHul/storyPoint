@@ -151,6 +151,10 @@
         * 提供三種測試情境（情境 A：Controller 執行期例外、情境 B：SQL Stored Procedure 參數異常、情境 C：全域 Middleware 未預期嚴重例外），讓管理者隨時驗證系統發生錯誤時不會當掉且完整寫入 Log。
     4. **系統 Log 三格式報表匯出 (`/export/report?type=log&format=csv|excel|html`)**：
         * 支援將系統與錯誤 Log 匯出為 **CSV**、**Excel (`.xlsx`)** 與 **互動式 HTML 報表（含排序、篩選、群組彙總與表頭鎖定）**。
+    5. **系統 Log 清單 (`#sysLogDataTable`) 緊湊置頂排版與可摺疊 StackTrace 呈現**：
+        * 所有資料儲存格 (`td`) 強制採用 `vertical-align: top`，並透過 `.syslog-row-err td` / `.syslog-row-warn td` 呈現錯誤紅底與警告黃底，避免超長錯誤訊息搭配 `vertical-align: middle` 導致前段欄位在可視區呈現大片空白。
+        * 錯誤訊息若包含長篇 `StackTrace` 或超過 160 字，上方先顯示精簡錯誤摘要，完整堆疊明細收納於 `<details><summary>🔍 點擊展開 StackTrace 錯誤堆疊明細</summary>...</details>`，並限制 `執行物件 / 端點` 與 `執行結果` 欄寬自動換行，確保開啟 Log 查詢頁籤時表頭下方立即完整呈現多筆 Log 紀錄。
+        * `storyPoint.tbLog.objectName` 與 `storyPoint.spWriteLog.@objectName` 採用 `nvarchar(128)`，確保繁體中文作業名稱寫入資料庫時不產生問號亂碼。
 
 ### 2.10 表單欄位單行精簡 Caption 對齊與滑鼠移入浮動 Tips 說明 (Single-Line Form Captions & Hover Floating Tooltips)
 * **禁止欄位標題 (Caption / Label) 換成兩行導致水平輸入框不對齊**：
@@ -175,6 +179,10 @@
     1. **盲投階段 (`sessionStatus = 'voting'`)**：撲克牌桌 (`voter-grid`) 與出牌明細中，除本人外其他已投票參與者一律顯示 `🎴 已出牌(盲投蓋牌)` 與 `(待全員投票後自動翻牌)`，維持盲投公平性。
     2. **全員投完翻牌後 (`sessionStatus in ('revealed', 'finalized')`)**：不論是管理者 (`admin`) 或一般參與者 (`participant`)，所有人的投票桌面 (`voter-grid`)、當回合統計橫幅（算術平均、最低分、最高分、分歧落差、共識規則建議點數）以及回合出牌紀錄皆同步翻開，顯示每位參與者投出的點數與估算理由（註：個人被指派工項與個人總 Story Point 統計仍維持個人隱私保護，僅本人與管理者可見）。
     3. **跨瀏覽器自動即時翻牌 (SignalR Push + Live Status Polling 雙重保障)**：當最後一位參與者送出選票觸發自動翻牌時，系統同時透過 SignalR (`onVotingSessionUpdated` 之 `autoRevealed` 事件) 與前端每 2 秒輕量狀態輪詢 (`GET /voting/liveStatus`) 偵測狀態變更，無須使用者手動點擊按鈕，所有已開啟之參與者與管理者畫面皆自動刷新並翻開撲克牌。
+* **新投票議程自動更新、手動重新整理 (Refresh) 與已拍板定案議程預設收合**：
+    1. **新議程自動偵測與自動切換呈現**：當有新的屬於該成員的投票議程建立（或既有議程新增該成員至參與名單）時，前端透過 SignalR (`sessionCreated` / `roundSettingUpdated`) 與 `GET /voting/liveStatus` 全議程清單比對 (`allSessionPks` / `sessionListSignature`) 自動偵測，立即自動更新並切換畫面以呈現新的投票議程。
+    2. **提供手動重新整理 (`🔄 重新整理`) 按鈕**：於左側「📌 投票議程清單」標題列與右側投票議程桌面提供「`🔄 重新整理` / `🔄 重新整理議程`」按鈕 (`refreshVotingSessionsNow`)，點擊後立即向後端查詢並重新載入屬於該成員的最新投票議程清單與桌面。
+    3. **「📁 已拍板定案議程」預設一律收合**：左側投票議程清單中之「`📁 已拍板定案議程`」資料夾 (`#folder-finalized`) 及其內部邊項詳情預設一律收合 (`collapsed`)，讓畫面聚焦於「`📂 投票中與討論中議程`」。
 
 ---
 
