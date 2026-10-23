@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Azure 多人參與 Story Point 系統 - 多 Tab 圖形化管理主介面 (uiMain.ps1)
 .DESCRIPTION
@@ -158,6 +158,157 @@ begin {
         }
         return $null
     }
+
+    <#
+    .SYNOPSIS
+        顯示員工自助修改個人登入帳號與密碼對話框，支援每個人修改自己的帳/密
+    #>
+    function showChangeOwnCredentialDialog {
+        param(
+            [parameter(mandatory = $true)]
+            [string]$empScriptPath,
+            [parameter(mandatory = $true)]
+            [int]$employeePk,
+            [parameter(mandatory = $true)]
+            [string]$currentLoginAccount,
+            [parameter(mandatory = $true)]
+            [string]$employeeName
+        )
+
+        $credForm = new-object system.windows.forms.form
+        $credForm.text = "修改我的個人登入帳號與密碼 - $employeeName"
+        $credForm.size = new-object system.drawing.size(460, 350)
+        $credForm.startposition = 'CenterParent'
+        $credForm.formborderstyle = 'FixedDialog'
+        $credForm.maximizebox = $false
+        $credForm.minimizebox = $false
+        $credForm.font = new-object system.drawing.font('Microsoft JhengHei UI', 9.5)
+
+        $hdrPanel = new-object system.windows.forms.panel
+        $hdrPanel.dock = 'Top'
+        $hdrPanel.height = 50
+        $hdrPanel.backcolor = [system.drawing.color]::fromargb(30, 58, 138)
+
+        $lblHdr = new-object system.windows.forms.label
+        $lblHdr.text = "🔑 修改我的登入帳號與密碼 ($employeeName)"
+        $lblHdr.forecolor = [system.drawing.color]::white
+        $lblHdr.font = new-object system.drawing.font('Microsoft JhengHei UI', 11.5, [system.drawing.fontstyle]::Bold)
+        $lblHdr.autosize = $true
+        $lblHdr.location = new-object system.drawing.point(16, 13)
+        $hdrPanel.controls.add($lblHdr)
+
+        $lblNewAcc = new-object system.windows.forms.label
+        $lblNewAcc.text = '我的登入帳號：'
+        $lblNewAcc.location = new-object system.drawing.point(22, 72)
+        $lblNewAcc.autosize = $true
+
+        $txtNewAcc = new-object system.windows.forms.textbox
+        $txtNewAcc.location = new-object system.drawing.point(145, 68)
+        $txtNewAcc.width = 270
+        $txtNewAcc.text = $currentLoginAccount
+
+        $lblNewPwd = new-object system.windows.forms.label
+        $lblNewPwd.text = '新登入密碼：'
+        $lblNewPwd.location = new-object system.drawing.point(22, 114)
+        $lblNewPwd.autosize = $true
+
+        $txtNewPwd = new-object system.windows.forms.textbox
+        $txtNewPwd.location = new-object system.drawing.point(145, 110)
+        $txtNewPwd.width = 270
+        $txtNewPwd.useSystemPasswordChar = $true
+        $txtNewPwd.text = ''
+
+        $lblConfirmPwd = new-object system.windows.forms.label
+        $lblConfirmPwd.text = '確認新密碼：'
+        $lblConfirmPwd.location = new-object system.drawing.point(22, 156)
+        $lblConfirmPwd.autosize = $true
+
+        $txtConfirmPwd = new-object system.windows.forms.textbox
+        $txtConfirmPwd.location = new-object system.drawing.point(145, 152)
+        $txtConfirmPwd.width = 270
+        $txtConfirmPwd.useSystemPasswordChar = $true
+        $txtConfirmPwd.text = ''
+
+        $chkShowPwd = new-object system.windows.forms.checkbox
+        $chkShowPwd.text = '👁️ 顯示輸入的密碼內容（若僅修改帳號可將密碼留空）'
+        $chkShowPwd.location = new-object system.drawing.point(145, 186)
+        $chkShowPwd.autosize = $true
+        $chkShowPwd.add_checkedchanged({
+            $hide = -not $chkShowPwd.checked
+            $txtNewPwd.useSystemPasswordChar = $hide
+            $txtConfirmPwd.useSystemPasswordChar = $hide
+        })
+
+        $lblMsg = new-object system.windows.forms.label
+        $lblMsg.text = ''
+        $lblMsg.forecolor = [system.drawing.color]::fromargb(185, 28, 28)
+        $lblMsg.location = new-object system.drawing.point(22, 216)
+        $lblMsg.size = new-object system.drawing.size(400, 30)
+
+        $btnSaveSelf = new-object system.windows.forms.button
+        $btnSaveSelf.text = '💾 儲存修改我的帳密'
+        $btnSaveSelf.location = new-object system.drawing.point(145, 254)
+        $btnSaveSelf.size = new-object system.drawing.size(160, 34)
+        $btnSaveSelf.backcolor = [system.drawing.color]::fromargb(37, 99, 235)
+        $btnSaveSelf.forecolor = [system.drawing.color]::white
+
+        $btnCloseSelf = new-object system.windows.forms.button
+        $btnCloseSelf.text = '取消'
+        $btnCloseSelf.location = new-object system.drawing.point(315, 254)
+        $btnCloseSelf.size = new-object system.drawing.size(100, 34)
+        $btnCloseSelf.dialogresult = [system.windows.forms.dialogresult]::Cancel
+
+        $script:updatedSelfRow = $null
+
+        $btnSaveSelf.add_click({
+            $accVal = $txtNewAcc.text.trim()
+            $pwdVal = $txtNewPwd.text.trim()
+            $cfmVal = $txtConfirmPwd.text.trim()
+
+            if ([string]::isnullorempty($accVal)) {
+                $lblMsg.text = '⚠️ 登入帳號不可為空白！'
+                return
+            }
+            if ($pwdVal -ne $cfmVal) {
+                $lblMsg.text = '⚠️ 兩次輸入的新密碼不一致，請重新確認！'
+                return
+            }
+            if ($accVal -eq $currentLoginAccount -and [string]::isnullorempty($pwdVal)) {
+                $lblMsg.text = '⚠️ 請輸入新的登入帳號或新的登入密碼！'
+                return
+            }
+
+            try {
+                $dt = & $empScriptPath -actionType 'updateSelfCredential' `
+                    -employeePk $employeePk `
+                    -newLoginAccount $accVal `
+                    -plainPassword $pwdVal `
+                    -operatorAccount $currentLoginAccount
+                if ($null -ne $dt -and $dt.rows.count -gt 0) {
+                    $script:updatedSelfRow = $dt.rows[0]
+                    $credForm.dialogresult = [system.windows.forms.dialogresult]::OK
+                    $credForm.close()
+                }
+            }
+            catch {
+                $lblMsg.text = "⚠️ 修改失敗：$($_.exception.message)"
+            }
+        })
+
+        $credForm.acceptbutton = $btnSaveSelf
+        $credForm.cancelbutton = $btnCloseSelf
+        $credForm.controls.addrange(@(
+            $hdrPanel, $lblNewAcc, $txtNewAcc, $lblNewPwd, $txtNewPwd,
+            $lblConfirmPwd, $txtConfirmPwd, $chkShowPwd, $lblMsg,
+            $btnSaveSelf, $btnCloseSelf
+        ))
+
+        $res = $credForm.showdialog()
+        if ($res -eq [system.windows.forms.dialogresult]::OK -and $null -ne $script:updatedSelfRow) {
+            return $script:updatedSelfRow
+        }
+        return $null
+    }
 }
 
 process {
@@ -196,6 +347,7 @@ process {
         }
     }
 
+    $currentEmpPk = [int]$loggedInEmployee.employeePk
     $currentEmpName = [string]$loggedInEmployee.employeeName
     $currentLoginAcc = [string]$loggedInEmployee.loginAccount
     $currentRoleName = [string]$loggedInEmployee.roleName
@@ -214,12 +366,34 @@ process {
     $topPanel.backcolor = [system.drawing.color]::fromargb(15, 23, 42)
 
     $lblTitle = new-object system.windows.forms.label
-    $lblTitle.text = "🃏 Azure 多人參與 Story Point 估算系統 ($modeTitle) ｜ 👤 $currentEmpName ($currentDeptName / $currentRoleName)"
+    $lblTitle.text = "🃏 Azure 多人參與 Story Point 估算系統 ($modeTitle) ｜ 👤 $currentEmpName ($currentLoginAcc / $currentDeptName / $currentRoleName)"
     $lblTitle.forecolor = [system.drawing.color]::white
     $lblTitle.font = new-object system.drawing.font('Microsoft JhengHei UI', 11.5, [system.drawing.fontstyle]::Bold)
     $lblTitle.autosize = $true
     $lblTitle.location = new-object system.drawing.point(16, 11)
     $topPanel.controls.add($lblTitle)
+
+    $btnChangeMyAccount = new-object system.windows.forms.button
+    $btnChangeMyAccount.text = '🔑 修改我的帳密'
+    $btnChangeMyAccount.size = new-object system.drawing.size(150, 30)
+    $btnChangeMyAccount.location = new-object system.drawing.point(1015, 8)
+    $btnChangeMyAccount.anchor = 'Top, Right'
+    $btnChangeMyAccount.backcolor = [system.drawing.color]::fromargb(37, 99, 235)
+    $btnChangeMyAccount.forecolor = [system.drawing.color]::white
+    $btnChangeMyAccount.add_click({
+        $updatedRow = showChangeOwnCredentialDialog -empScriptPath $empScriptPath `
+            -employeePk $currentEmpPk -currentLoginAccount $currentLoginAcc -employeeName $currentEmpName
+        if ($null -ne $updatedRow) {
+            $script:currentLoginAcc = [string]$updatedRow.loginAccount
+            $currentLoginAcc = [string]$updatedRow.loginAccount
+            $lblTitle.text = "🃏 Azure 多人參與 Story Point 估算系統 ($modeTitle) ｜ 👤 $currentEmpName ($currentLoginAcc / $currentDeptName / $currentRoleName)"
+            $mainForm.text = "Azure 多人參與 Story Point 估算與工項權重管理系統 - [$modeTitle] - 登入者：$currentEmpName ($currentLoginAcc)"
+            if ($null -ne $statusLabel) {
+                $statusLabel.text = "✅ 已成功修改您的個人登入帳號與密碼！目前登入帳號：$currentLoginAcc"
+            }
+        }
+    })
+    $topPanel.controls.add($btnChangeMyAccount)
 
     $statusStrip = new-object system.windows.forms.statusstrip
     $statusLabel = new-object system.windows.forms.toolstripstatuslabel

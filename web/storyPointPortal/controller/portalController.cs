@@ -87,6 +87,11 @@ public class portalController : Controller
         return User.FindFirstValue("departmentName") ?? "";
     }
 
+    private string getCurrentEmployeeCode()
+    {
+        return User.FindFirstValue("employeeCode") ?? "";
+    }
+
     private bool isAdminUser()
     {
         return string.Equals(getCurrentRoleName(), "admin", StringComparison.OrdinalIgnoreCase);
@@ -211,7 +216,7 @@ public class portalController : Controller
             🛡️ <strong>安全存取與權限隔離規範：</strong><br/>
             • 系統依登入帳號自動識別「<strong>👑 管理者 (Admin)</strong>」或「<strong>🙋 參與者 (Participant)</strong>」權限。<br/>
             • 一般員工登入後僅可參與投票及查看屬於自己的工項與個人 Story Point 分數。<br/>
-            • 如需申請新帳號或重設密碼，請洽系統管理者於「組織與員工帳密管理」辦理。
+            • <strong>每個人皆可修改自己的帳/密：</strong>登入後可隨時點擊上方「<strong>🔑 修改我的帳密</strong>」自助修改個人的登入帳號與登入密碼。
         </div>
     </div>
     <script>
@@ -353,9 +358,8 @@ public class portalController : Controller
         bool isAdmin = isAdminUser();
         string currentTab = string.IsNullOrWhiteSpace(tab) ? "voting" : tab.Trim();
 
-        // 一般參與者不可進入員工列表管理頁籤或系統 Log 頁籤
-        if (!isAdmin && (string.Equals(currentTab, "employees", StringComparison.OrdinalIgnoreCase) ||
-                         string.Equals(currentTab, "logs", StringComparison.OrdinalIgnoreCase)))
+        // 一般參與者不可進入系統 Log 頁籤；但每個人皆可進入 myAccount 或 employees 修改自己的登入帳號與密碼
+        if (!isAdmin && string.Equals(currentTab, "logs", StringComparison.OrdinalIgnoreCase))
         {
             currentTab = "voting";
         }
@@ -1099,6 +1103,121 @@ public class portalController : Controller
         }
     }
 
+    /// <summary>
+    /// 當員工修改自己的登入帳號或資料後，立即同步刷新當前瀏覽器的登入憑證 Cookie，確保無須重新登入即可繼續操作
+    /// </summary>
+    private async Task refreshCurrentAuthCookieAsync(DataRow row)
+    {
+        var claims = new List<Claim>
+        {
+            new Claim("employeePk", row["employeePk"].ToString() ?? getCurrentEmployeePk().ToString()),
+            new Claim("employeeCode", row["employeeCode"].ToString() ?? (User.FindFirstValue("employeeCode") ?? "")),
+            new Claim(ClaimTypes.NameIdentifier, row["loginAccount"].ToString() ?? getCurrentLoginAccount()),
+            new Claim(ClaimTypes.Name, row["employeeName"].ToString() ?? getCurrentEmployeeName()),
+            new Claim(ClaimTypes.Role, row["roleName"].ToString() ?? getCurrentRoleName()),
+            new Claim("departmentPk", row["departmentPk"].ToString() ?? (User.FindFirstValue("departmentPk") ?? "1")),
+            new Claim("departmentName", row["departmentName"].ToString() ?? getCurrentDepartmentName()),
+            new Claim("jobTitle", row["jobTitle"].ToString() ?? (User.FindFirstValue("jobTitle") ?? "")),
+            new Claim("authBootToken", sqlDataService.serverBootAuthToken)
+        };
+
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        var principal = new ClaimsPrincipal(identity);
+        await HttpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            principal,
+            new AuthenticationProperties
+            {
+                IsPersistent = false,
+                AllowRefresh = true
+            });
+    }
+
+    [HttpPost("account/updateSelf")]
+    [HttpPost("employee/updateSelf")]
+    [Authorize]
+    public async Task<IActionResult> updateSelfCredential(
+        [FromForm] string? newLoginAccount,
+        [FromForm] string? loginAccount,
+        [FromForm] string? newPlainPassword,
+        [FromForm] string? plainPassword,
+        [FromForm] string? confirmPlainPassword,
+        [FromForm] string? currentPlainPassword,
+        [FromForm] string? returnTab = "myAccount")
+    {
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "myAccount" : returnTab.Trim();
+        int selfEmpPk = getCurrentEmployeePk();
+        string oldAcc = getCurrentLoginAccount();
+
+        if (selfEmpPk <= 0)
+        {
+            return Redirect("/login?err=" + Uri.EscapeDataString("請先登入系統後再修改個人帳號與密碼。"));
+        }
+
+        try
+        {
+            string resolvedNewAcc = !string.IsNullOrWhiteSpace(newLoginAccount)
+                ? newLoginAccount.Trim()
+                : (!string.IsNullOrWhiteSpace(loginAccount) ? loginAccount.Trim() : oldAcc);
+
+            string resolvedNewPwd = !string.IsNullOrWhiteSpace(newPlainPassword)
+                ? newPlainPassword.Trim()
+                : (!string.IsNullOrWhiteSpace(plainPassword) ? plainPassword.Trim() : "");
+
+            string resolvedConfirmPwd = (confirmPlainPassword ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(resolvedNewAcc))
+            {
+                return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("個人登入帳號不可為空白，請輸入有效的登入帳號。"));
+            }
+
+            if (!string.IsNullOrWhiteSpace(resolvedConfirmPwd) && resolvedNewPwd != resolvedConfirmPwd)
+            {
+                return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("兩次輸入的新登入密碼不一致，請重新確認！"));
+            }
+
+            if (string.Equals(resolvedNewAcc, oldAcc, StringComparison.Ordinal) && string.IsNullOrWhiteSpace(resolvedNewPwd))
+            {
+                return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("請輸入欲變更的新登入帳號，或輸入新的登入密碼！"));
+            }
+
+            string? newPwdHash = string.IsNullOrWhiteSpace(resolvedNewPwd)
+                ? null
+                : sqlDataService.computeSha256(resolvedNewPwd);
+
+            string? curPwdHash = string.IsNullOrWhiteSpace(currentPlainPassword)
+                ? null
+                : sqlDataService.computeSha256(currentPlainPassword.Trim());
+
+            var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpdateEmployeeSelfCredential", new Dictionary<string, object?>
+            {
+                ["employeePk"] = selfEmpPk,
+                ["newLoginAccount"] = resolvedNewAcc,
+                ["newPasswordHash"] = newPwdHash,
+                ["currentPasswordHash"] = curPwdHash,
+                ["operatorAccount"] = oldAcc
+            });
+
+            if (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0)
+            {
+                await refreshCurrentAuthCookieAsync(ds.Tables[0].Rows[0]);
+            }
+
+            string changeDetail = (!string.Equals(resolvedNewAcc, oldAcc, StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(resolvedNewPwd))
+                ? $"登入帳號已更新為「{resolvedNewAcc}」，且登入密碼已同步更新"
+                : (!string.Equals(resolvedNewAcc, oldAcc, StringComparison.Ordinal)
+                    ? $"登入帳號已成功更新為「{resolvedNewAcc}」（原密碼維持不變）"
+                    : $"帳號「{resolvedNewAcc}」的登入密碼已成功更新");
+
+            return Redirect($"/?tab={targetTab}&msg=" + Uri.EscapeDataString($"✅ 個人帳密修改成功！{changeDetail}。下次登入請使用最新帳密。"));
+        }
+        catch (Exception ex)
+        {
+            await logPortalExceptionAsync("portalController.updateSelfCredential", ex);
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("修改個人帳號密碼失敗：" + ex.Message));
+        }
+    }
+
     [HttpPost("employee/save")]
     [Authorize]
     public async Task<IActionResult> saveEmployee(
@@ -1115,7 +1234,16 @@ public class portalController : Controller
     {
         if (!isAdminUser())
         {
-            return Redirect("/?tab=employees&err=" + Uri.EscapeDataString("僅管理者可新增或修改員工列表與登入帳密。"));
+            // 一般參與者若呼叫 /employee/save，自動導向修改其本人的登入帳號與密碼，確保每個人都可以修改自己的帳/密
+            return await updateSelfCredential(
+                newLoginAccount: loginAccount,
+                loginAccount: loginAccount,
+                newPlainPassword: plainPassword,
+                plainPassword: plainPassword,
+                confirmPlainPassword: null,
+                currentPlainPassword: null,
+                returnTab: "myAccount"
+            );
         }
 
         try
@@ -1124,7 +1252,7 @@ public class portalController : Controller
                 ? null
                 : sqlDataService.computeSha256(plainPassword.Trim());
 
-            await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpsertEmployee", new Dictionary<string, object?>
+            var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpsertEmployee", new Dictionary<string, object?>
             {
                 ["employeePk"] = employeePk,
                 ["employeeCode"] = (employeeCode ?? "").Trim(),
@@ -1138,6 +1266,15 @@ public class portalController : Controller
                 ["isActive"] = isActive,
                 ["operatorAccount"] = getCurrentLoginAccount()
             });
+
+            if (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0)
+            {
+                DataRow savedRow = ds.Tables[0].Rows[0];
+                if (Convert.ToInt32(savedRow["employeePk"]) == getCurrentEmployeePk())
+                {
+                    await refreshCurrentAuthCookieAsync(savedRow);
+                }
+            }
 
             return Redirect("/?tab=employees&msg=" + Uri.EscapeDataString($"員工「{employeeCode} - {employeeName} ({loginAccount})」資料與帳密儲存成功！"));
         }
@@ -3072,6 +3209,7 @@ public class portalController : Controller
         <div class=""topbar-user"">
             <span>👤 {h(getCurrentEmployeeName())} ({h(getCurrentLoginAccount())}) ｜ 部門：{h(getCurrentDepartmentName())}</span>
             {roleBadge}
+            <button type=""button"" class=""btn btn-outline"" style=""padding:5px 12px;font-size:12px;background:#2563eb;color:#fff;border-color:#60a5fa;"" onclick=""switchTab('myAccount')"">🔑 修改我的帳密</button>
             <a href=""/logout"" class=""btn btn-outline"" style=""padding:5px 12px;font-size:12px;background:#1e293b;color:#fff;border-color:#475569;"">登出切換帳號</a>
         </div>
     </div>
@@ -3230,6 +3368,13 @@ public class portalController : Controller
                             </div>
                         </a>
                     </div>
+                </div>
+
+                <!-- 主選單直接快速入口：修改我的帳密 (每個人皆可修改自己的登入帳號與密碼) -->
+                <div class=""menu-dropdown"" id=""menu-group-myaccount"">
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "myAccount" ? "active-group" : "")}"" onclick=""switchTab('myAccount')"">
+                        <span>🔑 修改我的帳密</span>
+                    </button>
                 </div>");
 
         if (isAdmin)
@@ -3247,14 +3392,21 @@ public class portalController : Controller
                 : "<span style='background:#16a34a;color:#fff;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:800;'>0</span>";
 
             sb.Append($@"
-                <!-- 主選單 4: 組織與員工帳密管理 (僅管理者可見) -->
+                <!-- 主選單 4: 組織與員工帳密管理 (管理者可見全域管理 + 個人帳密修改) -->
                 <div class=""menu-dropdown"" id=""menu-group-employees"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "employees" ? "active-group" : "")}"" onclick=""toggleDropdownMenu(event, 'menu-group-employees')"">
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "employees" || currentTab == "myAccount" ? "active-group" : "")}"" onclick=""toggleDropdownMenu(event, 'menu-group-employees')"">
                         <span>👥 組織與員工帳密管理</span>
                         <span class=""menu-caret"">▼</span>
                     </button>
                     <div class=""menu-sub-list"">
-                        <div class=""menu-sub-header"">員工列表、登入帳密與 CSV / Excel 批次匯入</div>
+                        <div class=""menu-sub-header"">個人帳密修改、員工列表與 CSV / Excel 批次匯入</div>
+                        <a class=""menu-sub-item {(currentTab == "myAccount" ? "active" : "")}"" data-tab=""myAccount"" onclick=""switchTab('myAccount')"">
+                            <span class=""menu-sub-icon"">🔑</span>
+                            <div>
+                                <div class=""menu-sub-title"">4-0. 修改我的個人登入帳號與密碼</div>
+                                <div class=""menu-sub-desc"">每個人皆可隨時修改自己的登入帳號 (loginAccount) 與登入密碼</div>
+                            </div>
+                        </a>
                         <a class=""menu-sub-item {(currentTab == "employees" ? "active" : "")}"" data-tab=""employees"" onclick=""switchTab('employees')"">
                             <span class=""menu-sub-icon"">👥</span>
                             <div>
@@ -3319,6 +3471,34 @@ public class portalController : Controller
                     </div>
                 </div>");
         }
+        else
+        {
+            sb.Append($@"
+                <!-- 主選單 4: 個人帳密設定 (參與者可見) -->
+                <div class=""menu-dropdown"" id=""menu-group-employees"">
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "employees" || currentTab == "myAccount" ? "active-group" : "")}"" onclick=""toggleDropdownMenu(event, 'menu-group-employees')"">
+                        <span>🔑 個人帳密設定</span>
+                        <span class=""menu-caret"">▼</span>
+                    </button>
+                    <div class=""menu-sub-list"">
+                        <div class=""menu-sub-header"">修改我的個人登入帳號與密碼</div>
+                        <a class=""menu-sub-item {(currentTab == "myAccount" ? "active" : "")}"" data-tab=""myAccount"" onclick=""switchTab('myAccount')"">
+                            <span class=""menu-sub-icon"">🔑</span>
+                            <div>
+                                <div class=""menu-sub-title"">4-1. 修改我的個人登入帳號與密碼</div>
+                                <div class=""menu-sub-desc"">每個人皆可隨時修改自己的登入帳號 (loginAccount) 與登入密碼</div>
+                            </div>
+                        </a>
+                        <a class=""menu-sub-item {(currentTab == "employees" ? "active" : "")}"" data-tab=""employees"" onclick=""switchTab('employees')"">
+                            <span class=""menu-sub-icon"">👤</span>
+                            <div>
+                                <div class=""menu-sub-title"">4-2. 個人帳號資訊與修改帳密專頁</div>
+                                <div class=""menu-sub-desc"">檢視個人基本資料並修改自己的登入帳號與密碼</div>
+                            </div>
+                        </a>
+                    </div>
+                </div>");
+        }
 
         sb.Append($@"
             </div>
@@ -3333,7 +3513,8 @@ public class portalController : Controller
                         "workitems" => isAdmin ? "📋 2-1. 工項點數查詢與賦予員工設定" : "📋 2-1. 我的工項與個人分數查詢",
                         "types" => isAdmin ? "🏷️ 2-2. 工項代表類型管理" : "🏷️ 2-2. 工項代表類型標準點數參考",
                         "stats" => isAdmin ? "📊 3-1. 員工與部門總 Story Point 統計" : "📊 3-1. 我的個人總 Story Point 分數統計",
-                        "employees" => "👥 4-1. 員工列表與登入帳密管理",
+                        "myAccount" => "🔑 修改我的個人登入帳號與密碼 (每個人皆可修改自己的帳/密)",
+                        "employees" => isAdmin ? "👥 4-1. 員工列表與登入帳密管理" : "🔑 4-1. 修改我的個人登入帳號與密碼",
                         "logs" => "🛡️ 5-1. 系統與錯誤 Log 查詢中心 (tbLog)",
                         _ => "🃏 1-1. 多人即時盲投大廳 (Planning Poker)"
                     })}
@@ -4670,7 +4851,8 @@ public class portalController : Controller
                 <div class='card'>
                     <div class='card-title'>
                         <span id='empFormTitle'>➕ 新增 / 修改員工資料與登入帳密 (tbEmployee)</span>
-                        <div style='display:flex;gap:6px;align-items:center;'>
+                        <div style='display:flex;gap:6px;align-items:center;flex-wrap:wrap;'>
+                            <button type='button' class='btn btn-primary' style='padding:4px 10px;font-size:12px;' onclick=""switchTab('myAccount')"">🔑 修改我本人的帳密</button>
                             <select id='empQuickEditSelector' onchange='onQuickSelectEmployeeToEdit(this.value)' style='padding:4px 8px;font-size:12px;width:auto;min-width:190px;border-radius:6px;border:1px solid #93c5fd;background:#eff6ff;color:#1e3a8a;font-weight:700;'>
                                 <option value=''>⚡ 快速選擇既有帳號修改密碼...</option>");
             foreach (DataRow er in empTable.Rows)
@@ -4931,13 +5113,129 @@ public class portalController : Controller
         }
         else
         {
-            sb.Append(@"
-            <div class='card'>
+            sb.Append($@"
+            <div class='card' style='max-width:860px;margin:0 auto 18px auto;border:2px solid #93c5fd;'>
+                <div class='card-title'>
+                    <span>🔑 修改我的個人登入帳號與密碼（每個人皆可修改自己的帳/密）</span>
+                    <span class='badge badge-user'>👤 員工編號：{h(getCurrentEmployeeCode())}</span>
+                </div>
+                <form method='post' action='/account/updateSelf' onsubmit='return validateSelfCredentialForm(this)'>
+                    <input type='hidden' name='returnTab' value='employees' />
+                    <div class='form-row'>
+                        <div>
+                            <label data-tip='您目前的員工識別編號與真實姓名（唯讀顯示）' title='您目前的員工識別編號與真實姓名（唯讀顯示）'>員工姓名與編號 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' value='{h(getCurrentEmployeeName())} ({h(getCurrentEmployeeCode())})' readonly style='background:#f1f5f9;color:#475569;font-weight:700;' />
+                        </div>
+                        <div>
+                            <label data-tip='您目前所屬的組織部門與系統角色權限（唯讀顯示）' title='您目前所屬的組織部門與系統角色權限（唯讀顯示）'>所屬部門與角色 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' value='{h(getCurrentDepartmentName())} ｜ 參與者 (Participant)' readonly style='background:#f1f5f9;color:#475569;font-weight:700;' />
+                        </div>
+                        <div>
+                            <label data-tip='設定您登入系統使用的唯一帳號（loginAccount，不可與其他員工重複；可隨時自行修改）' title='設定您登入系統使用的唯一帳號（loginAccount，不可與其他員工重複；可隨時自行修改）'>我的登入帳號 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' name='newLoginAccount' value='{h(getCurrentLoginAccount())}' placeholder='請輸入新的登入帳號' required style='border-color:#2563eb;font-weight:700;' />
+                        </div>
+                    </div>
+                    <div class='form-row'>
+                        <div>
+                            <label data-tip='輸入您要設定的新登入密碼（若僅修改登入帳號而不修改密碼，此欄可留空）' title='輸入您要設定的新登入密碼（若僅修改登入帳號而不修改密碼，此欄可留空）'>新登入密碼 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <div style='position:relative;display:flex;align-items:center;'>
+                                <input type='password' name='newPlainPassword' id='empSelfNewPwd1' placeholder='輸入新密碼（留空代表不改密碼）' style='padding-right:64px;' />
+                                <button type='button' id='btnToggleEmpSelfNewPwd1' onclick=""togglePasswordVisibilityById('empSelfNewPwd1','btnToggleEmpSelfNewPwd1')"" style='position:absolute;right:6px;background:#e2e8f0;border:none;border-radius:5px;padding:3px 7px;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer;'>👁️ 顯示</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label data-tip='請再次輸入相同的新登入密碼以確認無誤（若上方新密碼留空，此欄亦留空）' title='請再次輸入相同的新登入密碼以確認無誤（若上方新密碼留空，此欄亦留空）'>確認新登入密碼 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <div style='position:relative;display:flex;align-items:center;'>
+                                <input type='password' name='confirmPlainPassword' id='empSelfConfirmPwd1' placeholder='再次輸入新密碼確認' style='padding-right:64px;' />
+                                <button type='button' id='btnToggleEmpSelfConfirmPwd1' onclick=""togglePasswordVisibilityById('empSelfConfirmPwd1','btnToggleEmpSelfConfirmPwd1')"" style='position:absolute;right:6px;background:#e2e8f0;border:none;border-radius:5px;padding:3px 7px;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer;'>👁️ 顯示</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label data-tip='選填：若輸入目前舊密碼，系統將一併驗證舊密碼正確性；留空亦可直接更新本人帳密' title='選填：若輸入目前舊密碼，系統將一併驗證舊密碼正確性；留空亦可直接更新本人帳密'>目前舊密碼 (選填驗證) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <div style='position:relative;display:flex;align-items:center;'>
+                                <input type='password' name='currentPlainPassword' id='empSelfCurPwd1' placeholder='選填：驗證目前舊密碼' style='padding-right:64px;' />
+                                <button type='button' id='btnToggleEmpSelfCurPwd1' onclick=""togglePasswordVisibilityById('empSelfCurPwd1','btnToggleEmpSelfCurPwd1')"" style='position:absolute;right:6px;background:#e2e8f0;border:none;border-radius:5px;padding:3px 7px;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer;'>👁️ 顯示</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:8px;'>
+                        <div style='font-size:12.5px;color:#475569;'>💡 提示：修改後系統將立即更新資料庫（<code>storyPoint.spUpdateEmployeeSelfCredential</code>）並自動刷新您的登入憑證，無須重新登入即可繼續操作。</div>
+                        <button type='submit' class='btn btn-primary' style='min-width:240px;'>💾 儲存修改我的登入帳號與密碼</button>
+                    </div>
+                </form>
+            </div>
+            <div class='card' style='max-width:860px;margin:0 auto;'>
                 <div class='card-title'><span>🔒 權限隔離保護提示</span></div>
-                <p style='font-size:14px;color:#334155;'>個別員工（參與者角色）僅可參與投票並查看<strong>自己的工項與自己的分數</strong>，不可查看其他員工列表、其他人的分數或登入帳密設定。</p>
+                <p style='font-size:14px;color:#334155;margin:0;'>每個人都可以隨時修改<strong>自己的登入帳號與密碼</strong>；同時基於資料隱私保護，個別員工（參與者角色）僅可查看自己的工項與分數，不可查看或修改其他員工的帳密設定。</p>
             </div>");
         }
         sb.Append("</div>"); // end Tab 6
+
+        // =========================================================================
+        // Tab 6B: 修改我的個人登入帳號與密碼專頁 (每個人皆可修改自己的帳/密)
+        // =========================================================================
+        sb.Append($@"
+        <div id='pane-myAccount' class='tab-pane {(currentTab == "myAccount" ? "active" : "")}'>
+            <div class='card' style='max-width:880px;margin:0 auto 18px auto;border:2px solid #2563eb;box-shadow:0 8px 24px rgba(37,99,235,0.08);'>
+                <div class='card-title'>
+                    <span>🔑 修改我的個人登入帳號與密碼（每個人皆可修改自己的帳/密）</span>
+                    <div style='display:flex;gap:8px;align-items:center;'>
+                        <span class='badge {(isAdmin ? "badge-admin" : "badge-user")}'>{(isAdmin ? "👑 管理者 (Admin)" : "🙋 參與者 (Participant)")}</span>
+                        <span class='badge badge-user'>員工編號：{h(getCurrentEmployeeCode())}</span>
+                    </div>
+                </div>
+                <div style='background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#1e3a8a;'>
+                    🔒 <strong>個人帳密自主管理：</strong>不論您是「管理者」或「個別員工（參與者）」，每個人都可以隨時在此修改自己的<strong>登入帳號 (loginAccount)</strong> 與<strong>登入密碼</strong>。儲存後系統將自動更新您的登入工作階段並記錄稽核 Log。
+                </div>
+                <form method='post' action='/account/updateSelf' onsubmit='return validateSelfCredentialForm(this)'>
+                    <input type='hidden' name='returnTab' value='myAccount' />
+                    <div class='form-row'>
+                        <div>
+                            <label data-tip='您目前的員工識別編號與真實姓名（唯讀顯示）' title='您目前的員工識別編號與真實姓名（唯讀顯示）'>員工姓名與編號 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' value='{h(getCurrentEmployeeName())} ({h(getCurrentEmployeeCode())})' readonly style='background:#f1f5f9;color:#475569;font-weight:700;' />
+                        </div>
+                        <div>
+                            <label data-tip='您目前所屬的組織部門與職稱（唯讀顯示）' title='您目前所屬的組織部門與職稱（唯讀顯示）'>所屬部門與職稱 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' value='{h(getCurrentDepartmentName())} ｜ {h(User.FindFirstValue("jobTitle") ?? "工程師")}' readonly style='background:#f1f5f9;color:#475569;font-weight:700;' />
+                        </div>
+                        <div>
+                            <label data-tip='設定您登入系統使用的唯一帳號（loginAccount，不可與其他員工重複；可隨時自行修改）' title='設定您登入系統使用的唯一帳號（loginAccount，不可與其他員工重複；可隨時自行修改）'>我的登入帳號 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' name='newLoginAccount' id='myAccLoginInput' value='{h(getCurrentLoginAccount())}' placeholder='請輸入您的登入帳號' required style='border-color:#2563eb;font-weight:700;background:#fff;' />
+                        </div>
+                    </div>
+                    <div class='form-row'>
+                        <div>
+                            <label data-tip='輸入您要設定的新登入密碼（若僅修改登入帳號而不修改密碼，此欄可留空）' title='輸入您要設定的新登入密碼（若僅修改登入帳號而不修改密碼，此欄可留空）'>新登入密碼 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <div style='position:relative;display:flex;align-items:center;'>
+                                <input type='password' name='newPlainPassword' id='myAccNewPwd' placeholder='輸入新密碼（留空代表不改密碼）' style='padding-right:64px;' />
+                                <button type='button' id='btnToggleMyAccNewPwd' onclick=""togglePasswordVisibilityById('myAccNewPwd','btnToggleMyAccNewPwd')"" style='position:absolute;right:6px;background:#e2e8f0;border:none;border-radius:5px;padding:3px 7px;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer;'>👁️ 顯示</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label data-tip='請再次輸入相同的新登入密碼以確認無誤（若上方新密碼留空，此欄亦留空）' title='請再次輸入相同的新登入密碼以確認無誤（若上方新密碼留空，此欄亦留空）'>確認新登入密碼 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <div style='position:relative;display:flex;align-items:center;'>
+                                <input type='password' name='confirmPlainPassword' id='myAccConfirmPwd' placeholder='再次輸入新密碼確認' style='padding-right:64px;' />
+                                <button type='button' id='btnToggleMyAccConfirmPwd' onclick=""togglePasswordVisibilityById('myAccConfirmPwd','btnToggleMyAccConfirmPwd')"" style='position:absolute;right:6px;background:#e2e8f0;border:none;border-radius:5px;padding:3px 7px;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer;'>👁️ 顯示</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label data-tip='選填：若輸入目前舊密碼，系統將一併驗證舊密碼正確性；留空亦可直接更新本人帳密' title='選填：若輸入目前舊密碼，系統將一併驗證舊密碼正確性；留空亦可直接更新本人帳密'>目前舊密碼 (選填驗證) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <div style='position:relative;display:flex;align-items:center;'>
+                                <input type='password' name='currentPlainPassword' id='myAccCurPwd' placeholder='選填：驗證目前舊密碼' style='padding-right:64px;' />
+                                <button type='button' id='btnToggleMyAccCurPwd' onclick=""togglePasswordVisibilityById('myAccCurPwd','btnToggleMyAccCurPwd')"" style='position:absolute;right:6px;background:#e2e8f0;border:none;border-radius:5px;padding:3px 7px;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer;'>👁️ 顯示</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-top:10px;'>
+                        <div style='font-size:12.5px;color:#475569;'>💡 提示：可同時修改「登入帳號」與「登入密碼」，或只修改其中一項。</div>
+                        <div style='display:flex;gap:10px;'>
+                            {(isAdmin ? @"<button type='button' class='btn btn-outline' onclick=""switchTab('employees')"">👥 前往全體員工帳密管理</button>" : "")}
+                            <button type='submit' class='btn btn-primary' style='min-width:240px;'>💾 儲存修改我的登入帳號與密碼</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>");
 
         // =========================================================================
         // Tab 7: 系統與錯誤 Log 查詢中心 (tbLog / 本地雙軌備援，僅管理者可見)
@@ -5278,6 +5576,10 @@ public class portalController : Controller
                 const directBtn = document.querySelector('#menu-group-roundsetup .menu-main-btn');
                 if (directBtn) directBtn.classList.add('active-group');
             }
+            if (tabName === 'myAccount') {
+                const directMyAccBtn = document.querySelector('#menu-group-myaccount .menu-main-btn');
+                if (directMyAccBtn) directMyAccBtn.classList.add('active-group');
+            }
 
             const titleMap = {
                 'voting': '🃏 1-1. 多人即時盲投大廳 (Planning Poker)',
@@ -5286,7 +5588,8 @@ public class portalController : Controller
                 'workitems': isViewerAdmin ? '📋 2-1. 工項點數查詢與賦予員工設定' : '📋 2-1. 我的工項與個人分數查詢',
                 'types': isViewerAdmin ? '🏷️ 2-2. 工項代表類型管理' : '🏷️ 2-2. 工項代表類型標準點數參考',
                 'stats': isViewerAdmin ? '📊 3-1. 員工與部門總 Story Point 統計' : '📊 3-1. 我的個人總 Story Point 分數統計',
-                'employees': '👥 4-1. 員工列表與登入帳密管理',
+                'myAccount': '🔑 修改我的個人登入帳號與密碼 (每個人皆可修改自己的帳/密)',
+                'employees': isViewerAdmin ? '👥 4-1. 員工列表與登入帳密管理' : '🔑 4-1. 修改我的個人登入帳號與密碼',
                 'logs': '🛡️ 5-1. 系統與錯誤 Log 查詢中心 (tbLog)'
             };
             const pill = document.getElementById('currentMenuTitlePill');
@@ -6163,8 +6466,12 @@ public class portalController : Controller
         }
 
         function toggleEmpPasswordVisibility() {
-            const pwdInput = document.getElementById('empPwd');
-            const btn = document.getElementById('btnToggleEmpPwd');
+            togglePasswordVisibilityById('empPwd', 'btnToggleEmpPwd');
+        }
+
+        function togglePasswordVisibilityById(inputId, btnId) {
+            const pwdInput = document.getElementById(inputId);
+            const btn = document.getElementById(btnId);
             if (!pwdInput || !btn) return;
             if (pwdInput.type === 'password') {
                 pwdInput.type = 'text';
@@ -6173,6 +6480,27 @@ public class portalController : Controller
                 pwdInput.type = 'password';
                 btn.textContent = '👁️ 顯示';
             }
+        }
+
+        function validateSelfCredentialForm(formEl) {
+            if (!formEl) return true;
+            const accInput = formEl.querySelector('input[name=""newLoginAccount""]');
+            const newPwdInput = formEl.querySelector('input[name=""newPlainPassword""]');
+            const confirmPwdInput = formEl.querySelector('input[name=""confirmPlainPassword""]');
+            const acc = (accInput?.value || '').trim();
+            const newPwd = (newPwdInput?.value || '').trim();
+            const confirmPwd = (confirmPwdInput?.value || '').trim();
+            if (!acc) {
+                alert('⚠️ 登入帳號不可為空白！');
+                accInput?.focus();
+                return false;
+            }
+            if ((newPwd || confirmPwd) && newPwd !== confirmPwd) {
+                alert('⚠️ 兩次輸入的新登入密碼不一致，請重新確認！');
+                confirmPwdInput?.focus();
+                return false;
+            }
+            return true;
         }
 
         function resetEmpForm(nextCode) {

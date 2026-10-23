@@ -8,11 +8,12 @@
     執行動作：
     - 'listEmployee'     : 查詢員工清單與個人總 Story Point 數
     - 'listDepartment'   : 查詢部門清單與部門總 Story Point 數
-    - 'upsertDepartment' : 新增或修改部門
-    - 'upsertEmployee'   : 新增或修改員工與登入帳密
-    - 'verifyLogin'      : 驗證員工登入帳號密碼
-    - 'exportCsv'        : 匯出員工與 Story Point 統計至 CSV
-    - 'importCsv'        : 從 CSV 檔案批次匯入員工與帳密
+    - 'upsertDepartment'     : 新增或修改部門
+    - 'upsertEmployee'       : 新增或修改員工與登入帳密
+    - 'updateSelfCredential' : 員工本人自助修改自己的登入帳號與密碼
+    - 'verifyLogin'          : 驗證員工登入帳號密碼
+    - 'exportCsv'            : 匯出員工與 Story Point 統計至 CSV
+    - 'importCsv'            : 從 CSV 檔案批次匯入員工與帳密
 .NOTES
     檔案名稱: manageEmployee.ps1
     建立者  : Antigravity Senior Full-Stack Engineer
@@ -21,7 +22,7 @@
 [cmdletbinding()]
 param(
     [parameter(mandatory = $false)]
-    [validateset('listEmployee', 'listDepartment', 'upsertDepartment', 'upsertEmployee', 'setActive', 'deleteEmployee', 'verifyLogin', 'exportCsv', 'importCsv')]
+    [validateset('listEmployee', 'listDepartment', 'upsertDepartment', 'upsertEmployee', 'updateSelfCredential', 'setActive', 'deleteEmployee', 'verifyLogin', 'exportCsv', 'importCsv')]
     [string]$actionType = 'listEmployee',
 
     [parameter(mandatory = $false)]
@@ -55,7 +56,13 @@ param(
     [string]$loginAccount = '',
 
     [parameter(mandatory = $false)]
+    [string]$newLoginAccount = '',
+
+    [parameter(mandatory = $false)]
     [string]$plainPassword = '',
+
+    [parameter(mandatory = $false)]
+    [string]$currentPlainPassword = '',
 
     [parameter(mandatory = $false)]
     [string]$emailAddress = '',
@@ -137,6 +144,32 @@ switch ($actionType) {
             isActive = $isActive
             operatorAccount = $operatorAccount
         }
+        return ,$ds.tables[0]
+    }
+
+    'updateSelfCredential' {
+        $targetNewAcc = if (-not [string]::isnullorempty($newLoginAccount)) { $newLoginAccount.trim() } else { $loginAccount.trim() }
+        $newPwdHash = if (-not [string]::isnullorempty($plainPassword)) {
+            getSha256Hash -plainText $plainPassword.trim()
+        }
+        else {
+            $null
+        }
+        $curPwdHash = if (-not [string]::isnullorempty($currentPlainPassword)) {
+            getSha256Hash -plainText $currentPlainPassword.trim()
+        }
+        else {
+            $null
+        }
+        $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spUpdateEmployeeSelfCredential' -parameters @{
+            employeePk = $(if ($employeePk -gt 0) { $employeePk } else { $null })
+            newLoginAccount = $(if (-not [string]::isnullorempty($targetNewAcc)) { $targetNewAcc } else { $null })
+            newPasswordHash = $newPwdHash
+            currentPasswordHash = $curPwdHash
+            operatorAccount = $(if (-not [string]::isnullorempty($operatorAccount)) { $operatorAccount } else { $targetNewAcc })
+        }
+        writeSystemLog -logLevel 3 -sourceScript 'manageEmployee.ps1' -objectName 'updateSelfCredential' `
+            -executionResult "員工本人自助修改登入帳號與密碼成功 (新帳號：$targetNewAcc)" -operatorAccount $operatorAccount
         return ,$ds.tables[0]
     }
 

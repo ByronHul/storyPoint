@@ -449,6 +449,134 @@ end
 go
 
 -- ============================================================================
+-- 4A. 員工自助修改個人登入帳號與密碼預存程序 (storyPoint.spUpdateEmployeeSelfCredential)
+-- ============================================================================
+/*
+用途說明: 允許任何已登入員工 (包含管理者 admin 與一般參與者 participant) 自助修改自己的登入帳號 (loginAccount) 與登入密碼 (passwordHash)
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-23
+參數說明:
+    @employeePk          int          : 當前登入員工本人主鍵 (若未傳入則依 @operatorAccount 定位)
+    @newLoginAccount     varchar(128) : 欲更新之新登入帳號 (若傳空值或與原帳號相同則維持原帳號)
+    @newPasswordHash     varchar(256) : 欲更新之新密碼雜湊值 (若傳空值則維持原密碼不變)
+    @currentPasswordHash varchar(256) : 目前密碼雜湊值 (選填：若有傳入則驗證原密碼是否相符)
+    @operatorAccount     varchar(128) : 操作者目前登入帳號
+修改歷程:
+    2026-10-23 初版建立，支援每個人皆可修改自己的帳/密並防止與他人帳號重複
+*/
+create or alter procedure storyPoint.spUpdateEmployeeSelfCredential
+    @employeePk int = null,
+    @newLoginAccount varchar(128) = null,
+    @newPasswordHash varchar(256) = null,
+    @currentPasswordHash varchar(256) = null,
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+    declare @targetPk int = isnull(@employeePk, 0);
+    declare @cleanNewAccount varchar(128) = nullif(ltrim(rtrim(@newLoginAccount)), '');
+    declare @cleanNewPwdHash varchar(256) = nullif(ltrim(rtrim(@newPasswordHash)), '');
+    declare @cleanCurrentPwdHash varchar(256) = nullif(ltrim(rtrim(@currentPasswordHash)), '');
+    declare @cleanOperator varchar(128) = isnull(nullif(ltrim(rtrim(@operatorAccount)), ''), 'system');
+
+    begin try
+        if @targetPk <= 0 and @cleanOperator <> 'system'
+        begin
+            select top 1 @targetPk = pk
+            from storyPoint.tbEmployee
+            where loginAccount = @cleanOperator;
+        end
+
+        if isnull(@targetPk, 0) <= 0 or not exists (select 1 from storyPoint.tbEmployee where pk = @targetPk)
+        begin
+            ;throw 50011, N'找不到當前登入的員工帳號紀錄，請重新登入後再試。', 1;
+        end
+
+        if @cleanCurrentPwdHash is not null
+        begin
+            if not exists (
+                select 1
+                from storyPoint.tbEmployee
+                where pk = @targetPk
+                  and passwordHash = @cleanCurrentPwdHash
+            )
+            begin
+                ;throw 50012, N'輸入的目前登入密碼不正確，請重新確認。', 1;
+            end
+        end
+
+        if @cleanNewAccount is not null
+        begin
+            if exists (
+                select 1
+                from storyPoint.tbEmployee
+                where loginAccount = @cleanNewAccount
+                  and pk <> @targetPk
+            )
+            begin
+                ;throw 50013, N'此登入帳號已被其他員工使用，請改用其他登入帳號。', 1;
+            end
+        end
+
+        update storyPoint.tbEmployee
+        set loginAccount = isnull(@cleanNewAccount, loginAccount),
+            passwordHash = case
+                when @cleanNewPwdHash is not null then @cleanNewPwdHash
+                else passwordHash
+            end,
+            updatedAt = sysdatetime()
+        where pk = @targetPk;
+
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        exec storyPoint.spWriteLog
+            @logLevel = 3,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spUpdateEmployeeSelfCredential',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'員工自助修改個人登入帳密成功',
+            @operatorAccount = @cleanOperator;
+
+        select
+            e.pk as employeePk,
+            e.employeeCode,
+            e.employeeName,
+            e.loginAccount,
+            e.emailAddress,
+            e.jobTitle,
+            e.departmentPk,
+            d.departmentCode,
+            d.departmentName,
+            e.roleName,
+            e.isActive,
+            e.updatedAt
+        from storyPoint.tbEmployee as e
+        inner join storyPoint.tbDepartment as d
+            on e.departmentPk = d.pk
+        where e.pk = @targetPk;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spUpdateEmployeeSelfCredential',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'員工自助修改個人登入帳密失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @cleanOperator;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
 -- 4B. 切換員工帳號啟用/停用狀態預存程序 (storyPoint.spSetEmployeeActiveStatus)
 -- ============================================================================
 /*
@@ -789,6 +917,7 @@ create or alter procedure storyPoint.spUpsertWorkItemType
     @typeCode varchar(64),
     @typeName nvarchar(128),
     @categoryName nvarchar(128),
+    @defaultWorkItemKind varchar(32) = 'project',
     @description nvarchar(1024) = null,
     @standardStoryPoint decimal(8,2) = null,
     @defaultCardDeckPk int = null,
@@ -804,6 +933,12 @@ begin
     declare @targetPk int = isnull(@workItemTypePk, 0);
     declare @oldPoint decimal(8,2) = null;
     declare @newStatus varchar(32) = case when @standardStoryPoint is not null then 'finalized' else 'pending' end;
+    declare @cleanKind varchar(32) = case
+        when @defaultWorkItemKind in ('project', 'maintenance', 'consultingHour') then @defaultWorkItemKind
+        when @categoryName like N'%維運%' then 'maintenance'
+        when @categoryName like N'%顧問%' or @categoryName like N'%時數%' then 'consultingHour'
+        else 'project'
+    end;
 
     begin try
         if @targetPk <= 0
@@ -839,6 +974,7 @@ begin
             set typeCode = @typeCode,
                 typeName = @typeName,
                 categoryName = @categoryName,
+                defaultWorkItemKind = @cleanKind,
                 description = @description,
                 standardStoryPoint = @standardStoryPoint,
                 defaultCardDeckPk = @defaultCardDeckPk,
@@ -854,7 +990,7 @@ begin
         else
         begin
             insert into storyPoint.tbWorkItemType (
-                typeCode, typeName, categoryName, description,
+                typeCode, typeName, categoryName, defaultWorkItemKind, description,
                 standardStoryPoint, defaultCardDeckPk, estimationStatus,
                 isActive, createdAt, updatedAt
             )
@@ -862,6 +998,7 @@ begin
                 @typeCode,
                 @typeName,
                 @categoryName,
+                @cleanKind,
                 @description,
                 @standardStoryPoint,
                 @defaultCardDeckPk,
@@ -957,6 +1094,12 @@ begin
             wit.typeCode,
             wit.typeName,
             wit.categoryName,
+            wit.defaultWorkItemKind,
+            case
+                when wit.defaultWorkItemKind = 'maintenance' then N'維運'
+                when wit.defaultWorkItemKind = 'consultingHour' then N'顧問時數'
+                else N'專案'
+            end as defaultWorkItemKindText,
             wit.description,
             wit.standardStoryPoint,
             wit.defaultCardDeckPk,
@@ -990,7 +1133,7 @@ go
 -- 7. 建立或修改實際工項預存程序 (storyPoint.spUpsertWorkItem)
 -- ============================================================================
 /*
-用途說明: 建立或更新實際工項 (tbWorkItem)。
+用途說明: 建立或更新實際工項 (tbWorkItem)，支援設定工項類型 (專案/維運/顧問時數) 與起訖時間 (startDate ~ endDate)。
           建立工項時，若選擇已賦予 Story Point 的工項代表類型 (@workItemTypePk)，
           系統會自動帶入該類型的標準 Story Point；若管理者傳入不同的 @storyPoint 或標記手動調整，
           則採用手動調整值並記錄點數變更歷程，同時自動重算指派給員工的 Story Point。
@@ -1002,18 +1145,22 @@ go
     @itemTitle           nvarchar(256) : 工項標題
     @itemDescription     nvarchar(max) : 工項詳細說明與驗收條件
     @workItemTypePk      int           : 選擇的工項代表類型主鍵
+    @workItemKind        varchar(32)   : 工項性質類型 ('project'=專案, 'maintenance'=維運, 'consultingHour'=顧問時數)
     @sprintName          nvarchar(128) : 所屬衝刺或專案階段名稱
     @priorityLevel       varchar(32)   : 優先級 ('high', 'medium', 'low')
     @storyPoint          decimal(8,2)  : 指定點數 (若傳 null 則完全由工項代表類型自動帶入)
     @forceManualAdjust   bit           : 是否強制視為手動調整
     @adjustmentReason    nvarchar(512) : 手動調整點數說明
     @executionStatus     varchar(32)   : 執行狀態 ('todo', 'inProgress', 'done')
+    @startDate           datetime2(0)  : 工項起時 (開始日期時間)
+    @endDate             datetime2(0)  : 工項迄時 (結束日期時間，達到迄時將自動轉態並扣除 Story Point)
     @dueDate             date          : 預計完成日
     @createdByEmployeePk int           : 建立/修改管理者主鍵
     @isActive            bit           : 是否啟用
     @operatorAccount     varchar(128)  : 操作者帳號
 修改歷程:
     2026-10-23 初版建立
+    2026-10-23 新增 @workItemKind (專案/維運/顧問時數) 與 @startDate/@endDate 起訖時間設定
 */
 create or alter procedure storyPoint.spUpsertWorkItem
     @workItemPk int = null,
@@ -1021,12 +1168,15 @@ create or alter procedure storyPoint.spUpsertWorkItem
     @itemTitle nvarchar(256),
     @itemDescription nvarchar(max) = null,
     @workItemTypePk int = null,
+    @workItemKind varchar(32) = null,
     @sprintName nvarchar(128) = null,
     @priorityLevel varchar(32) = 'medium',
     @storyPoint decimal(8,2) = null,
     @forceManualAdjust bit = 0,
     @adjustmentReason nvarchar(512) = null,
     @executionStatus varchar(32) = 'todo',
+    @startDate datetime2(0) = null,
+    @endDate datetime2(0) = null,
     @dueDate date = null,
     @createdByEmployeePk int = null,
     @isActive bit = 1,
@@ -1038,10 +1188,16 @@ begin
     declare @durationMs int = 0;
     declare @targetPk int = isnull(@workItemPk, 0);
     declare @typeStandardPoint decimal(8,2) = null;
+    declare @typeDefaultKind varchar(32) = 'project';
+    declare @resolvedKind varchar(32) = 'project';
     declare @resolvedStoryPoint decimal(8,2) = 0.00;
     declare @isManual bit = 0;
     declare @oldPoint decimal(8,2) = null;
     declare @changeSource varchar(64) = 'autoFromType';
+    declare @nowTw datetime2(0) = cast(dateadd(hour, 8, sysutcdatetime()) as datetime2(0));
+    declare @resolvedStartDate datetime2(0) = @startDate;
+    declare @resolvedEndDate datetime2(0) = @endDate;
+    declare @resolvedDueDate date = @dueDate;
 
     begin try
         if @targetPk <= 0
@@ -1053,13 +1209,34 @@ begin
 
         if isnull(@workItemTypePk, 0) > 0 and exists (select 1 from storyPoint.tbWorkItemType where pk = @workItemTypePk)
         begin
-            select @typeStandardPoint = standardStoryPoint
+            select
+                @typeStandardPoint = standardStoryPoint,
+                @typeDefaultKind = isnull(defaultWorkItemKind, 'project')
             from storyPoint.tbWorkItemType
             where pk = @workItemTypePk;
         end
         else
         begin
             set @workItemTypePk = null;
+        end
+
+        set @resolvedKind = case
+            when @workItemKind in ('project', 'maintenance', 'consultingHour') then @workItemKind
+            when @workItemKind = N'專案' then 'project'
+            when @workItemKind = N'維運' then 'maintenance'
+            when @workItemKind = N'顧問時數' then 'consultingHour'
+            when @workItemTypePk is not null then @typeDefaultKind
+            else 'project'
+        end;
+
+        if @resolvedEndDate is null and @resolvedDueDate is not null
+        begin
+            set @resolvedEndDate = dateadd(second, 86399, cast(@resolvedDueDate as datetime2(0)));
+        end
+
+        if @resolvedDueDate is null and @resolvedEndDate is not null
+        begin
+            set @resolvedDueDate = cast(@resolvedEndDate as date);
         end
 
         if @createdByEmployeePk is not null and not exists (select 1 from storyPoint.tbEmployee where pk = @createdByEmployeePk)
@@ -1092,50 +1269,78 @@ begin
 
         if isnull(@targetPk, 0) > 0 and exists (select 1 from storyPoint.tbWorkItem where pk = @targetPk)
         begin
-            select @oldPoint = storyPoint
+            select
+                @oldPoint = storyPoint,
+                @resolvedStartDate = isnull(@resolvedStartDate, isnull(startDate, @nowTw))
             from storyPoint.tbWorkItem
             where pk = @targetPk;
+
+            -- 若管理者重新設定點數 (> 0) 或將狀態設回 todo/inProgress，或是將迄時延後至未來，則重置到期扣點旗標以便達到迄時可自動執行轉態扣點與寄信
+            declare @shouldResetExpiry bit = case
+                when @resolvedStoryPoint > 0 and isnull(@executionStatus, 'todo') in ('todo', 'inProgress') then 1
+                when @resolvedEndDate is not null and @resolvedEndDate > @nowTw then 1
+                else 0
+            end;
 
             update storyPoint.tbWorkItem
             set itemCode = @itemCode,
                 itemTitle = @itemTitle,
                 itemDescription = @itemDescription,
                 workItemTypePk = @workItemTypePk,
+                workItemKind = @resolvedKind,
                 sprintName = @sprintName,
                 priorityLevel = isnull(@priorityLevel, 'medium'),
                 defaultTypePoint = @typeStandardPoint,
                 storyPoint = @resolvedStoryPoint,
+                originalStoryPoint = case when @resolvedStoryPoint > 0 then @resolvedStoryPoint else originalStoryPoint end,
+                deductedStoryPoint = case when @shouldResetExpiry = 1 then 0.00 else deductedStoryPoint end,
                 isManualAdjusted = @isManual,
                 adjustmentReason = @adjustmentReason,
                 executionStatus = isnull(@executionStatus, 'todo'),
-                dueDate = @dueDate,
+                startDate = @resolvedStartDate,
+                endDate = @resolvedEndDate,
+                dueDate = @resolvedDueDate,
+                isExpiredProcessed = case when @shouldResetExpiry = 1 then 0 else isExpiredProcessed end,
+                expiredProcessedAt = case when @shouldResetExpiry = 1 then null else expiredProcessedAt end,
+                expiryNotificationSent = case when @shouldResetExpiry = 1 then 0 else expiryNotificationSent end,
+                expiryNotificationSentAt = case when @shouldResetExpiry = 1 then null else expiryNotificationSentAt end,
                 isActive = isnull(@isActive, 1),
                 updatedAt = sysdatetime()
             where pk = @targetPk;
         end
         else
         begin
+            set @resolvedStartDate = isnull(@resolvedStartDate, @nowTw);
+
             insert into storyPoint.tbWorkItem (
                 itemCode, itemTitle, itemDescription, workItemTypePk,
-                sprintName, priorityLevel, defaultTypePoint, storyPoint,
-                isManualAdjusted, adjustmentReason, estimationStatus,
-                executionStatus, dueDate, createdByEmployeePk, isActive,
-                createdAt, updatedAt
+                workItemKind, sprintName, priorityLevel, defaultTypePoint, storyPoint,
+                originalStoryPoint, deductedStoryPoint, isManualAdjusted, adjustmentReason,
+                estimationStatus, executionStatus, startDate, endDate, dueDate,
+                isExpiredProcessed, expiryNotificationSent,
+                createdByEmployeePk, isActive, createdAt, updatedAt
             )
             values (
                 @itemCode,
                 @itemTitle,
                 @itemDescription,
                 @workItemTypePk,
+                @resolvedKind,
                 @sprintName,
                 isnull(@priorityLevel, 'medium'),
                 @typeStandardPoint,
                 @resolvedStoryPoint,
+                @resolvedStoryPoint,
+                0.00,
                 @isManual,
                 @adjustmentReason,
                 'finalized',
                 isnull(@executionStatus, 'todo'),
-                @dueDate,
+                @resolvedStartDate,
+                @resolvedEndDate,
+                @resolvedDueDate,
+                0,
+                0,
                 @createdByEmployeePk,
                 isnull(@isActive, 1),
                 sysdatetime(),
@@ -1169,6 +1374,14 @@ begin
         -- 自動依分攤比例重新計算該工項下所有被賦予員工的 Story Point
         update storyPoint.tbWorkItemAssignment
         set allocatedStoryPoint = cast(round(@resolvedStoryPoint * (allocationPercent / 100.00), 2) as decimal(8,2)),
+            originalAllocatedStoryPoint = case
+                when @resolvedStoryPoint > 0 then cast(round(@resolvedStoryPoint * (allocationPercent / 100.00), 2) as decimal(8,2))
+                else originalAllocatedStoryPoint
+            end,
+            deductedAllocatedStoryPoint = case
+                when @resolvedStoryPoint > 0 then 0.00
+                else deductedAllocatedStoryPoint
+            end,
             updatedAt = sysdatetime()
         where workItemPk = @targetPk;
 
@@ -1188,11 +1401,20 @@ begin
             v.workItemTypePk,
             v.typeCode,
             v.typeName,
+            v.workItemKind,
+            v.workItemKindText,
             v.defaultTypePoint,
             v.storyPoint,
+            v.originalStoryPoint,
+            v.deductedStoryPoint,
             v.isManualAdjusted,
             v.pointSourceText,
             v.executionStatus,
+            v.startDate,
+            v.endDate,
+            v.dueDate,
+            v.isExpiredProcessed,
+            v.expiryNotificationSent,
             v.assigneeSummary
         from storyPoint.vwWorkItemDetail as v
         where v.pk = @targetPk;
@@ -2783,6 +3005,7 @@ begin
             d.todoDepartmentStoryPoint,
             d.inProgressDepartmentStoryPoint,
             d.doneDepartmentStoryPoint,
+            d.totalDeductedDepartmentStoryPoint,
             d.distinctWorkItemRawPointSum,
             d.averageStoryPointPerEmployee
         from storyPoint.vwDepartmentPointSummary as d
@@ -2812,6 +3035,7 @@ begin
             e.todoAllocatedStoryPoint,
             e.inProgressAllocatedStoryPoint,
             e.doneAllocatedStoryPoint,
+            e.totalDeductedStoryPoint,
             e.totalRawWorkItemPoint,
             e.workItemListSummary
         from storyPoint.vwEmployeePointSummary as e
@@ -2823,6 +3047,7 @@ begin
               or e.employeeName like '%' + @cleanKeyword + '%'
               or e.loginAccount like '%' + @cleanKeyword + '%'
               or e.departmentName like '%' + @cleanKeyword + '%'
+              or e.jobTitle like N'%' + @cleanKeyword + N'%'
           )
         order by e.totalAllocatedStoryPoint desc, e.departmentPk asc, e.employeePk asc;
 
@@ -2832,6 +3057,12 @@ begin
             wit.typeCode,
             wit.typeName,
             wit.categoryName,
+            wit.defaultWorkItemKind,
+            case
+                when wit.defaultWorkItemKind = 'maintenance' then N'維運'
+                when wit.defaultWorkItemKind = 'consultingHour' then N'顧問時數'
+                else N'專案'
+            end as defaultWorkItemKindText,
             wit.description,
             wit.standardStoryPoint,
             wit.defaultCardDeckPk,
@@ -2876,6 +3107,8 @@ begin
             wi.typeCode,
             wi.typeName,
             wi.categoryName,
+            wi.workItemKind,
+            wi.workItemKindText,
             wi.sprintName,
             wi.priorityLevel,
             wi.defaultTypePoint,
@@ -2884,6 +3117,8 @@ begin
                 else isnull(myAssign.allocatedStoryPoint, wi.storyPoint)
             end as storyPoint,
             wi.storyPoint as rawWorkItemTotalPoint,
+            wi.originalStoryPoint,
+            wi.deductedStoryPoint,
             wi.isManualAdjusted,
             wi.pointSourceText,
             wi.adjustmentReason,
@@ -2895,7 +3130,14 @@ begin
                 when wi.executionStatus = 'done' then N'已完成'
                 else wi.executionStatus
             end as executionStatusText,
+            wi.startDate,
+            wi.endDate,
             wi.dueDate,
+            wi.isExpiredProcessed,
+            wi.expiredProcessedAt,
+            wi.expiryNotificationSent,
+            wi.expiryNotificationSentAt,
+            wi.expiryNotificationRecipient,
             wi.createdByEmployeeName,
             case when @isViewerAdmin = 1 then wi.assigneeCount else 1 end as assigneeCount,
             case
@@ -2906,7 +3148,13 @@ begin
                     myAssign.departmentName,
                     N': ',
                     cast(myAssign.allocatedStoryPoint as varchar(32)),
-                    N' pt / ',
+                    N' pt',
+                    case
+                        when wi.isExpiredProcessed = 1 and myAssign.deductedAllocatedStoryPoint > 0
+                        then concat(N' [已扣 ', cast(myAssign.deductedAllocatedStoryPoint as varchar(32)), N' pt]')
+                        else N''
+                    end,
+                    N' / ',
                     cast(myAssign.allocationPercent as varchar(32)),
                     N'%)'
                 )
@@ -2922,6 +3170,7 @@ begin
         outer apply (
             select top 1
                 subWia.allocatedStoryPoint,
+                subWia.deductedAllocatedStoryPoint,
                 subWia.allocationPercent,
                 subEmp.employeeName,
                 subDept.departmentName
@@ -2961,6 +3210,7 @@ begin
               or wi.itemCode like '%' + @cleanKeyword + '%'
               or wi.itemTitle like '%' + @cleanKeyword + '%'
               or wi.typeName like '%' + @cleanKeyword + '%'
+              or wi.workItemKindText like N'%' + @cleanKeyword + N'%'
           )
         order by wi.pk desc;
 
@@ -2980,6 +3230,8 @@ begin
             wia.assignmentRole,
             wia.allocationPercent,
             wia.allocatedStoryPoint,
+            wia.originalAllocatedStoryPoint,
+            wia.deductedAllocatedStoryPoint,
             wia.assignmentNote,
             wia.assignedAt,
             wia.updatedAt
@@ -3017,10 +3269,11 @@ begin
                 when ph.changeSource = 'manualAdjust' then N'管理者手動微調'
                 when ph.changeSource = 'typeSync' then N'隨代表類型同步更新'
                 when ph.changeSource = 'adminTypeSetting' then N'代表類型直接設定'
+                when ph.changeSource = 'autoExpireDeduct' then N'迄時到期自動扣點'
                 else ph.changeSource
             end as changeSourceText,
             ph.changeReason,
-            isnull(emp.employeeName, N'系統管理員') as changedByEmployeeName,
+            isnull(emp.employeeName, N'系統自動/管理員') as changedByEmployeeName,
             ph.changedAt
         from storyPoint.tbPointHistory as ph
         left join storyPoint.tbWorkItemType as wit

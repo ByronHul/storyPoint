@@ -43,6 +43,7 @@
     * **只可看到自己的工項與自己的分數（嚴格禁止查看他人資料）**：
         * 在「工項查詢」中，個別員工**僅能看到賦予給自己的工項與自己的分配點數 (`allocatedStoryPoint`)**，不可看到未賦予給自己的其他員工工項，亦不可看到同工項其他共同負責人的名字與配額。
         * 在「點數統計」中，個別員工**僅能看到自己個人的工項數與 Story Point 統計**，不可看到其他員工的工項與分數，亦不可存取全公司員工列表或他人帳密。
+        * **每個人皆可修改自己的登入帳號與密碼**：不論是管理者 (`admin`) 或參與者 (`participant`)，每個人皆可隨時透過頂部工具列「`🔑 修改我的帳密`」按鈕、主選單「`🔑 個人帳密設定`」或 PowerShell 模組修改**自己本人的登入帳號 (`loginAccount`) 與登入密碼 (`passwordHash`)**（`storyPoint.spUpdateEmployeeSelfCredential`），但絕不可修改其他員工的帳密。
         * 匯出 CSV 報表時，個別員工僅能匯出屬於自己的工項與個人點數資料。
 
 ### 2.3 工項代表類型與實際工項管理 (Work Item Type & Work Item)
@@ -187,6 +188,24 @@
     1. **前端下拉選單支援自動建立新代表類型/新工項**：於「`⚙️ 1-2. 設定盲投回合`」頁面中，「目標工項代表類型 (`#setupWorkItemTypePk`)」與「目標特定工項 (`#setupWorkItemPk`)」下拉選單除列出既有項目外，固定提供「`➕ 依下方「盲投議程標題」自動建立新工項代表類型`」與「`➕ 依下方「盲投議程標題」自動建立新實際工項`」選項（`value='0'`），即使資料庫處於 `0 種代表類型` 或 `0 個實際工項` 的初始狀態，下拉選單亦不會空白且可直接發起盲投議程。
     2. **Stored Procedure (`storyPoint.spCreateVotingSession` 等) 完整外鍵防呆**：執行建立或更新盲投議程時，自動驗證 `@workItemTypePk`、`@workItemPk`、`@cardDeckPk`、`@hostEmployeePk` 是否存在於對應主表；若未選擇、傳入 `0`/`null` 或因舊分頁殘留失效主鍵，系統自動依 `@sessionTitle` 比對同名代表類型/工項或自動新增對應之 `storyPoint.tbWorkItemType` / `storyPoint.tbWorkItem` 紀錄並綁定新 `pk`，徹底杜絕 `fkTbVotingSessionWorkItemType` 等外鍵衝突錯誤。
     3. **支援修改既有議程時清空重設當前盲投回合選票 (`@resetCurrentRoundVotes`)**：勾選「修改既有議程時，一併清空本回合出牌重新盲投」時，自動清除當前回合已投出之撲克牌紀錄並將回合狀態重設為 `voting`。
+
+### 2.13 每個人皆可修改自己的登入帳號與密碼 (Self-Service Login Account & Password Update)
+* **核心原則**：系統中每一位已登入的員工（包含管理者 `admin` 與一般參與者 `participant`）皆擁有自主修改**自己本人的登入帳號 (`loginAccount`) 與登入密碼 (`passwordHash`)** 的權限。
+* **T-SQL 專屬預存程序 (`storyPoint.spUpdateEmployeeSelfCredential`)**：
+    1. 支援傳入本人 `@employeePk`（或 `@currentLoginAccount`）、新的登入帳號 `@newLoginAccount`、新的密碼雜湊 `@newPasswordHash`（留空或 `null` 代表僅修改登入帳號不改密碼），以及選填之舊密碼雜湊驗證 `@currentPasswordHash`。
+    2. 內建唯一性防呆檢核：確保修改後的 `@newLoginAccount` 不會與其他員工 (`pk <> @targetPk`) 的登入帳號重複；若重複則拋出明確繁體中文提示並拒絕覆寫他人帳號。
+    3. 遵循全小寫 T-SQL 關鍵字、`set nocount on`、`try...catch` 例外處理，並自動呼叫 `storyPoint.spWriteLog` 將修改前後帳號與是否更新密碼完整寫入 `storyPoint.tbLog`。
+* **Web 介面與無縫工作階段刷新 (`web/storyPointPortal`)**：
+    1. **頂部固定入口與主選單入口**：
+        * 於網頁右上角使用者資訊列 (`topbar-user`) 提供醒目的「**`🔑 修改我的帳密`**」按鈕 (`switchTab('myAccount')`)。
+        * 於頂部主選單列 (`top-menubar`) 提供「**`🔑 修改我的帳密`**」快速按鈕，並於主選單 4（管理者為「`👥 組織與員工帳密管理`」內含 `4-0. 修改我的個人登入帳號與密碼`；參與者為「`🔑 個人帳密設定`」內含 `4-1. 修改我的個人登入帳號與密碼`）提供完整入口。
+    2. **個人帳密修改表單 (`#pane-myAccount` 與參與者 `#pane-employees`)**：
+        * 預設帶入本人目前登入帳號 (`newLoginAccount`)，提供新登入密碼 (`newPlainPassword`)、確認新密碼 (`confirmPlainPassword`) 與選填舊密碼驗證 (`currentPlainPassword`)，每個密碼欄位皆附帶 `👁️ 顯示 / 🙈 隱藏` 切換按鈕，且所有 `<label>` 標題皆為單行對齊並具備 `data-tip` 滑鼠移入浮動說明。
+    3. **即時更新登入 Cookie (`refreshCurrentAuthCookieAsync`)**：
+        * 透過 `POST /account/updateSelf`（或 `POST /employee/updateSelf`）完成帳密修改後，後端立即自動刷新當前瀏覽器的 Authentication Cookie Claims（更新 `ClaimTypes.NameIdentifier` 為新 `loginAccount`），使用者無須重新登入即可繼續操作，且右上角顯示之登入帳號即時同步更新。
+* **PowerShell Console (`ps/manageEmployee.ps1`) 與 GUI (`ps/ui/uiMain.ps1`) 同步支援**：
+    1. `ps/manageEmployee.ps1` 新增 `-actionType 'updateSelfCredential'`（搭配 `-employeePk`、`-newLoginAccount`、`-plainPassword`、`-currentPlainPassword`），直接呼叫 `storyPoint.spUpdateEmployeeSelfCredential`。
+    2. `ps/ui/uiMain.ps1` 於頂部標題列右側新增「**`🔑 修改我的帳密`**」按鈕 (`showChangeOwnCredentialDialog`)，供任何登入者在 GUI 視窗中隨時修改自己的帳號與密碼。
 
 ---
 
