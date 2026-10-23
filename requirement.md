@@ -159,6 +159,23 @@
     2. **滑鼠移入時即時浮現完整項目說明 (`data-tip` + `#spFloatingTooltip`)**：
         * 將原本冗長的括號補充說明精簡為單行標題搭配 `ⓘ` 提示圖示（`.sp-tip-icon`），並透過 `data-tip` 與全域浮動提示元件 (`#spFloatingTooltip`)，於滑鼠移入（Hover）時立即浮現完整項目說明、計算依據與填寫規範。
 
+### 2.11 預設示範資料清理暨集英信誠 (mentorTrust) 員工與部門同步規範
+* **清理非必要示範資料，僅保留核心管理帳號與 HR 部門**：
+    1. 清除所有預設示範之工項代表類型 (`storyPoint.tbWorkItemType`)、實際工項 (`storyPoint.tbWorkItem`)、工項指派 (`storyPoint.tbWorkItemAssignment`)、投票議程與回合出牌紀錄 (`storyPoint.tbVotingSession` / `tbVotingRound` / `tbVoteRecord` / `tbVotingSessionParticipant`) 及點數異動歷程 (`storyPoint.tbPointHistory`)。
+    2. 員工帳號僅保留既有之 **`admin`** 與 **`raya`（許立慧，員工編號 `250201`）** 及其既有密碼雜湊設定；舊示範部門全數移除，僅保留 **`HR`** 部門。
+* **參照 `phishing` 專案資料庫 (`phishingDefenseDb`) 匯入集英信誠 (`mentorTrust`) 部門與員工資料**：
+    1. **同步新增集英信誠部門 (`storyPoint.tbDepartment`)**：除保留 `HR` 外，依 `phishing.tbRecipient` 中 `companyCode = 'mentorTrust'` 之部門結構新增 **`DB/INFra` (`DB_INFRA`)**、**`管理` (`MGMT`)**、**`BI` (`BI`)**、**`開發` (`DEV`)** 共 5 個有效部門。
+    2. **同步新增集英信誠員工 (`storyPoint.tbEmployee`)**：將 `phishing.tbRecipient` 內屬於集英信誠 (`mentorTrust`) 之全體同仁（含員工編號、姓名、信箱、所屬部門、職稱與登入帳號）完整匯入 `storyPoint.tbEmployee`（總計 32 位啟用帳號：含保留於 `HR` 部門之 `admin` 與 `raya`，以及同步自集英信誠之 30 位同仁）。
+
+### 2.12 全員完成投票即刻自動翻牌與全體畫面即時同步規範
+* **全員投完票自動翻牌 (Automatic Card Reveal on All Voted)**：
+    1. 投票議程 (`storyPoint.tbVotingSession`) 之 `autoRevealWhenAllVoted` 預設一律啟用 (`1` / `true`)。
+    2. 在 `storyPoint.spCastVote`（以及 `storyPoint.spCreateVotingSession` 與 `storyPoint.spGetVotingProcessHistory` 自癒檢核）中，只要本回合所有有效必投參與者 (`storyPoint.tbVotingSessionParticipant.isRequiredVoter = 1` 且 `storyPoint.tbEmployee.isActive = 1`) 皆已完成出牌 (`@votedParticipantCount >= @requiredVoterCount`)，資料庫立即自動將當前 `storyPoint.tbVotingRound.roundStatus` 與 `storyPoint.tbVotingSession.sessionStatus` 轉換為 `'revealed'`（已翻牌揭曉）並寫入 `revealedAt` 時間戳記。
+* **所有人畫面自動同步翻開撲克牌**：
+    1. **盲投階段 (`sessionStatus = 'voting'`)**：撲克牌桌 (`voter-grid`) 與出牌明細中，除本人外其他已投票參與者一律顯示 `🎴 已出牌(盲投蓋牌)` 與 `(待全員投票後自動翻牌)`，維持盲投公平性。
+    2. **全員投完翻牌後 (`sessionStatus in ('revealed', 'finalized')`)**：不論是管理者 (`admin`) 或一般參與者 (`participant`)，所有人的投票桌面 (`voter-grid`)、當回合統計橫幅（算術平均、最低分、最高分、分歧落差、共識規則建議點數）以及回合出牌紀錄皆同步翻開，顯示每位參與者投出的點數與估算理由（註：個人被指派工項與個人總 Story Point 統計仍維持個人隱私保護，僅本人與管理者可見）。
+    3. **跨瀏覽器自動即時翻牌 (SignalR Push + Live Status Polling 雙重保障)**：當最後一位參與者送出選票觸發自動翻牌時，系統同時透過 SignalR (`onVotingSessionUpdated` 之 `autoRevealed` 事件) 與前端每 2 秒輕量狀態輪詢 (`GET /voting/liveStatus`) 偵測狀態變更，無須使用者手動點擊按鈕，所有已開啟之參與者與管理者畫面皆自動刷新並翻開撲克牌。
+
 ---
 
 ## 3. 系統架構與技術開發規範

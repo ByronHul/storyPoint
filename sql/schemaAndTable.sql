@@ -109,7 +109,7 @@ begin
     if col_length('storyPoint.tbVotingSession', 'consensusRule') is null
         alter table storyPoint.tbVotingSession add consensusRule varchar(32) not null constraint dfMigrateConsensusRule default ('nearestFibonacci');
     if col_length('storyPoint.tbVotingSession', 'autoRevealWhenAllVoted') is null
-        alter table storyPoint.tbVotingSession add autoRevealWhenAllVoted bit not null constraint dfMigrateAutoReveal default (0);
+        alter table storyPoint.tbVotingSession add autoRevealWhenAllVoted bit not null constraint dfMigrateAutoReveal default (1);
     if col_length('storyPoint.tbVotingSession', 'roundTimeLimitSecond') is null
         alter table storyPoint.tbVotingSession add roundTimeLimitSecond int not null constraint dfMigrateTimeLimit default (120);
     if col_length('storyPoint.tbVotingSession', 'allowQuestionCard') is null
@@ -132,7 +132,7 @@ begin
         workItemPk, cardDeckPk, hostEmployeePk, currentRoundNumber,
         sessionStatus, finalStoryPoint, finalDecisionNote,
         minStoryPoint, maxStoryPoint, maxAllowedSpread, consensusRule,
-        autoRevealWhenAllVoted, roundTimeLimitSecond, allowQuestionCard,
+        cast(1 as bit) as autoRevealWhenAllVoted, roundTimeLimitSecond, allowQuestionCard,
         allowCoffeeCard, voteCommentPolicy, restrictToParticipant, roundGoalNote,
         startedAt, finalizedAt, createdAt, updatedAt
     into storyPoint.tbPreserveVotingSession
@@ -379,7 +379,7 @@ create table storyPoint.tbVotingSession (
     maxStoryPoint decimal(8,2) not null constraint dfTbVotingSessionMaxPoint default (21.00),
     maxAllowedSpread decimal(8,2) not null constraint dfTbVotingSessionMaxSpread default (5.00),
     consensusRule varchar(32) not null constraint dfTbVotingSessionConsensusRule default ('nearestFibonacci'),
-    autoRevealWhenAllVoted bit not null constraint dfTbVotingSessionAutoReveal default (0),
+    autoRevealWhenAllVoted bit not null constraint dfTbVotingSessionAutoReveal default (1),
     roundTimeLimitSecond int not null constraint dfTbVotingSessionTimeLimit default (120),
     allowQuestionCard bit not null constraint dfTbVotingSessionAllowQuestion default (1),
     allowCoffeeCard bit not null constraint dfTbVotingSessionAllowCoffee default (1),
@@ -597,7 +597,7 @@ begin
         workItemPk, cardDeckPk, hostEmployeePk, currentRoundNumber,
         sessionStatus, finalStoryPoint, finalDecisionNote,
         minStoryPoint, maxStoryPoint, maxAllowedSpread, consensusRule,
-        autoRevealWhenAllVoted, roundTimeLimitSecond, allowQuestionCard,
+        cast(1 as bit), roundTimeLimitSecond, allowQuestionCard,
         allowCoffeeCard, voteCommentPolicy, restrictToParticipant, roundGoalNote,
         startedAt, finalizedAt, createdAt, updatedAt
     from storyPoint.tbPreserveVotingSession;

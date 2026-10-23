@@ -1397,7 +1397,7 @@ create or alter procedure storyPoint.spCreateVotingSession
     @maxStoryPoint decimal(8,2) = 21.00,
     @maxAllowedSpread decimal(8,2) = 5.00,
     @consensusRule varchar(32) = 'nearestFibonacci',
-    @autoRevealWhenAllVoted bit = 0,
+    @autoRevealWhenAllVoted bit = 1,
     @roundTimeLimitSecond int = 120,
     @allowQuestionCard bit = 1,
     @allowCoffeeCard bit = 1,
@@ -1461,7 +1461,7 @@ begin
                 maxStoryPoint = @cleanMax,
                 maxAllowedSpread = isnull(@maxAllowedSpread, 5.00),
                 consensusRule = isnull(nullif(ltrim(rtrim(@consensusRule)), ''), 'nearestFibonacci'),
-                autoRevealWhenAllVoted = isnull(@autoRevealWhenAllVoted, 0),
+                autoRevealWhenAllVoted = isnull(@autoRevealWhenAllVoted, 1),
                 roundTimeLimitSecond = isnull(@roundTimeLimitSecond, 120),
                 allowQuestionCard = isnull(@allowQuestionCard, 1),
                 allowCoffeeCard = isnull(@allowCoffeeCard, 1),
@@ -1503,7 +1503,7 @@ begin
                 @cleanMax,
                 isnull(@maxAllowedSpread, 5.00),
                 isnull(nullif(ltrim(rtrim(@consensusRule)), ''), 'nearestFibonacci'),
-                isnull(@autoRevealWhenAllVoted, 0),
+                isnull(@autoRevealWhenAllVoted, 1),
                 isnull(@roundTimeLimitSecond, 120),
                 isnull(@allowQuestionCard, 1),
                 isnull(@allowCoffeeCard, 1),
@@ -1553,6 +1553,59 @@ begin
                 sysdatetime()
             from storyPoint.tbEmployee as e
             where e.isActive = 1;
+        end
+
+        -- 若更新既有議程參與名單後，當前盲投回合已全員完成投票，則自動翻牌揭曉
+        declare @curRoundNum int = 1;
+        declare @curSessStatus varchar(32) = '';
+        declare @curRoundPk int = 0;
+        declare @reqCount int = 0;
+        declare @votedCount int = 0;
+
+        select
+            @curRoundNum = currentRoundNumber,
+            @curSessStatus = sessionStatus
+        from storyPoint.tbVotingSession
+        where pk = @sessionPk;
+
+        if @curSessStatus = 'voting'
+        begin
+            select @curRoundPk = pk
+            from storyPoint.tbVotingRound
+            where votingSessionPk = @sessionPk
+              and roundNumber = @curRoundNum;
+
+            select @reqCount = count(1)
+            from storyPoint.tbVotingSessionParticipant as vsp
+            inner join storyPoint.tbEmployee as e
+                on vsp.employeePk = e.pk
+            where vsp.votingSessionPk = @sessionPk
+              and vsp.isRequiredVoter = 1
+              and e.isActive = 1;
+
+            select @votedCount = count(distinct vrec.employeePk)
+            from storyPoint.tbVoteRecord as vrec
+            inner join storyPoint.tbVotingSessionParticipant as vsp
+                on vrec.votingSessionPk = vsp.votingSessionPk
+               and vrec.employeePk = vsp.employeePk
+            inner join storyPoint.tbEmployee as e
+                on vsp.employeePk = e.pk
+            where vrec.votingRoundPk = @curRoundPk
+              and vsp.isRequiredVoter = 1
+              and e.isActive = 1;
+
+            if @reqCount > 0 and @votedCount >= @reqCount
+            begin
+                update storyPoint.tbVotingRound
+                set roundStatus = 'revealed',
+                    revealedAt = isnull(revealedAt, sysdatetime())
+                where pk = @curRoundPk;
+
+                update storyPoint.tbVotingSession
+                set sessionStatus = 'revealed',
+                    updatedAt = sysdatetime()
+                where pk = @sessionPk;
+            end
         end
 
         set @durationMs = datediff(millisecond, @startTime, sysdatetime());
@@ -1794,37 +1847,45 @@ begin
         ) as stat
         where vr.pk = @roundPk;
 
-        -- 若啟用「全員完成出牌自動翻牌揭曉」，檢查是否所有必投參與者皆已出牌
-        if @autoReveal = 1
+        -- 當所有必投參與者皆已完成出牌時，自動翻牌揭曉（全員投票自動翻牌）
+        declare @requiredVoterCount int = 0;
+        declare @votedParticipantCount int = 0;
+        declare @isAutoRevealed bit = 0;
+
+        select @requiredVoterCount = count(1)
+        from storyPoint.tbVotingSessionParticipant as vsp
+        inner join storyPoint.tbEmployee as e
+            on vsp.employeePk = e.pk
+        where vsp.votingSessionPk = @votingSessionPk
+          and vsp.isRequiredVoter = 1
+          and e.isActive = 1;
+
+        select @votedParticipantCount = count(distinct vrec.employeePk)
+        from storyPoint.tbVoteRecord as vrec
+        inner join storyPoint.tbVotingSessionParticipant as vsp
+            on vrec.votingSessionPk = vsp.votingSessionPk
+           and vrec.employeePk = vsp.employeePk
+        inner join storyPoint.tbEmployee as e
+            on vsp.employeePk = e.pk
+        where vrec.votingRoundPk = @roundPk
+          and vsp.isRequiredVoter = 1
+          and e.isActive = 1;
+
+        if @requiredVoterCount > 0 and @votedParticipantCount >= @requiredVoterCount
         begin
-            declare @requiredVoterCount int = 0;
-            declare @votedParticipantCount int = 0;
+            update storyPoint.tbVotingRound
+            set roundStatus = 'revealed',
+                revealedAt = isnull(revealedAt, sysdatetime())
+            where pk = @roundPk;
 
-            select @requiredVoterCount = count(1)
-            from storyPoint.tbVotingSessionParticipant
-            where votingSessionPk = @votingSessionPk
-              and isRequiredVoter = 1;
+            update storyPoint.tbVotingSession
+            set sessionStatus = 'revealed',
+                autoRevealWhenAllVoted = 1,
+                updatedAt = sysdatetime()
+            where pk = @votingSessionPk;
 
-            select @votedParticipantCount = count(distinct vrec.employeePk)
-            from storyPoint.tbVoteRecord as vrec
-            inner join storyPoint.tbVotingSessionParticipant as vsp
-                on vrec.votingSessionPk = vsp.votingSessionPk
-               and vrec.employeePk = vsp.employeePk
-            where vrec.votingRoundPk = @roundPk
-              and vsp.isRequiredVoter = 1;
-
-            if @requiredVoterCount > 0 and @votedParticipantCount >= @requiredVoterCount
-            begin
-                update storyPoint.tbVotingRound
-                set roundStatus = 'revealed',
-                    revealedAt = sysdatetime()
-                where pk = @roundPk;
-
-                update storyPoint.tbVotingSession
-                set sessionStatus = 'revealed',
-                    updatedAt = sysdatetime()
-                where pk = @votingSessionPk;
-            end
+            set @sessionStatus = 'revealed';
+            set @isAutoRevealed = 1;
         end
 
         set @durationMs = datediff(millisecond, @startTime, sysdatetime());
@@ -1845,7 +1906,11 @@ begin
             vrec.cardValue,
             vrec.numericPointValue,
             vrec.voteComment,
-            vrec.updatedAt
+            vrec.updatedAt,
+            @sessionStatus as sessionStatus,
+            @isAutoRevealed as isAutoRevealed,
+            @votedParticipantCount as votedParticipantCount,
+            @requiredVoterCount as requiredVoterCount
         from storyPoint.tbVoteRecord as vrec
         inner join storyPoint.tbEmployee as e
             on vrec.employeePk = e.pk
@@ -2167,6 +2232,50 @@ begin
     declare @durationMs int = 0;
 
     begin try
+        -- 自動檢核：若有進行中 ('voting') 之議程其當前盲投回合所有有效受邀參與者皆已投票，自動將該回合與議程切換為 'revealed' (自動翻牌)
+        update vr
+        set vr.roundStatus = 'revealed',
+            vr.revealedAt = isnull(vr.revealedAt, sysdatetime())
+        from storyPoint.tbVotingRound as vr
+        inner join storyPoint.tbVotingSession as vs
+            on vr.votingSessionPk = vs.pk
+           and vr.roundNumber = vs.currentRoundNumber
+        cross apply (
+            select count(1) as reqCnt
+            from storyPoint.tbVotingSessionParticipant as vsp
+            inner join storyPoint.tbEmployee as e
+                on vsp.employeePk = e.pk
+            where vsp.votingSessionPk = vs.pk
+              and vsp.isRequiredVoter = 1
+              and e.isActive = 1
+        ) as req
+        cross apply (
+            select count(distinct vrec.employeePk) as votedCnt
+            from storyPoint.tbVoteRecord as vrec
+            inner join storyPoint.tbVotingSessionParticipant as vsp
+                on vrec.votingSessionPk = vsp.votingSessionPk
+               and vrec.employeePk = vsp.employeePk
+            inner join storyPoint.tbEmployee as e
+                on vsp.employeePk = e.pk
+            where vrec.votingRoundPk = vr.pk
+              and vsp.isRequiredVoter = 1
+              and e.isActive = 1
+        ) as vt
+        where vs.sessionStatus = 'voting'
+          and req.reqCnt > 0
+          and vt.votedCnt >= req.reqCnt;
+
+        update vs
+        set vs.sessionStatus = 'revealed',
+            vs.autoRevealWhenAllVoted = 1,
+            vs.updatedAt = sysdatetime()
+        from storyPoint.tbVotingSession as vs
+        inner join storyPoint.tbVotingRound as vr
+            on vr.votingSessionPk = vs.pk
+           and vr.roundNumber = vs.currentRoundNumber
+        where vs.sessionStatus = 'voting'
+          and vr.roundStatus = 'revealed';
+
         -- Result Set 1: 投票議程總覽
         select
             v.votingSessionPk,
@@ -2211,9 +2320,9 @@ begin
             v.totalRoundCount,
             v.totalVoteRecordCount,
             v.currentRoundStatus,
-            case when @isViewerAdmin = 1 then v.currentRoundAveragePoint else null end as currentRoundAveragePoint,
-            case when @isViewerAdmin = 1 then v.currentRoundMinPoint else null end as currentRoundMinPoint,
-            case when @isViewerAdmin = 1 then v.currentRoundMaxPoint else null end as currentRoundMaxPoint,
+            case when @isViewerAdmin = 1 or v.sessionStatus in ('revealed', 'finalized') then v.currentRoundAveragePoint else null end as currentRoundAveragePoint,
+            case when @isViewerAdmin = 1 or v.sessionStatus in ('revealed', 'finalized') then v.currentRoundMinPoint else null end as currentRoundMinPoint,
+            case when @isViewerAdmin = 1 or v.sessionStatus in ('revealed', 'finalized') then v.currentRoundMaxPoint else null end as currentRoundMaxPoint,
             v.currentRoundVoteCount,
             v.currentRoundDiscussionNote
         from storyPoint.vwVotingSessionSummary as v
@@ -2223,6 +2332,13 @@ begin
           and (
               @isViewerAdmin = 1
               or v.targetKind = 'workItemType'
+              or v.restrictToParticipant = 0
+              or exists (
+                  select 1
+                  from storyPoint.tbVotingSessionParticipant as vsp
+                  where vsp.votingSessionPk = v.votingSessionPk
+                    and vsp.employeePk = @viewerEmployeePk
+              )
               or exists (
                   select 1
                   from storyPoint.tbWorkItemAssignment as wia
@@ -2234,7 +2350,7 @@ begin
             case when v.sessionStatus in ('voting', 'revealed') then 0 else 1 end asc,
             v.votingSessionPk desc;
 
-        -- Result Set 2: 各回合統計紀錄 (非管理者不顯示他人統計分數)
+        -- Result Set 2: 各回合統計紀錄 (盲投進行中隱藏統計分數；一旦翻牌揭曉或定案，所有參與者畫面皆顯示翻牌統計結果)
         select
             vr.pk as votingRoundPk,
             vr.votingSessionPk,
@@ -2242,17 +2358,14 @@ begin
             vr.roundNumber,
             vr.roundStatus,
             case
-                when @isViewerAdmin = 0 then null
                 when vr.roundStatus = 'voting' and vs.sessionStatus = 'voting' then null
                 else vr.averagePoint
             end as averagePoint,
             case
-                when @isViewerAdmin = 0 then null
                 when vr.roundStatus = 'voting' and vs.sessionStatus = 'voting' then null
                 else vr.minPoint
             end as minPoint,
             case
-                when @isViewerAdmin = 0 then null
                 when vr.roundStatus = 'voting' and vs.sessionStatus = 'voting' then null
                 else vr.maxPoint
             end as maxPoint,
@@ -2268,7 +2381,7 @@ begin
           and (@workItemPk is null or vs.workItemPk = @workItemPk)
         order by vr.votingSessionPk desc, vr.roundNumber asc;
 
-        -- Result Set 3: 各回合員工出牌明細 (一般員工僅可看到自己的出牌與分數，不可看到其他人的)
+        -- Result Set 3: 各回合員工出牌明細 (盲投階段其他人顯示已蓋牌；全員投完自動翻牌或定案後，所有人畫面同步翻開顯示各參與者牌面)
         select
             vrec.pk as voteRecordPk,
             vrec.votingRoundPk,
@@ -2283,7 +2396,7 @@ begin
             d.departmentName,
             case
                 when vr.roundStatus = 'voting' and vs.sessionStatus = 'voting' and isnull(@viewerEmployeePk, -1) <> vrec.employeePk
-                then N'🎴 已出牌(盲投隱藏)'
+                then N'🎴 已出牌(盲投蓋牌)'
                 when vrec.cardValue = N'?' then N'? (需求不明需討論)'
                 when vrec.cardValue = N'☕' then N'☕ (暫停休息)'
                 else concat(vrec.cardValue, N' pt')
@@ -2295,7 +2408,7 @@ begin
             end as numericPointValue,
             case
                 when vr.roundStatus = 'voting' and vs.sessionStatus = 'voting' and isnull(@viewerEmployeePk, -1) <> vrec.employeePk
-                then N'(翻牌後揭曉估算理由)'
+                then N'(待全員投票翻牌後揭曉)'
                 else isnull(vrec.voteComment, N'')
             end as voteComment,
             vrec.votedAt,
@@ -2312,10 +2425,9 @@ begin
         where (@votingSessionPk is null or vrec.votingSessionPk = @votingSessionPk)
           and (@workItemTypePk is null or vs.workItemTypePk = @workItemTypePk)
           and (@workItemPk is null or vs.workItemPk = @workItemPk)
-          and (@isViewerAdmin = 1 or vrec.employeePk = @viewerEmployeePk)
         order by vrec.votingSessionPk desc, vrec.roundNumber asc, e.pk asc;
 
-        -- Result Set 4: 參與者清單與當前最新回合出牌狀態 (一般員工僅可看到自己的出牌桌面狀態)
+        -- Result Set 4: 參與者清單與當前最新回合出牌桌面狀態 (盲投階段他人蓋牌；全員投完自動翻牌後所有人畫面同步翻開全部人的牌)
         select
             vsp.votingSessionPk,
             vsp.employeePk,
@@ -2326,14 +2438,14 @@ begin
             case when curVote.pk is not null then 1 else 0 end as hasVotedCurrentRound,
             case
                 when curVote.pk is null then N'⏳ 尚未出牌'
-                when vs.sessionStatus = 'voting' and isnull(@viewerEmployeePk, -1) <> vsp.employeePk then N'🎴 已出牌'
+                when vs.sessionStatus = 'voting' and isnull(@viewerEmployeePk, -1) <> vsp.employeePk then N'🎴 已出牌(盲投蓋牌)'
                 when curVote.cardValue = N'?' then N'? (需求不明)'
                 when curVote.cardValue = N'☕' then N'☕ (暫停休息)'
                 else concat(curVote.cardValue, N' pt')
             end as currentRoundCardDisplay,
             case
                 when curVote.pk is null then N''
-                when vs.sessionStatus = 'voting' and isnull(@viewerEmployeePk, -1) <> vsp.employeePk then N'(翻牌後揭曉)'
+                when vs.sessionStatus = 'voting' and isnull(@viewerEmployeePk, -1) <> vsp.employeePk then N'(待全員投票後自動翻牌)'
                 else isnull(curVote.voteComment, N'')
             end as currentRoundCommentDisplay
         from storyPoint.tbVotingSessionParticipant as vsp
@@ -2350,7 +2462,6 @@ begin
             on curVote.votingRoundPk = curRound.pk
            and curVote.employeePk = vsp.employeePk
         where (@votingSessionPk is null or vsp.votingSessionPk = @votingSessionPk)
-          and (@isViewerAdmin = 1 or vsp.employeePk = @viewerEmployeePk)
         order by vsp.votingSessionPk desc, e.departmentPk asc, e.pk asc;
     end try
     begin catch

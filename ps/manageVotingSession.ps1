@@ -68,7 +68,7 @@ param(
     [string]$consensusRule = 'nearestFibonacci',
 
     [parameter(mandatory = $false)]
-    [bool]$autoRevealWhenAllVoted = $false,
+    [bool]$autoRevealWhenAllVoted = $true,
 
     [parameter(mandatory = $false)]
     [int]$roundTimeLimitSecond = 120,

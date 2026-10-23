@@ -568,7 +568,7 @@ public class portalController : Controller
         [FromForm] decimal? maxStoryPoint,
         [FromForm] decimal? maxAllowedSpread,
         [FromForm] string? consensusRule,
-        [FromForm] bool autoRevealWhenAllVoted = false,
+        [FromForm] bool autoRevealWhenAllVoted = true,
         [FromForm] int? roundTimeLimitSecond = 120,
         [FromForm] bool allowQuestionCard = true,
         [FromForm] bool allowCoffeeCard = true,
@@ -671,7 +671,7 @@ public class portalController : Controller
             string cleanVal = (cardValue ?? "").Trim();
             var (_, fullCardMeaning) = getPokerCardMeaning(cleanVal);
 
-            await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spCastVote", new Dictionary<string, object?>
+            var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spCastVote", new Dictionary<string, object?>
             {
                 ["votingSessionPk"] = votingSessionPk,
                 ["employeePk"] = voterPk,
@@ -680,15 +680,44 @@ public class portalController : Controller
                 ["operatorAccount"] = getCurrentLoginAccount()
             });
 
+            bool isAutoRevealed = false;
+            string updatedSessionStatus = "voting";
+            int votedCnt = 0;
+            int reqCnt = 0;
+            if (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0)
+            {
+                var r0 = ds.Tables[0].Rows[0];
+                if (r0.Table.Columns.Contains("isAutoRevealed") && r0["isAutoRevealed"] != DBNull.Value)
+                    isAutoRevealed = Convert.ToBoolean(r0["isAutoRevealed"]);
+                if (r0.Table.Columns.Contains("sessionStatus") && r0["sessionStatus"] != DBNull.Value)
+                    updatedSessionStatus = r0["sessionStatus"].ToString() ?? "voting";
+                if (r0.Table.Columns.Contains("votedParticipantCount") && r0["votedParticipantCount"] != DBNull.Value)
+                    votedCnt = Convert.ToInt32(r0["votedParticipantCount"]);
+                if (r0.Table.Columns.Contains("requiredVoterCount") && r0["requiredVoterCount"] != DBNull.Value)
+                    reqCnt = Convert.ToInt32(r0["requiredVoterCount"]);
+            }
+
+            string broadcastMsg = isAutoRevealed
+                ? $"🎉 所有受邀參與者 ({votedCnt}/{reqCnt} 人) 皆已完成投票，系統已自動翻牌揭曉所有人的點數！"
+                : $"有一位參與者已完成盲投出牌（目前已出牌 {votedCnt}/{reqCnt} 人，待全員投票後自動翻牌）！";
+
             await _hubContext.Clients.All.SendAsync("onVotingSessionUpdated", new
             {
                 votingSessionPk = votingSessionPk,
-                eventName = "voteCast",
-                messageText = $"有一位參與者已完成盲投出牌！",
+                eventName = isAutoRevealed ? "autoRevealed" : "voteCast",
+                sessionStatus = updatedSessionStatus,
+                isAutoRevealed = isAutoRevealed,
+                votedParticipantCount = votedCnt,
+                requiredVoterCount = reqCnt,
+                messageText = broadcastMsg,
                 timestamp = DateTime.Now.ToString("HH:mm:ss")
             });
 
-            return Redirect($"/?tab=voting&sessionPk={votingSessionPk}&msg=" + Uri.EscapeDataString($"已成功投出撲克牌「{fullCardMeaning}」（翻牌前對其他人保持隱藏）！"));
+            string redirectMsg = isAutoRevealed
+                ? $"已投出撲克牌「{fullCardMeaning}」！🎉 全體受邀參與者 ({votedCnt}/{reqCnt} 人) 皆已完成投票，所有人的畫面已自動翻牌揭曉！"
+                : $"已成功投出撲克牌「{fullCardMeaning}」（目前已出牌 {votedCnt}/{reqCnt} 人，待全員完成投票後將自動翻牌揭曉）！";
+
+            return Redirect($"/?tab=voting&sessionPk={votingSessionPk}&msg=" + Uri.EscapeDataString(redirectMsg));
         }
         catch (Exception ex)
         {
@@ -748,6 +777,54 @@ public class portalController : Controller
         {
             await logPortalExceptionAsync("portalController.controlVotingSession", ex);
             return Redirect($"/?tab=voting&sessionPk={votingSessionPk}&err=" + Uri.EscapeDataString("控制投票議程時發生異常（已自動記錄至系統 Log）：" + ex.Message));
+        }
+    }
+
+    [HttpGet("voting/liveStatus")]
+    [Authorize]
+    public async Task<IActionResult> getVotingLiveStatus([FromQuery] int? sessionPk = null)
+    {
+        try
+        {
+            int currentEmpPk = getCurrentEmployeePk();
+            bool isAdmin = isAdminUser();
+            var votingDs = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spGetVotingProcessHistory", new Dictionary<string, object?>
+            {
+                ["votingSessionPk"] = sessionPk,
+                ["viewerEmployeePk"] = currentEmpPk,
+                ["isViewerAdmin"] = isAdmin
+            });
+
+            if (votingDs.Tables.Count == 0 || votingDs.Tables[0].Rows.Count == 0)
+            {
+                return Json(new { found = false });
+            }
+
+            DataRow row = votingDs.Tables[0].Rows[0];
+            int vsPk = Convert.ToInt32(row["votingSessionPk"]);
+            string sStatus = row["sessionStatus"]?.ToString() ?? "voting";
+            int curRound = row["currentRoundNumber"] != DBNull.Value ? Convert.ToInt32(row["currentRoundNumber"]) : 1;
+            int voteCnt = row.Table.Columns.Contains("currentRoundVoteCount") && row["currentRoundVoteCount"] != DBNull.Value
+                ? Convert.ToInt32(row["currentRoundVoteCount"])
+                : 0;
+            int partCnt = row.Table.Columns.Contains("participantCount") && row["participantCount"] != DBNull.Value
+                ? Convert.ToInt32(row["participantCount"])
+                : 0;
+
+            return Json(new
+            {
+                found = true,
+                votingSessionPk = vsPk,
+                sessionStatus = sStatus,
+                currentRoundNumber = curRound,
+                voteCount = voteCnt,
+                participantCount = partCnt,
+                isRevealed = sStatus == "revealed" || sStatus == "finalized"
+            });
+        }
+        catch
+        {
+            return Json(new { found = false });
         }
     }
 
@@ -3464,39 +3541,29 @@ public class portalController : Controller
             }
             else if (sStatus == "revealed")
             {
-                if (isAdmin)
-                {
-                    decimal rMin = activeSessionRow["currentRoundMinPoint"] != DBNull.Value ? Convert.ToDecimal(activeSessionRow["currentRoundMinPoint"]) : 0m;
-                    decimal rMax = activeSessionRow["currentRoundMaxPoint"] != DBNull.Value ? Convert.ToDecimal(activeSessionRow["currentRoundMaxPoint"]) : 0m;
-                    decimal actualSpread = rMax - rMin;
-                    bool spreadExceeded = actualSpread > maxSpread;
-                    string suggestedByRule = calculateSuggestedPoint(voteRecordTable, activeSessionPk, curRound, consensusRule, rawCardCsv, minPt, maxPt);
+                decimal rMin = activeSessionRow["currentRoundMinPoint"] != DBNull.Value ? Convert.ToDecimal(activeSessionRow["currentRoundMinPoint"]) : 0m;
+                decimal rMax = activeSessionRow["currentRoundMaxPoint"] != DBNull.Value ? Convert.ToDecimal(activeSessionRow["currentRoundMaxPoint"]) : 0m;
+                decimal actualSpread = rMax - rMin;
+                bool spreadExceeded = actualSpread > maxSpread;
+                string suggestedByRule = calculateSuggestedPoint(voteRecordTable, activeSessionPk, curRound, consensusRule, rawCardCsv, minPt, maxPt);
 
-                    sb.Append($@"
-                    <div class=""alert"" style=""background:#eef2ff;border:1px solid #c7d2fe;color:#1e3a8a;"">
-                        <div>
-                            👁️ <strong>第 {curRound} 回合已翻牌揭曉！</strong>
-                            算術平均：<strong>{activeSessionRow["currentRoundAveragePoint"]} pt</strong> ｜
-                            最低：<strong>{activeSessionRow["currentRoundMinPoint"]} pt</strong> ｜
-                            最高：<strong>{activeSessionRow["currentRoundMaxPoint"]} pt</strong> ｜
-                            本回合落差：<strong>{actualSpread:0.##} pt</strong>（門檻 {maxSpread:0.##} pt）｜
-                            已出牌人數：<strong>{activeSessionRow["currentRoundVoteCount"]} 人</strong>
-                        </div>
-                        <div style=""margin-top:6px;font-size:13px;"">
-                            💡 依本回合【{h(consensusRuleText)}】自動計算建議定案點數：<strong style=""font-size:16px;color:#1d4ed8;"">{suggestedByRule} pt</strong>
-                            {(spreadExceeded
-                                ? $"<span class='badge' style='background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;margin-left:8px;'>⚠️ 最高與最低分落差 ({actualSpread:0.##} pt) 超過門檻 ({maxSpread:0.##} pt)，建議請極端值成員說明後開啟下一回合重新盲投！</span>"
-                                : $"<span class='badge badge-finalized' style='margin-left:8px;'>✅ 點數落差 ({actualSpread:0.##} pt) 在共識門檻內，可直接拍板定案！</span>")}
-                        </div>
-                    </div>");
-                }
-                else
-                {
-                    sb.Append($@"
-                    <div class=""alert"" style=""background:#eef2ff;border:1px solid #c7d2fe;color:#1e3a8a;"">
-                        👁️ <strong>第 {curRound} 回合已揭曉！</strong>（個人隱私保護模式：僅顯示您本人的投票分數與最終核定點數，不顯示其他員工分數）
-                    </div>");
-                }
+                sb.Append($@"
+                <div class=""alert"" style=""background:#eef2ff;border:1px solid #c7d2fe;color:#1e3a8a;"">
+                    <div>
+                        👁️ <strong>第 {curRound} 回合已全員翻牌揭曉！</strong>
+                        算術平均：<strong>{activeSessionRow["currentRoundAveragePoint"]} pt</strong> ｜
+                        最低：<strong>{activeSessionRow["currentRoundMinPoint"]} pt</strong> ｜
+                        最高：<strong>{activeSessionRow["currentRoundMaxPoint"]} pt</strong> ｜
+                        本回合落差：<strong>{actualSpread:0.##} pt</strong>（門檻 {maxSpread:0.##} pt）｜
+                        已出牌人數：<strong>{activeSessionRow["currentRoundVoteCount"]} 人</strong>
+                    </div>
+                    <div style=""margin-top:6px;font-size:13px;"">
+                        💡 依本回合【{h(consensusRuleText)}】自動計算建議定案點數：<strong style=""font-size:16px;color:#1d4ed8;"">{suggestedByRule} pt</strong>
+                        {(spreadExceeded
+                            ? $"<span class='badge' style='background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;margin-left:8px;'>⚠️ 最高與最低分落差 ({actualSpread:0.##} pt) 超過門檻 ({maxSpread:0.##} pt)，建議請極端值成員說明後開啟下一回合重新盲投！</span>"
+                            : $"<span class='badge badge-finalized' style='margin-left:8px;'>✅ 點數落差 ({actualSpread:0.##} pt) 在共識門檻內，可直接拍板定案！</span>")}
+                    </div>
+                </div>");
             }
             else
             {
@@ -3575,15 +3642,16 @@ public class portalController : Controller
                 </div>");
             }
 
-            // 顯示本回合出牌狀態（管理者看全部參與者，一般員工僅看自己）
-            sb.Append($"<div style='font-weight:700;font-size:14px;margin-bottom:8px;'>{(isAdmin ? $"👥 第 {curRound} 回合受邀參與者出牌桌面狀態（共 {partCount} 位參與者）：" : $"🙋 第 {curRound} 回合我的出牌狀態（僅顯示您本人的投票與分數，不顯示其他員工）：")}</div>");
+            // 顯示本回合出牌桌面狀態（盲投時他人蓋牌，全員完成投票後所有人畫面自動同步翻牌）
+            sb.Append($"<div style='font-weight:700;font-size:14px;margin-bottom:8px;'>👥 第 {curRound} 回合受邀參與者出牌桌面狀態（共 {partCount} 位參與者｜{(sStatus == "voting" ? "盲投階段他人牌面蓋牌，全員投完自動翻牌" : "🎉 已全員翻牌揭曉所有參與者牌面")}）：</div>");
             sb.Append("<div class='voter-grid'>");
             foreach (DataRow pRow in participantTable.Rows)
             {
                 if (Convert.ToInt32(pRow["votingSessionPk"]) != activeSessionPk) continue;
                 bool voted = Convert.ToInt32(pRow["hasVotedCurrentRound"]) == 1;
-                string bg = voted ? "#eff6ff" : "#f8fafc";
-                string border = voted ? "#93c5fd" : "#e2e8f0";
+                bool isFlipped = sStatus == "revealed" || sStatus == "finalized";
+                string bg = isFlipped ? "#f0fdf4" : (voted ? "#eff6ff" : "#f8fafc");
+                string border = isFlipped ? "#86efac" : (voted ? "#93c5fd" : "#e2e8f0");
                 sb.Append($@"
                 <div class=""voter-box"" style=""background:{bg};border-color:{border};"">
                     <div style=""font-weight:700;font-size:13.5px;"">{h(pRow["employeeName"])}</div>
@@ -3635,7 +3703,7 @@ public class portalController : Controller
 
             // 顯示本議程各回合歷史紀錄
             sb.Append("<div style='margin-top:22px;border-top:1px solid #e2e8f0;padding-top:14px;'>");
-            sb.Append($"<div style='font-weight:700;font-size:14px;margin-bottom:10px;'>{(isAdmin ? "📜 本議程各回合出牌與訂定過程紀錄：" : "📜 本議程我的各回合投票出牌紀錄（僅顯示您本人的投票分數）：")}</div>");
+            sb.Append($"<div style='font-weight:700;font-size:14px;margin-bottom:10px;'>📜 本議程各回合出牌與訂定過程紀錄（{(sStatus == "voting" ? "當前盲投回合他人蓋牌，全員投完自動翻牌揭曉" : "已翻牌揭曉各回合全體出牌紀錄")}）：</div>");
             sb.Append("<table><thead><tr><th>回合</th><th>狀態</th><th>參與者</th><th>部門</th><th>投出點數</th><th>估算理由與備註</th><th>出牌時間</th></tr></thead><tbody>");
             foreach (DataRow vr in voteRecordTable.Rows)
             {
@@ -3915,7 +3983,7 @@ public class portalController : Controller
                         </div>
                         <div style='display:flex;align-items:end;'>
                             <label style='display:flex;align-items:center;gap:8px;cursor:pointer;padding:9px 12px;background:#fff;border:1px solid #cbd5e1;border-radius:7px;width:100%;margin:0;' data-tip='勾選後，當所有受邀參與者皆已完成出牌時，系統將自動翻牌切換為揭曉狀態並計算統計指標' title='勾選後，當所有受邀參與者皆已完成出牌時，系統將自動翻牌切換為揭曉狀態並計算統計指標'>
-                                <input type='checkbox' name='autoRevealWhenAllVoted' id='setupAutoRevealWhenAllVoted' value='true' />
+                                <input type='checkbox' name='autoRevealWhenAllVoted' id='setupAutoRevealWhenAllVoted' value='true' checked />
                                 <span>⚡ <strong>5. 全員出牌後自動翻牌揭曉</strong> <span class='sp-tip-icon'>ⓘ</span></span>
                             </label>
                         </div>
@@ -4030,14 +4098,15 @@ public class portalController : Controller
                     <strong>估算標的：</strong>{h(sRow["targetDisplayName"])} ｜ <strong>核定決策說明：</strong>{h(sRow["finalDecisionNote"] ?? "進行中")}
                 </div>");
 
-            // 列出每一回合的討論摘要與投票紀錄（一般員工僅看到自己的投票紀錄）
+            // 列出每一回合的討論摘要與投票紀錄
             foreach (DataRow rRow in roundTable.Rows)
             {
                 if (Convert.ToInt32(rRow["votingSessionPk"]) != sPk) continue;
                 int rNum = Convert.ToInt32(rRow["roundNumber"]);
-                string roundStatSummary = isAdmin
+                bool isRoundRevealed = rRow["averagePoint"] != DBNull.Value;
+                string roundStatSummary = isRoundRevealed
                     ? $"（出牌數：{rRow["voteCount"]} 人 ｜ 平均：{rRow["averagePoint"]} pt ｜ 最低：{rRow["minPoint"]} pt ｜ 最高：{rRow["maxPoint"]} pt）"
-                    : "（我的個人出牌紀錄）";
+                    : $"（出牌數：{rRow["voteCount"]} 人 ｜ 盲投進行中，待全員投票後自動翻牌揭曉）";
                 sb.Append($@"
                 <div style=""background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-top:10px;"">
                     <div style=""font-weight:700;color:#1e3a8a;margin-bottom:6px;"">
@@ -5332,7 +5401,7 @@ public class portalController : Controller
                 document.getElementById('setupMaxAllowedSpread').value = '5';
                 document.getElementById('setupRoundTimeLimitSecond').value = '180';
                 document.getElementById('setupVoteCommentPolicy').value = 'optional';
-                document.getElementById('setupAutoRevealWhenAllVoted').checked = false;
+                document.getElementById('setupAutoRevealWhenAllVoted').checked = true;
                 document.getElementById('setupAllowQuestionCard').checked = true;
                 document.getElementById('setupAllowCoffeeCard').checked = true;
             } else if (presetName === 'blitz') {
@@ -6052,7 +6121,34 @@ public class portalController : Controller
             if (box) box.value = sample;
         }
 
-        // 建立 SignalR 即時連線，當有其他人出牌或管理者翻牌/定案時即時顯示橫幅並可一鍵同步畫面
+        // 建立 SignalR 即時連線與自動翻牌同步機制：當所有人投完票自動翻牌、管理者翻牌/開啟下一回合/定案或有人出牌時，所有人的畫面自動同步翻牌更新
+        const currentVotingSessionPk = " + activeSessionPk + @";
+        let currentSessionStatus = '" + (activeSessionRow != null ? (activeSessionRow["sessionStatus"]?.ToString() ?? "voting") : "") + @"';
+        let currentRoundNumber = " + (activeSessionRow != null && activeSessionRow["currentRoundNumber"] != DBNull.Value ? Convert.ToInt32(activeSessionRow["currentRoundNumber"]) : 1) + @";
+        let currentRoundVoteCount = " + (activeSessionRow != null && activeSessionRow.Table.Columns.Contains("currentRoundVoteCount") && activeSessionRow["currentRoundVoteCount"] != DBNull.Value ? Convert.ToInt32(activeSessionRow["currentRoundVoteCount"]) : 0) + @";
+        let isAutoReloading = false;
+
+        function isVotingPaneActive() {
+            const pane = document.getElementById('pane-voting');
+            return pane && pane.classList.contains('active');
+        }
+
+        function isUserTypingVoteComment() {
+            const activeEl = document.activeElement;
+            if (!activeEl) return false;
+            const id = activeEl.id || '';
+            const name = activeEl.name || '';
+            return id === 'inputVoteComment' || name === 'roundDiscussionNote' || name === 'finalDecisionNote' || name === 'finalStoryPoint';
+        }
+
+        function triggerAutoFlipReload(targetSessionPk, reasonMsg) {
+            if (isAutoReloading) return;
+            isAutoReloading = true;
+            const pk = targetSessionPk || currentVotingSessionPk;
+            const nextUrl = '/?tab=voting&sessionPk=' + pk + (reasonMsg ? '&msg=' + encodeURIComponent(reasonMsg) : '');
+            window.location.href = nextUrl;
+        }
+
         if (window.signalR) {
             const conn = new signalR.HubConnectionBuilder()
                 .withUrl('/votingHub')
@@ -6066,10 +6162,54 @@ public class portalController : Controller
                     banner.innerHTML = '⚡ <strong>即時同步通知 (' + payload.timestamp + ')：</strong>' + payload.messageText +
                         ' <a href=""/?tab=voting&sessionPk=' + payload.votingSessionPk + '"" class=""btn btn-primary"" style=""padding:4px 10px;font-size:12px;margin-left:10px;"">🔄 立即同步最新桌面</a>';
                 }
+
+                const isSameSession = !currentVotingSessionPk || Number(payload.votingSessionPk) === Number(currentVotingSessionPk);
+                const isMajorFlipEvent = payload.isAutoRevealed === true
+                    || payload.eventName === 'autoRevealed'
+                    || payload.eventName === 'reveal'
+                    || payload.eventName === 'nextRound'
+                    || payload.eventName === 'finalize'
+                    || payload.sessionStatus === 'revealed'
+                    || payload.sessionStatus === 'finalized';
+
+                if (isVotingPaneActive() && isSameSession) {
+                    if (isMajorFlipEvent) {
+                        setTimeout(function () {
+                            triggerAutoFlipReload(payload.votingSessionPk, payload.messageText);
+                        }, 250);
+                    } else if (!isUserTypingVoteComment()) {
+                        setTimeout(function () {
+                            triggerAutoFlipReload(payload.votingSessionPk, '');
+                        }, 350);
+                    }
+                }
             });
 
             conn.start().catch(function (err) { console.warn(err); });
         }
+
+        // 雙重保障：每 2 秒輕量輪詢 /voting/liveStatus，確保所有人投完票時所有開啟的畫面 100% 自動翻牌
+        setInterval(function () {
+            if (isAutoReloading || !isVotingPaneActive() || !currentVotingSessionPk) return;
+            fetch('/voting/liveStatus?sessionPk=' + currentVotingSessionPk, { credentials: 'same-origin', cache: 'no-store' })
+                .then(function (res) { return res.ok ? res.json() : null; })
+                .then(function (data) {
+                    if (!data || !data.found) return;
+                    const statusChanged = data.sessionStatus && data.sessionStatus !== currentSessionStatus;
+                    const roundChanged = Number(data.currentRoundNumber) !== Number(currentRoundNumber);
+                    const voteCountChanged = Number(data.voteCount) !== Number(currentRoundVoteCount);
+
+                    if (statusChanged || roundChanged) {
+                        const msg = data.sessionStatus === 'revealed'
+                            ? '🎉 所有參與者已完成投票，畫面已自動翻牌揭曉！'
+                            : '';
+                        triggerAutoFlipReload(data.votingSessionPk, msg);
+                    } else if (voteCountChanged && !isUserTypingVoteComment()) {
+                        triggerAutoFlipReload(data.votingSessionPk, '');
+                    }
+                })
+                .catch(function () { });
+        }, 2000);
     </script>
 </body>
 </html>");
