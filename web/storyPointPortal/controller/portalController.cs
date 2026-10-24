@@ -3662,14 +3662,26 @@ public class portalController : Controller
             ? "<span class='badge badge-admin'>👑 管理者 (Admin - 全域檢視與管理)</span>"
             : "<span class='badge badge-user'>🙋 個別員工 (僅檢視自己的投票、工項與分數)</span>";
 
-        string menu2MainLabel = isAdmin ? "📋 工項與代表類型管理" : "📋 我的工項與分數";
-        string menu2Sub1Title = isAdmin ? "2-1. 工項點數查詢與賦予員工設定" : "2-1. 我的工項與個人分數查詢";
-        string menu2Sub1Desc = isAdmin ? "查詢各工項點數、選擇代表類型自動帶入或修改員工指派" : "僅顯示賦予給我本人的工項與個人配額分數（不顯示其他人）";
-        string menu3MainLabel = isAdmin ? "📊 員工與部門統計報表" : "📊 我的分數統計報表";
-        string menu3Sub1Title = isAdmin ? "3-1. 員工與部門總 Story Point 統計" : "3-1. 我的個人總 Story Point 分數統計";
-        string menu3Sub1Desc = isAdmin ? "查詢員工身上的點數與所屬部門的總 Story Point 數" : "查看我個人身上的工項數量與各狀態 Story Point 分數";
-        string menu3Sub3Title = isAdmin ? "3-3. 匯出員工個人總點數 CSV 報表" : "3-2. 匯出我的個人工項與分數 CSV 報表";
-        string menu3Sub3Desc = isAdmin ? "下載每位員工賦予工項與點數統計表" : "僅下載我個人專屬的工項與分數統計表";
+        string menu2MainLabel = isAdmin ? "📋 工項管理" : "📋 我的工項";
+        string menu2MainTip = isAdmin
+            ? "工項與代表類型管理：查詢各工項點數、指派負責員工、管理標準代表類型及匯出 CSV / Excel / 互動 HTML 報表"
+            : "我的工項與分數：查詢賦予給我的工項、查閱代表類型標準點數及匯出個人工項報表";
+        string menu2Sub1Title = isAdmin ? "2-1. 工項與員工指派" : "2-1. 我的工項查詢";
+        string menu2Sub1Desc = isAdmin
+            ? "2-1. 工項點數查詢與賦予員工設定：查詢各工項點數、選擇代表類型自動帶入或修改員工指派"
+            : "2-1. 我的工項與個人分數查詢：僅顯示賦予給我本人的工項與個人配額分數（不顯示其他人）";
+        string menu3MainLabel = isAdmin ? "📊 統計報表" : "📊 我的報表";
+        string menu3MainTip = isAdmin
+            ? "員工與部門統計報表：查詢員工個人與部門總 Story Point 負載統計，並支援匯出 CSV / Excel / 互動 HTML"
+            : "我的分數統計報表：查看我個人身上的工項數量與各狀態 Story Point 分數，並匯出三種格式報表";
+        string menu3Sub1Title = isAdmin ? "3-1. 員工與部門統計" : "3-1. 我的分數統計";
+        string menu3Sub1Desc = isAdmin
+            ? "3-1. 員工與部門總 Story Point 統計：查詢員工身上的點數與所屬部門的總 Story Point 數"
+            : "3-1. 我的個人總 Story Point 分數統計：查看我個人身上的工項數量與各狀態 Story Point 分數";
+        string menu3Sub3Title = isAdmin ? "3-3A. 匯出員工 (CSV)" : "3-2A. 匯出個人 (CSV)";
+        string menu3Sub3Desc = isAdmin
+            ? "匯出員工個人總點數 CSV 報表：下載每位員工賦予工項與點數統計表 (UTF-8 BOM)"
+            : "匯出我的個人工項與分數 CSV 報表：僅下載我個人專屬的工項與分數統計表";
 
         sb.Append($@"<!DOCTYPE html>
 <html lang=""zh-Hant"">
@@ -3697,28 +3709,26 @@ public class portalController : Controller
         .kpi-label {{ font-size:12.5px; color:var(--muted); font-weight:600; }}
         .kpi-val {{ font-size:26px; font-weight:800; color:#0f172a; margin-top:4px; }}
         .kpi-sub {{ font-size:12px; color:#2563eb; margin-top:4px; }}
-        /* 網頁上方主選單與子選單下拉導覽列 */
-        .top-menubar {{ background:#1e293b; border-bottom:1px solid #334155; padding:0 24px; position:sticky; top:0; z-index:999; box-shadow:0 4px 12px rgba(15,23,42,0.12); }}
-        .top-menubar-inner {{ max-width:1440px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px; }}
-        .menu-group-list {{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }}
-        .menu-dropdown {{ position:relative; display:inline-block; }}
-        .menu-main-btn {{ background:transparent; color:#e2e8f0; border:none; padding:12px 16px; font-size:14px; font-weight:700; font-family:inherit; cursor:pointer; display:inline-flex; align-items:center; gap:8px; border-bottom:3px solid transparent; transition:all .15s; }}
+        /* 網頁上方主選單與子選單下拉導覽列（強制單排不換行，搭配浮動 tips 說明） */
+        .top-menubar {{ background:#1e293b; border-bottom:1px solid #334155; padding:0 18px; position:sticky; top:0; z-index:999; box-shadow:0 4px 12px rgba(15,23,42,0.12); }}
+        .top-menubar-inner {{ max-width:1440px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; flex-wrap:nowrap; gap:8px; }}
+        .menu-group-list {{ display:flex; align-items:center; gap:4px; flex-wrap:nowrap; white-space:nowrap; }}
+        .menu-dropdown {{ position:relative; display:inline-block; flex-shrink:0; }}
+        .menu-main-btn {{ background:transparent; color:#e2e8f0; border:none; padding:10px 12px; font-size:13.5px; font-weight:700; font-family:inherit; cursor:pointer; display:inline-flex; align-items:center; gap:5px; border-bottom:3px solid transparent; transition:all .15s; white-space:nowrap; }}
         .menu-main-btn:hover, .menu-dropdown:hover .menu-main-btn {{ background:#334155; color:#ffffff; }}
         .menu-main-btn.active-group {{ color:#ffffff; background:rgba(37,99,235,0.28); border-bottom-color:#38bdf8; }}
         .menu-caret {{ font-size:10px; opacity:0.8; transition:transform .15s; }}
         .menu-dropdown:hover .menu-caret {{ transform:rotate(180deg); }}
-        .menu-sub-list {{ display:none; position:absolute; top:100%; left:0; min-width:315px; background:#ffffff; border:1px solid #cbd5e1; border-radius:0 0 12px 12px; box-shadow:0 14px 30px rgba(15,23,42,0.18); padding:8px; z-index:1000; }}
+        .menu-sub-list {{ display:none; position:absolute; top:100%; left:0; min-width:230px; background:#ffffff; border:1px solid #cbd5e1; border-radius:0 0 12px 12px; box-shadow:0 14px 30px rgba(15,23,42,0.18); padding:6px; z-index:1000; }}
         .menu-dropdown:hover .menu-sub-list, .menu-dropdown.open .menu-sub-list {{ display:block; }}
-        .menu-sub-header {{ font-size:11px; font-weight:700; color:#64748b; padding:6px 10px 4px 10px; letter-spacing:0.5px; border-bottom:1px dashed #e2e8f0; margin-bottom:4px; }}
-        .menu-sub-item {{ display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border-radius:8px; color:#1e293b; text-decoration:none; cursor:pointer; transition:background .15s; }}
+        .menu-sub-header {{ font-size:11px; font-weight:700; color:#64748b; padding:5px 10px 4px 10px; letter-spacing:0.4px; border-bottom:1px dashed #e2e8f0; margin-bottom:3px; white-space:nowrap; }}
+        .menu-sub-item {{ display:flex; align-items:center; gap:8px; padding:8px 11px; border-radius:8px; color:#1e293b; text-decoration:none; cursor:pointer; transition:background .15s; white-space:nowrap; }}
         .menu-sub-item:hover {{ background:#eff6ff; color:#1d4ed8; }}
         .menu-sub-item.active {{ background:#2563eb; color:#ffffff; }}
-        .menu-sub-item.active .menu-sub-desc {{ color:#dbeafe; }}
-        .menu-sub-icon {{ font-size:18px; line-height:1.2; margin-top:1px; }}
-        .menu-sub-title {{ font-size:13.5px; font-weight:700; line-height:1.3; }}
-        .menu-sub-desc {{ font-size:11.5px; color:#64748b; margin-top:2px; font-weight:normal; }}
-        .current-location-bar {{ display:flex; align-items:center; gap:8px; color:#cbd5e1; font-size:12.5px; padding:8px 0; }}
-        .current-location-pill {{ background:#2563eb; color:#fff; padding:4px 12px; border-radius:999px; font-weight:700; font-size:12.5px; }}
+        .menu-sub-icon {{ font-size:15px; line-height:1; flex-shrink:0; }}
+        .menu-sub-title {{ font-size:13px; font-weight:700; line-height:1.3; white-space:nowrap; }}
+        .current-location-bar {{ display:flex; align-items:center; gap:6px; color:#cbd5e1; font-size:12px; padding:6px 0; white-space:nowrap; flex-shrink:0; }}
+        .current-location-pill {{ background:#2563eb; color:#fff; padding:3px 10px; border-radius:999px; font-weight:700; font-size:12px; white-space:nowrap; }}
         .tab-pane {{ display:none; }}
         .tab-pane.active {{ display:block; }}
         .card {{ background:#fff; border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.04); }}
@@ -3837,163 +3847,118 @@ public class portalController : Controller
     <div class=""top-menubar"">
         <div class=""top-menubar-inner"">
             <div class=""menu-group-list"">
-                <!-- 主選單 1: 多人估算與過程 -->
+                <!-- 主選單 1: 多人估算 -->
                 <div class=""menu-dropdown"" id=""menu-group-voting"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "voting" || currentTab == "roundSetup" || currentTab == "history" ? "active-group" : "")}"" onclick=""toggleDropdownMenu(event, 'menu-group-voting')"">
-                        <span>🃏 多人估算與過程</span>
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "voting" || currentTab == "roundSetup" || currentTab == "history" ? "active-group" : "")}"" data-tip=""多人估算與過程：Story Point 即時盲投大廳、回合設定與決策歷程查詢"" onclick=""toggleDropdownMenu(event, 'menu-group-voting')"">
+                        <span>🃏 多人估算</span>
                         <span class=""menu-caret"">▼</span>
                     </button>
                     <div class=""menu-sub-list"">
-                        <div class=""menu-sub-header"">STORY POINT 估算、回合設定與決策歷程</div>
-                        <a class=""menu-sub-item {(currentTab == "voting" ? "active" : "")}"" data-tab=""voting"" onclick=""switchTab('voting')"">
+                        <div class=""menu-sub-header"">STORY POINT 估算與歷程</div>
+                        <a class=""menu-sub-item {(currentTab == "voting" ? "active" : "")}"" data-tab=""voting"" data-tip=""{(isAdmin ? "1-1. 多人即時盲投大廳 (Planning Poker)：為工項代表類型或工項投出點數、翻牌與定案" : "1-1. 多人即時盲投大廳 (Planning Poker)：參與投票並檢視自己的出牌與定案點數（不顯示他人分數）")}"" onclick=""switchTab('voting')"">
                             <span class=""menu-sub-icon"">🃏</span>
-                            <div>
-                                <div class=""menu-sub-title"">1-1. 多人即時盲投大廳 (Planning Poker)</div>
-                                <div class=""menu-sub-desc"">{(isAdmin ? "為工項代表類型或工項投出點數、翻牌與定案" : "參與投票並檢視自己的出牌與定案點數（不顯示他人分數）")}</div>
-                            </div>
+                            <span class=""menu-sub-title"">1-1. 即時盲投大廳</span>
                         </a>
-                        <a class=""menu-sub-item {(currentTab == "roundSetup" ? "active" : "")}"" data-tab=""roundSetup"" onclick=""switchTab('roundSetup')"">
+                        <a class=""menu-sub-item {(currentTab == "roundSetup" ? "active" : "")}"" data-tab=""roundSetup"" data-tip=""{(isAdmin ? "1-2. 設定盲投回合：盲投開始前設定標的、參與者名單、高低點數上下限、共識規則與計時" : "1-2. 設定盲投回合：檢視各盲投議程的參與名單、點數範圍與共識規則設定")}"" onclick=""switchTab('roundSetup')"">
                             <span class=""menu-sub-icon"">⚙️</span>
-                            <div>
-                                <div class=""menu-sub-title"">1-2. 設定盲投回合 (投什麼 / 誰可參與 / 點數範圍與規則)</div>
-                                <div class=""menu-sub-desc"">{(isAdmin ? "盲投開始前設定標的、參與者名單、高低點數上下限、共識規則與計時" : "檢視各盲投議程的參與名單、點數範圍與共識規則設定")}</div>
-                            </div>
+                            <span class=""menu-sub-title"">1-2. 設定盲投回合</span>
                         </a>
-                        <a class=""menu-sub-item {(currentTab == "history" ? "active" : "")}"" data-tab=""history"" onclick=""switchTab('history')"">
+                        <a class=""menu-sub-item {(currentTab == "history" ? "active" : "")}"" data-tab=""history"" data-tip=""{(isAdmin ? "1-3. 查詢訂出 Story Point 的過程：事後檢視每回合出牌明細、討論備註與點數異動紀錄" : "1-3. 查詢我的投票與訂定點數過程：事後檢視我個人的投票紀錄與我的工項點數異動歷程")}"" onclick=""switchTab('history')"">
                             <span class=""menu-sub-icon"">📜</span>
-                            <div>
-                                <div class=""menu-sub-title"">1-3. {(isAdmin ? "查詢訂出 Story Point 的過程" : "查詢我的投票與訂定點數過程")}</div>
-                                <div class=""menu-sub-desc"">{(isAdmin ? "事後檢視每回合出牌明細、討論備註與點數異動紀錄" : "事後檢視我個人的投票紀錄與我的工項點數異動歷程")}</div>
-                            </div>
+                            <span class=""menu-sub-title"">1-3. 估算過程查詢</span>
                         </a>
                     </div>
                 </div>
 
-                <!-- 主選單直接快速入口：設定回合 (多人盲投回合開始前設定) -->
+                <!-- 主選單直接快速入口：設定回合 -->
                 <div class=""menu-dropdown"" id=""menu-group-roundsetup"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "roundSetup" ? "active-group" : "")}"" onclick=""switchTab('roundSetup')"">
-                        <span>⚙️ 設定回合 (盲投開始前設定)</span>
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "roundSetup" ? "active-group" : "")}"" data-tip=""設定盲投回合 (盲投開始前設定)：設定本回合要投什麼標的、誰可參與、點數上下限範圍與共識規則"" onclick=""switchTab('roundSetup')"">
+                        <span>⚙️ 設定回合</span>
                     </button>
                 </div>
 
-                <!-- 主選單 2: 工項與代表類型管理 -->
+                <!-- 主選單 2: 工項管理 -->
                 <div class=""menu-dropdown"" id=""menu-group-workitems"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "workitems" || currentTab == "types" ? "active-group" : "")}"" onclick=""toggleDropdownMenu(event, 'menu-group-workitems')"">
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "workitems" || currentTab == "types" ? "active-group" : "")}"" data-tip=""{menu2MainTip}"" onclick=""toggleDropdownMenu(event, 'menu-group-workitems')"">
                         <span>{menu2MainLabel}</span>
                         <span class=""menu-caret"">▼</span>
                     </button>
                     <div class=""menu-sub-list"">
-                        <div class=""menu-sub-header"">{(isAdmin ? "工項點數與員工賦予設定" : "我的工項與標準代表類型")}</div>
-                        <a class=""menu-sub-item {(currentTab == "workitems" ? "active" : "")}"" data-tab=""workitems"" onclick=""switchTab('workitems')"">
+                        <div class=""menu-sub-header"">{(isAdmin ? "工項點數與代表類型" : "我的工項與標準代表類型")}</div>
+                        <a class=""menu-sub-item {(currentTab == "workitems" ? "active" : "")}"" data-tab=""workitems"" data-tip=""{menu2Sub1Desc}"" onclick=""switchTab('workitems')"">
                             <span class=""menu-sub-icon"">📋</span>
-                            <div>
-                                <div class=""menu-sub-title"">{menu2Sub1Title}</div>
-                                <div class=""menu-sub-desc"">{menu2Sub1Desc}</div>
-                            </div>
+                            <span class=""menu-sub-title"">{menu2Sub1Title}</span>
                         </a>
-                        <a class=""menu-sub-item {(currentTab == "types" ? "active" : "")}"" data-tab=""types"" onclick=""switchTab('types')"">
+                        <a class=""menu-sub-item {(currentTab == "types" ? "active" : "")}"" data-tab=""types"" data-tip=""{(isAdmin ? "2-2. 工項代表類型管理：管理已賦予標準 Story Point 的工項代表類型" : "2-2. 工項代表類型標準點數參考：查閱各工項代表類型的標準 Story Point 定義")}"" onclick=""switchTab('types')"">
                             <span class=""menu-sub-icon"">🏷️</span>
-                            <div>
-                                <div class=""menu-sub-title"">2-2. 工項代表類型{(isAdmin ? "管理" : "標準點數參考")}</div>
-                                <div class=""menu-sub-desc"">{(isAdmin ? "管理已賦予標準 Story Point 的工項代表類型" : "查閱各工項代表類型的標準 Story Point 定義")}</div>
-                            </div>
+                            <span class=""menu-sub-title"">2-2. {(isAdmin ? "工項代表類型" : "代表類型參考")}</span>
                         </a>
-                        <div class=""menu-sub-header"" style=""margin-top:6px;"">工項報表匯出 (CSV / EXCEL / 互動 HTML)</div>
-                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=csv"">
+                        <div class=""menu-sub-header"" style=""margin-top:6px;"">工項報表匯出</div>
+                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=csv"" data-tip=""2-3. 匯出工項報表 (CSV 格式)：下載 UTF-8 BOM CSV 工項點數清單"">
                             <span class=""menu-sub-icon"">📥</span>
-                            <div>
-                                <div class=""menu-sub-title"">2-3. 匯出工項報表 (CSV 格式)</div>
-                                <div class=""menu-sub-desc"">下載 UTF-8 BOM CSV 工項點數清單</div>
-                            </div>
+                            <span class=""menu-sub-title"">2-3. 匯出工項 (CSV)</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=excel"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=excel"" data-tip=""2-4. 匯出工項報表 (Excel .xlsx 格式)：下載標準 OpenXML Excel 活頁簿"">
                             <span class=""menu-sub-icon"">📊</span>
-                            <div>
-                                <div class=""menu-sub-title"">2-4. 匯出工項報表 (Excel .xlsx 格式)</div>
-                                <div class=""menu-sub-desc"">下載標準 OpenXML Excel 活頁簿</div>
-                            </div>
+                            <span class=""menu-sub-title"">2-4. 匯出工項 (Excel)</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=html"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=html"" data-tip=""2-5. 匯出工項互動 HTML 報表：支援點擊表頭排序、多條件篩選與動態群組彙總統計"">
                             <span class=""menu-sub-icon"">🌐</span>
-                            <div>
-                                <div class=""menu-sub-title"">2-5. 匯出工項互動 HTML 報表 (排序・篩選・群組彙總)</div>
-                                <div class=""menu-sub-desc"">支援點擊表頭排序、多條件篩選與動態群組彙總統計</div>
-                            </div>
+                            <span class=""menu-sub-title"">2-5. 匯出工項 (HTML)</span>
                         </a>
                     </div>
                 </div>
 
-                <!-- 主選單 3: 統計報表與匯出 -->
+                <!-- 主選單 3: 統計報表 -->
                 <div class=""menu-dropdown"" id=""menu-group-stats"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "stats" ? "active-group" : "")}"" onclick=""toggleDropdownMenu(event, 'menu-group-stats')"">
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "stats" ? "active-group" : "")}"" data-tip=""{menu3MainTip}"" onclick=""toggleDropdownMenu(event, 'menu-group-stats')"">
                         <span>{menu3MainLabel}</span>
                         <span class=""menu-caret"">▼</span>
                     </button>
                     <div class=""menu-sub-list"">
-                        <div class=""menu-sub-header"">{(isAdmin ? "員工個人與部門總點數查詢與三格式匯出" : "我的個人工項與分數查詢與三格式匯出")}</div>
-                        <a class=""menu-sub-item {(currentTab == "stats" ? "active" : "")}"" data-tab=""stats"" onclick=""switchTab('stats')"">
+                        <div class=""menu-sub-header"">{(isAdmin ? "員工與部門點數統計" : "個人工項與分數查詢")}</div>
+                        <a class=""menu-sub-item {(currentTab == "stats" ? "active" : "")}"" data-tab=""stats"" data-tip=""{menu3Sub1Desc}"" onclick=""switchTab('stats')"">
                             <span class=""menu-sub-icon"">📊</span>
-                            <div>
-                                <div class=""menu-sub-title"">{menu3Sub1Title}</div>
-                                <div class=""menu-sub-desc"">{menu3Sub1Desc}</div>
-                            </div>
+                            <span class=""menu-sub-title"">{menu3Sub1Title}</span>
                         </a>");
         if (isAdmin)
         {
             sb.Append(@"
-                        <div class=""menu-sub-header"" style=""margin-top:6px;"">部門總點數匯出 (CSV / EXCEL / 互動 HTML)</div>
-                        <a class=""menu-sub-item"" href=""/export/report?type=department&format=csv"">
+                        <div class=""menu-sub-header"" style=""margin-top:6px;"">部門總點數匯出</div>
+                        <a class=""menu-sub-item"" href=""/export/report?type=department&format=csv"" data-tip=""3-2A. 匯出部門總點數 (CSV 格式)：下載各部門 Story Point 負載 CSV 報表"">
                             <span class=""menu-sub-icon"">📥</span>
-                            <div>
-                                <div class=""menu-sub-title"">3-2A. 匯出部門總點數 (CSV 格式)</div>
-                                <div class=""menu-sub-desc"">下載各部門 Story Point 負載 CSV 報表</div>
-                            </div>
+                            <span class=""menu-sub-title"">3-2A. 匯出部門 (CSV)</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=department&format=excel"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=department&format=excel"" data-tip=""3-2B. 匯出部門總點數 (Excel .xlsx 格式)：下載各部門 Story Point 負載 Excel 活頁簿"">
                             <span class=""menu-sub-icon"">📊</span>
-                            <div>
-                                <div class=""menu-sub-title"">3-2B. 匯出部門總點數 (Excel .xlsx 格式)</div>
-                                <div class=""menu-sub-desc"">下載各部門 Story Point 負載 Excel 活頁簿</div>
-                            </div>
+                            <span class=""menu-sub-title"">3-2B. 匯出部門 (Excel)</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=department&format=html"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=department&format=html"" data-tip=""3-2C. 匯出部門互動 HTML (排序・篩選・群組彙總)：可於瀏覽器即時排序、篩選與群組彙總分析"">
                             <span class=""menu-sub-icon"">🌐</span>
-                            <div>
-                                <div class=""menu-sub-title"">3-2C. 匯出部門互動 HTML (排序・篩選・群組彙總)</div>
-                                <div class=""menu-sub-desc"">可於瀏覽器即時排序、篩選與群組彙總分析</div>
-                            </div>
+                            <span class=""menu-sub-title"">3-2C. 匯出部門 (HTML)</span>
                         </a>");
         }
         sb.Append($@"
-                        <div class=""menu-sub-header"" style=""margin-top:6px;"">員工點數匯出 (CSV / EXCEL / 互動 HTML)</div>
-                        <a class=""menu-sub-item"" href=""/export/report?type=employee&format=csv"">
+                        <div class=""menu-sub-header"" style=""margin-top:6px;"">員工點數匯出</div>
+                        <a class=""menu-sub-item"" href=""/export/report?type=employee&format=csv"" data-tip=""{menu3Sub3Desc}"">
                             <span class=""menu-sub-icon"">📥</span>
-                            <div>
-                                <div class=""menu-sub-title"">{menu3Sub3Title} (CSV)</div>
-                                <div class=""menu-sub-desc"">{menu3Sub3Desc}</div>
-                            </div>
+                            <span class=""menu-sub-title"">{menu3Sub3Title}</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=employee&format=excel"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=employee&format=excel"" data-tip=""{(isAdmin ? "3-3B. 匯出員工個人總點數 Excel (.xlsx)：下載標準 OpenXML Excel 報表格式" : "3-2B. 匯出我的個人工項與分數 Excel (.xlsx)：下載標準 OpenXML Excel 報表格式")}"">
                             <span class=""menu-sub-icon"">📊</span>
-                            <div>
-                                <div class=""menu-sub-title"">{(isAdmin ? "匯出員工個人總點數 Excel (.xlsx)" : "匯出我的個人工項與分數 Excel (.xlsx)")}</div>
-                                <div class=""menu-sub-desc"">標準 OpenXML Excel 報表格式</div>
-                            </div>
+                            <span class=""menu-sub-title"">{(isAdmin ? "3-3B. 匯出員工 (Excel)" : "3-2B. 匯出個人 (Excel)")}</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=employee&format=html"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=employee&format=html"" data-tip=""{(isAdmin ? "3-3C. 匯出員工總點數互動 HTML：支援欄位排序、條件篩選與依部門/角色群組彙總" : "3-2C. 匯出我的個人分數互動 HTML：支援欄位排序、條件篩選與群組彙總")}"">
                             <span class=""menu-sub-icon"">🌐</span>
-                            <div>
-                                <div class=""menu-sub-title"">{(isAdmin ? "匯出員工總點數互動 HTML (排序・篩選・群組彙總)" : "匯出我的個人分數互動 HTML (排序・篩選・群組彙總)")}</div>
-                                <div class=""menu-sub-desc"">支援欄位排序、條件篩選與依部門/角色群組彙總</div>
-                            </div>
+                            <span class=""menu-sub-title"">{(isAdmin ? "3-3C. 匯出員工 (HTML)" : "3-2C. 匯出個人 (HTML)")}</span>
                         </a>
                     </div>
                 </div>
 
-                <!-- 主選單直接快速入口：修改我的帳密 (每個人皆可修改自己的登入帳號與密碼) -->
+                <!-- 主選單直接快速入口：修改帳密 -->
                 <div class=""menu-dropdown"" id=""menu-group-myaccount"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "myAccount" ? "active-group" : "")}"" onclick=""switchTab('myAccount')"">
-                        <span>🔑 修改我的帳密</span>
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "myAccount" ? "active-group" : "")}"" data-tip=""修改我的帳密：每個人皆可隨時修改自己的個人登入帳號 (loginAccount) 與登入密碼"" onclick=""switchTab('myAccount')"">
+                        <span>🔑 修改帳密</span>
                     </button>
                 </div>");
 
@@ -4012,81 +3977,57 @@ public class portalController : Controller
                 : "<span style='background:#16a34a;color:#fff;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:800;'>0</span>";
 
             sb.Append($@"
-                <!-- 主選單 4: 組織與員工帳密管理 (管理者可見全域管理 + 個人帳密修改) -->
+                <!-- 主選單 4: 組織與員工 (管理者可見全域管理 + 個人帳密修改) -->
                 <div class=""menu-dropdown"" id=""menu-group-employees"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "employees" || currentTab == "myAccount" ? "active-group" : "")}"" onclick=""toggleDropdownMenu(event, 'menu-group-employees')"">
-                        <span>👥 組織與員工帳密管理</span>
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "employees" || currentTab == "myAccount" ? "active-group" : "")}"" data-tip=""組織與員工帳密管理：管理部門主管註記、上下層樹狀階層、員工列表與 CSV / Excel 批次匯入"" onclick=""toggleDropdownMenu(event, 'menu-group-employees')"">
+                        <span>👥 組織與員工</span>
                         <span class=""menu-caret"">▼</span>
                     </button>
                     <div class=""menu-sub-list"">
-                        <div class=""menu-sub-header"">個人帳密修改、員工列表與 CSV / Excel 批次匯入</div>
-                        <a class=""menu-sub-item {(currentTab == "myAccount" ? "active" : "")}"" data-tab=""myAccount"" onclick=""switchTab('myAccount')"">
+                        <div class=""menu-sub-header"">帳密修改、員工管理與批次匯入</div>
+                        <a class=""menu-sub-item {(currentTab == "myAccount" ? "active" : "")}"" data-tab=""myAccount"" data-tip=""4-0. 修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號 (loginAccount) 與登入密碼"" onclick=""switchTab('myAccount')"">
                             <span class=""menu-sub-icon"">🔑</span>
-                            <div>
-                                <div class=""menu-sub-title"">4-0. 修改我的個人登入帳號與密碼</div>
-                                <div class=""menu-sub-desc"">每個人皆可隨時修改自己的登入帳號 (loginAccount) 與登入密碼</div>
-                            </div>
+                            <span class=""menu-sub-title"">4-0. 修改我的帳密</span>
                         </a>
-                        <a class=""menu-sub-item {(currentTab == "employees" ? "active" : "")}"" data-tab=""employees"" onclick=""switchTab('employees')"">
+                        <a class=""menu-sub-item {(currentTab == "employees" ? "active" : "")}"" data-tab=""employees"" data-tip=""4-1. 員工列表與登入帳密管理：增刪修查、部門主管設定、樹狀階層、CSV 與 Excel 兩種批次匯入與三種匯出"" onclick=""switchTab('employees')"">
                             <span class=""menu-sub-icon"">👥</span>
-                            <div>
-                                <div class=""menu-sub-title"">4-1. 員工列表與登入帳密管理 (含 CSV / Excel 匯入)</div>
-                                <div class=""menu-sub-desc"">增刪修查、停用、CSV 與 Excel 兩種批次匯入與三種匯出</div>
-                            </div>
+                            <span class=""menu-sub-title"">4-1. 員工與組織管理</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/employee/import/template?format=csv"">
+                        <a class=""menu-sub-item"" href=""/employee/import/template?format=csv"" data-tip=""4-2A. 下載員工批次匯入 CSV 範本：取得標準 UTF-8 BOM CSV 欄位格式範本"">
                             <span class=""menu-sub-icon"">📄</span>
-                            <div>
-                                <div class=""menu-sub-title"">4-2A. 下載員工批次匯入 CSV 範本</div>
-                                <div class=""menu-sub-desc"">取得標準 CSV 欄位格式範本</div>
-                            </div>
+                            <span class=""menu-sub-title"">4-2A. 員工 CSV 範本</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/employee/import/template?format=excel"">
+                        <a class=""menu-sub-item"" href=""/employee/import/template?format=excel"" data-tip=""4-2B. 下載員工批次匯入 Excel (.xlsx) 範本：取得標準 Excel .xlsx 欄位格式範本"">
                             <span class=""menu-sub-icon"">📊</span>
-                            <div>
-                                <div class=""menu-sub-title"">4-2B. 下載員工批次匯入 Excel (.xlsx) 範本</div>
-                                <div class=""menu-sub-desc"">取得標準 Excel .xlsx 欄位格式範本</div>
-                            </div>
+                            <span class=""menu-sub-title"">4-2B. 員工 Excel 範本</span>
                         </a>
                     </div>
                 </div>
 
-                <!-- 主選單 5: 系統與錯誤 Log 查詢中心 (僅管理者可見) -->
+                <!-- 主選單 5: 系統 Log (僅管理者可見) -->
                 <div class=""menu-dropdown"" id=""menu-group-logs"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "logs" ? "active-group" : "")}"" onclick=""toggleDropdownMenu(event, 'menu-group-logs')"">
-                        <span>🛡️ 系統與錯誤 Log 查詢</span>
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "logs" ? "active-group" : "")}"" data-tip=""系統與錯誤 Log 查詢中心：系統防崩潰保護、錯誤異常追蹤與 Log 三格式匯出 (目前錯誤數：{errLogCount} 筆)"" onclick=""toggleDropdownMenu(event, 'menu-group-logs')"">
+                        <span>🛡️ 系統 Log</span>
                         {errCountBadge}
                         <span class=""menu-caret"">▼</span>
                     </button>
                     <div class=""menu-sub-list"">
-                        <div class=""menu-sub-header"">系統防崩潰保護、錯誤異常追蹤與 Log 三格式匯出</div>
-                        <a class=""menu-sub-item {(currentTab == "logs" ? "active" : "")}"" data-tab=""logs"" onclick=""switchTab('logs')"">
+                        <div class=""menu-sub-header"">防崩潰保護與 Log 查詢匯出</div>
+                        <a class=""menu-sub-item {(currentTab == "logs" ? "active" : "")}"" data-tab=""logs"" data-tip=""5-1. 系統與錯誤 Log 查詢中心 (tbLog / 本地雙軌備援)：查詢錯誤碼、行號、例外訊息、執行耗時與防崩潰攔截測試"" onclick=""switchTab('logs')"">
                             <span class=""menu-sub-icon"">🛡️</span>
-                            <div>
-                                <div class=""menu-sub-title"">5-1. 系統與錯誤 Log 查詢中心 (tbLog / 本地雙軌備援)</div>
-                                <div class=""menu-sub-desc"">查詢錯誤碼、行號、例外訊息、執行耗時與防崩潰攔截測試</div>
-                            </div>
+                            <span class=""menu-sub-title"">5-1. 系統 Log 查詢</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=log&format=csv"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=log&format=csv"" data-tip=""5-2A. 匯出系統與錯誤 Log (CSV 格式)：下載 UTF-8 BOM CSV 格式系統 Log"">
                             <span class=""menu-sub-icon"">📥</span>
-                            <div>
-                                <div class=""menu-sub-title"">5-2A. 匯出系統與錯誤 Log (CSV 格式)</div>
-                                <div class=""menu-sub-desc"">下載 UTF-8 BOM CSV 格式系統 Log</div>
-                            </div>
+                            <span class=""menu-sub-title"">5-2A. 匯出 Log (CSV)</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=log&format=excel"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=log&format=excel"" data-tip=""5-2B. 匯出系統與錯誤 Log (Excel .xlsx 格式)：下載標準 OpenXML Excel 系統 Log 報表"">
                             <span class=""menu-sub-icon"">📊</span>
-                            <div>
-                                <div class=""menu-sub-title"">5-2B. 匯出系統與錯誤 Log (Excel .xlsx 格式)</div>
-                                <div class=""menu-sub-desc"">下載標準 OpenXML Excel 系統 Log 報表</div>
-                            </div>
+                            <span class=""menu-sub-title"">5-2B. 匯出 Log (Excel)</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=log&format=html"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=log&format=html"" data-tip=""5-2C. 匯出系統 Log 互動 HTML：依錯誤層級、來源模組或物件群組彙總分析與欄位鎖定"">
                             <span class=""menu-sub-icon"">🌐</span>
-                            <div>
-                                <div class=""menu-sub-title"">5-2C. 匯出系統 Log 互動 HTML (排序・篩選・群組彙總)</div>
-                                <div class=""menu-sub-desc"">依錯誤層級、來源模組或物件群組彙總分析與欄位鎖定</div>
-                            </div>
+                            <span class=""menu-sub-title"">5-2C. 匯出 Log (HTML)</span>
                         </a>
                     </div>
                 </div>");
@@ -4094,27 +4035,21 @@ public class portalController : Controller
         else
         {
             sb.Append($@"
-                <!-- 主選單 4: 個人帳密設定 (參與者可見) -->
+                <!-- 主選單 4: 帳號設定 (參與者可見) -->
                 <div class=""menu-dropdown"" id=""menu-group-employees"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "employees" || currentTab == "myAccount" ? "active-group" : "")}"" onclick=""toggleDropdownMenu(event, 'menu-group-employees')"">
-                        <span>🔑 個人帳密設定</span>
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "employees" || currentTab == "myAccount" ? "active-group" : "")}"" data-tip=""個人帳密設定：檢視個人基本資料並隨時修改自己的登入帳號與密碼"" onclick=""toggleDropdownMenu(event, 'menu-group-employees')"">
+                        <span>🔑 帳號設定</span>
                         <span class=""menu-caret"">▼</span>
                     </button>
                     <div class=""menu-sub-list"">
-                        <div class=""menu-sub-header"">修改我的個人登入帳號與密碼</div>
-                        <a class=""menu-sub-item {(currentTab == "myAccount" ? "active" : "")}"" data-tab=""myAccount"" onclick=""switchTab('myAccount')"">
+                        <div class=""menu-sub-header"">個人帳密設定</div>
+                        <a class=""menu-sub-item {(currentTab == "myAccount" ? "active" : "")}"" data-tab=""myAccount"" data-tip=""4-1. 修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號 (loginAccount) 與登入密碼"" onclick=""switchTab('myAccount')"">
                             <span class=""menu-sub-icon"">🔑</span>
-                            <div>
-                                <div class=""menu-sub-title"">4-1. 修改我的個人登入帳號與密碼</div>
-                                <div class=""menu-sub-desc"">每個人皆可隨時修改自己的登入帳號 (loginAccount) 與登入密碼</div>
-                            </div>
+                            <span class=""menu-sub-title"">4-1. 修改我的帳密</span>
                         </a>
-                        <a class=""menu-sub-item {(currentTab == "employees" ? "active" : "")}"" data-tab=""employees"" onclick=""switchTab('employees')"">
+                        <a class=""menu-sub-item {(currentTab == "employees" ? "active" : "")}"" data-tab=""employees"" data-tip=""4-2. 個人帳號資訊與修改帳密專頁：檢視個人基本資料並修改自己的登入帳號與密碼"" onclick=""switchTab('employees')"">
                             <span class=""menu-sub-icon"">👤</span>
-                            <div>
-                                <div class=""menu-sub-title"">4-2. 個人帳號資訊與修改帳密專頁</div>
-                                <div class=""menu-sub-desc"">檢視個人基本資料並修改自己的登入帳號與密碼</div>
-                            </div>
+                            <span class=""menu-sub-title"">4-2. 個人帳號資訊</span>
                         </a>
                     </div>
                 </div>");
@@ -4124,19 +4059,30 @@ public class portalController : Controller
             </div>
 
             <div class=""current-location-bar"">
-                <span>目前功能位置：</span>
-                <span class=""current-location-pill"" id=""currentMenuTitlePill"">
+                <span>位置：</span>
+                <span class=""current-location-pill"" id=""currentMenuTitlePill"" data-tip=""{(currentTab switch
+                {
+                    "roundSetup" => "1-2. 設定盲投回合：設定估算標的、參與者名單、高低點數上下限、共識規則與計時",
+                    "history" => isAdmin ? "1-3. 查詢訂出 Story Point 的過程：檢視每回合出牌明細、討論備註與點數異動紀錄" : "1-3. 查詢我的投票與訂定點數過程：檢視個人投票紀錄與工項點數異動歷程",
+                    "workitems" => isAdmin ? "2-1. 工項點數查詢與賦予員工設定：查詢各工項點數、選擇代表類型自動帶入或修改員工指派" : "2-1. 我的工項與個人分數查詢：顯示賦予給我本人的工項與個人配額分數",
+                    "types" => isAdmin ? "2-2. 工項代表類型管理：管理已賦予標準 Story Point 的工項代表類型" : "2-2. 工項代表類型標準點數參考：查閱各工項代表類型的標準 Story Point 定義",
+                    "stats" => isAdmin ? "3-1. 員工與部門總 Story Point 統計：查詢員工身上的點數與所屬部門的總 Story Point 數" : "3-1. 我的個人總 Story Point 分數統計：查看個人工項數量與各狀態 Story Point 分數",
+                    "myAccount" => "修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號與密碼",
+                    "employees" => isAdmin ? "4-1. 員工列表與登入帳密管理：增刪修查、部門主管設定、樹狀階層與批次匯入" : "4-1. 修改我的個人登入帳號與密碼：檢視個人基本資料並修改帳密",
+                    "logs" => "5-1. 系統與錯誤 Log 查詢中心 (tbLog)：查詢錯誤碼、行號、例外訊息與防崩潰保護紀錄",
+                    _ => "1-1. 多人即時盲投大廳 (Planning Poker)：參與盲投出牌、同步翻牌揭曉與拍板定案"
+                })}"">
                     {(currentTab switch
                     {
-                        "roundSetup" => "⚙️ 1-2. 設定盲投回合 (投什麼 / 誰可參與 / 點數範圍與規則)",
-                        "history" => isAdmin ? "📜 1-3. 查詢訂出 Story Point 的過程" : "📜 1-3. 查詢我的投票與訂定點數過程",
-                        "workitems" => isAdmin ? "📋 2-1. 工項點數查詢與賦予員工設定" : "📋 2-1. 我的工項與個人分數查詢",
-                        "types" => isAdmin ? "🏷️ 2-2. 工項代表類型管理" : "🏷️ 2-2. 工項代表類型標準點數參考",
-                        "stats" => isAdmin ? "📊 3-1. 員工與部門總 Story Point 統計" : "📊 3-1. 我的個人總 Story Point 分數統計",
-                        "myAccount" => "🔑 修改我的個人登入帳號與密碼 (每個人皆可修改自己的帳/密)",
-                        "employees" => isAdmin ? "👥 4-1. 員工列表與登入帳密管理" : "🔑 4-1. 修改我的個人登入帳號與密碼",
-                        "logs" => "🛡️ 5-1. 系統與錯誤 Log 查詢中心 (tbLog)",
-                        _ => "🃏 1-1. 多人即時盲投大廳 (Planning Poker)"
+                        "roundSetup" => "⚙️ 1-2. 設定盲投回合",
+                        "history" => "📜 1-3. 估算過程查詢",
+                        "workitems" => isAdmin ? "📋 2-1. 工項與員工指派" : "📋 2-1. 我的工項查詢",
+                        "types" => isAdmin ? "🏷️ 2-2. 工項代表類型" : "🏷️ 2-2. 代表類型參考",
+                        "stats" => isAdmin ? "📊 3-1. 員工與部門統計" : "📊 3-1. 我的分數統計",
+                        "myAccount" => "🔑 修改我的帳密",
+                        "employees" => isAdmin ? "👥 4-1. 員工與組織管理" : "🔑 4-1. 修改我的帳密",
+                        "logs" => "🛡️ 5-1. 系統 Log 查詢",
+                        _ => "🃏 1-1. 即時盲投大廳"
                     })}
                 </span>
             </div>
@@ -6657,20 +6603,35 @@ public class portalController : Controller
             }
 
             const titleMap = {
-                'voting': '🃏 1-1. 多人即時盲投大廳 (Planning Poker)',
-                'roundSetup': '⚙️ 1-2. 設定盲投回合 (投什麼 / 誰可參與 / 點數範圍與規則)',
-                'history': isViewerAdmin ? '📜 1-3. 查詢訂出 Story Point 的過程' : '📜 1-3. 查詢我的投票與訂定點數過程',
-                'workitems': isViewerAdmin ? '📋 2-1. 工項點數查詢與賦予員工設定' : '📋 2-1. 我的工項與個人分數查詢',
-                'types': isViewerAdmin ? '🏷️ 2-2. 工項代表類型管理' : '🏷️ 2-2. 工項代表類型標準點數參考',
-                'stats': isViewerAdmin ? '📊 3-1. 員工與部門總 Story Point 統計' : '📊 3-1. 我的個人總 Story Point 分數統計',
-                'myAccount': '🔑 修改我的個人登入帳號與密碼 (每個人皆可修改自己的帳/密)',
-                'employees': isViewerAdmin ? '👥 4-1. 員工列表與登入帳密管理' : '🔑 4-1. 修改我的個人登入帳號與密碼',
-                'logs': '🛡️ 5-1. 系統與錯誤 Log 查詢中心 (tbLog)'
+                'voting': '🃏 1-1. 即時盲投大廳',
+                'roundSetup': '⚙️ 1-2. 設定盲投回合',
+                'history': '📜 1-3. 估算過程查詢',
+                'workitems': isViewerAdmin ? '📋 2-1. 工項與員工指派' : '📋 2-1. 我的工項查詢',
+                'types': isViewerAdmin ? '🏷️ 2-2. 工項代表類型' : '🏷️ 2-2. 代表類型參考',
+                'stats': isViewerAdmin ? '📊 3-1. 員工與部門統計' : '📊 3-1. 我的分數統計',
+                'myAccount': '🔑 修改我的帳密',
+                'employees': isViewerAdmin ? '👥 4-1. 員工與組織管理' : '🔑 4-1. 修改我的帳密',
+                'logs': '🛡️ 5-1. 系統 Log 查詢'
+            };
+            const tipMap = {
+                'voting': '1-1. 多人即時盲投大廳 (Planning Poker)：參與盲投出牌、同步翻牌揭曉與拍板定案',
+                'roundSetup': '1-2. 設定盲投回合：設定估算標的、參與者名單、高低點數上下限、共識規則與計時',
+                'history': isViewerAdmin ? '1-3. 查詢訂出 Story Point 的過程：檢視每回合出牌明細、討論備註與點數異動紀錄' : '1-3. 查詢我的投票與訂定點數過程：檢視個人投票紀錄與工項點數異動歷程',
+                'workitems': isViewerAdmin ? '2-1. 工項點數查詢與賦予員工設定：查詢各工項點數、選擇代表類型自動帶入或修改員工指派' : '2-1. 我的工項與個人分數查詢：顯示賦予給我本人的工項與個人配額分數',
+                'types': isViewerAdmin ? '2-2. 工項代表類型管理：管理已賦予標準 Story Point 的工項代表類型' : '2-2. 工項代表類型標準點數參考：查閱各工項代表類型的標準 Story Point 定義',
+                'stats': isViewerAdmin ? '3-1. 員工與部門總 Story Point 統計：查詢員工身上的點數與所屬部門的總 Story Point 數' : '3-1. 我的個人總 Story Point 分數統計：查看個人工項數量與各狀態 Story Point 分數',
+                'myAccount': '修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號與密碼',
+                'employees': isViewerAdmin ? '4-1. 員工列表與登入帳密管理：增刪修查、部門主管設定、樹狀階層與批次匯入' : '4-1. 修改我的個人登入帳號與密碼：檢視個人基本資料並修改帳密',
+                'logs': '5-1. 系統與錯誤 Log 查詢中心 (tbLog)：查詢錯誤碼、行號、例外訊息與防崩潰保護紀錄'
             };
             const pill = document.getElementById('currentMenuTitlePill');
             if (pill && titleMap[tabName]) {
                 pill.textContent = titleMap[tabName];
+                if (tipMap[tabName]) {
+                    pill.setAttribute('data-tip', tipMap[tabName]);
+                }
             }
+            document.getElementById('spFloatingTooltip')?.classList.remove('visible');
 
             history.replaceState(null, '', '/?tab=' + tabName);
             setTimeout(refreshAllTableStickyOffsets, 30);
@@ -7014,13 +6975,38 @@ public class portalController : Controller
                 const tipRect = tipBox.getBoundingClientRect();
                 const margin = 8;
                 let top = rect.top - tipRect.height - margin;
-                if (top < 8) {
-                    top = rect.bottom + margin;
-                }
                 let left = rect.left;
-                if (left + tipRect.width > window.innerWidth - 12) {
-                    left = Math.max(8, window.innerWidth - tipRect.width - 12);
+
+                if (el.classList && el.classList.contains('menu-sub-item')) {
+                    // 子選單項目：浮動 tips 優先顯示於該選項右側（若右側空間不足則顯示於左側），避免遮擋上下選項
+                    top = Math.max(8, Math.min(window.innerHeight - tipRect.height - 8, rect.top));
+                    left = rect.right + 10;
+                    if (left + tipRect.width > window.innerWidth - 12) {
+                        left = Math.max(8, rect.left - tipRect.width - 10);
+                    }
+                } else if (el.classList && el.classList.contains('menu-main-btn')) {
+                    // 頂部主選單按鈕：優先顯示於按鈕上方；若頁面捲動至頂部且含有下拉子選單，則顯示於按鈕右上方避免遮擋下拉選單
+                    const hasSubMenu = !!(el.closest('.menu-dropdown') && el.closest('.menu-dropdown').querySelector('.menu-sub-list'));
+                    if (rect.top - tipRect.height - 6 >= 4) {
+                        top = rect.top - tipRect.height - 6;
+                    } else if (hasSubMenu) {
+                        top = Math.max(4, rect.top + 4);
+                        left = rect.right + 8;
+                    } else {
+                        top = rect.bottom + margin;
+                    }
+                    if (left + tipRect.width > window.innerWidth - 12) {
+                        left = Math.max(8, window.innerWidth - tipRect.width - 12);
+                    }
+                } else {
+                    if (top < 8) {
+                        top = rect.bottom + margin;
+                    }
+                    if (left + tipRect.width > window.innerWidth - 12) {
+                        left = Math.max(8, window.innerWidth - tipRect.width - 12);
+                    }
                 }
+
                 tipBox.style.top = Math.round(top) + 'px';
                 tipBox.style.left = Math.round(left) + 'px';
             }
