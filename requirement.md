@@ -233,6 +233,12 @@
         * **後端與前端雙重攔截重複進入**：當同一位員工嘗試對已在「🟢 參與中」的同一個 `sessionPk=X` 重複進入第二個網頁時：
             1. 在大廳「🟢 參與中」區塊中，按鈕狀態鎖定為「`🟢 參與中 (獨立網頁進行中，禁重複進入)`」，點擊時前端 (`openIndependentVotingSession` 結合 `BroadcastChannel('sp_voting_session_guard')`、`localStorage` 與後端 `participatingSessionPks` / `myActiveOpenSessionPks`) 立即阻擋重複開啟並提示切換至已開啟之「參與中」分頁。
             2. 若使用者直接於新分頁貼上 `/voting/session?sessionPk=X` 網址強制進入，後端 `votingSessionStandalonePage` 立即偵測到該 `(employeePk, sessionPk)` 已在「🟢 參與中」，回傳專屬「`🚫 同一個盲投 Session 禁止重複進入`」攔截頁面 (`buildDuplicateVotingSessionBlockedHtml`)，同時透過 `BroadcastChannel` 通知原本已開啟該 Session 的獨立網頁顯示提醒橫幅並聚焦。
+    5. **獨立盲投網頁開啟下一輪重新盲投、本回合討論紀錄 (`roundDiscussionNote`) 與定案決議說明 (`finalDecisionNote`) 完整寫入與呈現**：
+        * **主持人控制台動作與討論紀錄寫入**：於獨立盲投網頁 (`/voting/session?sessionPk=X`) 點擊「🔄 開啟下一回合重新盲投 (`nextRound`)」、「👁️ 公開翻牌揭曉本輪點數 (`reveal`)」或「✅ 拍板定案 (`finalize`)」時，透過隱藏欄位 `#hiddenControlAction` 搭配 `requestSubmit()` 確保 `controlAction` 與輸入之「📝 本回合討論紀錄 (`roundDiscussionNote`)」及「🏆 定案決議說明 (`finalDecisionNote`)」完整傳送至後端 `storyPoint.spControlVotingSession` 並寫入 `storyPoint.tbVotingRound.discussionNote` 與 `storyPoint.tbVotingSession.finalDecisionNote`。
+        * **定案決議說明 (`finalDecisionNote`) 完整呈現**：凡有輸入「定案決議說明 (`finalDecisionNote`)」之議程，系統於以下所有介面同步醒目呈現 `🏆 定案決議說明`：
+            1. 投票大廳 (`/?tab=voting`) 左側「📌 投票議程清單」之「📁 已拍板定案議程」卡片摘要與展開設定明細 (`#session-detail-{sPk}`)。
+            2. 獨立盲投網頁 (`/voting/session?sessionPk=X`) 之綠色牌桌定案區塊、主持人/檢視者控制台及各回合歷程與定案紀錄表。
+            3. 回合與範圍參與設定頁籤 (`#pane-roundSetup`) 之議程總覽表及查詢訂出 Story Point 過程頁籤 (`/?tab=history`)。
 
 ### 2.15 工項類型（專案 / 維運 / 顧問時數及自訂類型）完整增刪修 (CRUD)、起訖時間設定、到期自動轉態扣減 Story Point 與 Email 寄信通知部門管理層與 HR，以及職級含部門經理規範
 * **工項類型 (`storyPoint.tbWorkItemKind`)、工項代表類型 (`storyPoint.tbWorkItemType`) 與實際工項 (`storyPoint.tbWorkItem`) 完整增、刪、修 (CRUD)**：

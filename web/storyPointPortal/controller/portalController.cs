@@ -4284,6 +4284,9 @@ public class portalController : Controller
             int partCnt = sRow.Table.Columns.Contains("participantCount") && sRow["participantCount"] != DBNull.Value ? Convert.ToInt32(sRow["participantCount"]) : 0;
             string consensusText = sRow.Table.Columns.Contains("consensusRuleText") ? (sRow["consensusRuleText"]?.ToString() ?? "") : "";
             string goalNote = sRow.Table.Columns.Contains("roundGoalNote") ? (sRow["roundGoalNote"]?.ToString() ?? "") : "";
+            string decisionNote = sRow.Table.Columns.Contains("finalDecisionNote") && sRow["finalDecisionNote"] != DBNull.Value
+                ? (sRow["finalDecisionNote"]?.ToString() ?? "").Trim()
+                : "";
             string itemDetailCollapsed = isFinalized ? "collapsed" : "";
             string toggleBtnText = isFinalized ? "▾ 邊項詳情" : "▴ 收合詳情";
             string jsSafeTitle = escapeJsString($"{sRow["sessionCode"]} - {sRow["sessionTitle"]}");
@@ -4311,12 +4314,14 @@ public class portalController : Controller
                 <a href=""{titleHref}"" {titleTargetAttr} data-session-title-link=""{sPk}"" {titleOnClickAttr} style=""text-decoration:none;color:inherit;display:block;"">
                     <div style=""font-size:13px;font-weight:700;margin-bottom:3px;color:#0f172a;"">{h(sRow["sessionTitle"])}</div>
                     <div style=""font-size:12px;color:#64748b;"">{h(sRow["targetKindText"])}{finalPtStr}</div>
+                    {(!string.IsNullOrWhiteSpace(decisionNote) ? $@"<div style=""font-size:12px;color:#15803d;font-weight:700;margin-top:3px;"">🏆 定案決議說明：{h(decisionNote)}</div>" : "")}
                 </a>
                 <div id=""session-detail-{sPk}"" class=""session-item-detail {itemDetailCollapsed}"">
                     <div>🎯 <strong>估算標的：</strong>{h(sRow["targetDisplayName"])}</div>
                     <div>📏 <strong>點數範圍：</strong>{minPt:0.##} ~ {maxPt:0.##} pt ｜ <strong>共識規則：</strong>{h(consensusText)}</div>
                     <div>👥 <strong>誰可參與：</strong>{(restrictPart ? $"僅限指定名單 ({partCnt} 人)" : $"全體啟用員工 (目前 {partCnt} 人)")}</div>
                     {(!string.IsNullOrWhiteSpace(goalNote) ? $"<div>📝 <strong>回合重點：</strong>{h(goalNote)}</div>" : "")}
+                    {(!string.IsNullOrWhiteSpace(decisionNote) ? $@"<div style=""color:#166534;background:#dcfce7;border:1px solid #86efac;padding:4px 8px;border-radius:6px;margin-top:2px;"">🏆 <strong>定案決議說明：</strong>{h(decisionNote)}</div>" : "")}
                     <div style=""display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;"">
                         <a href=""/voting/session?sessionPk={sPk}"" target=""_blank"" rel=""noopener"" data-session-enter-btn=""{sPk}"" data-session-title=""{h(sRow["sessionCode"] + " - " + sRow["sessionTitle"])}"" onclick=""return openIndependentVotingSession(event, {sPk}, '{jsSafeTitle}')"" class=""btn {(isAlreadyOpen ? "btn-outline" : "btn-primary")}"" style=""padding:4px 9px;font-size:11.5px;{(isAlreadyOpen ? "background:#dcfce7;color:#15803d;border-color:#86efac;" : "")}"">
                             {(isFinalized ? "🔍 檢視此定案 Session 獨立頁" : (isAlreadyOpen ? "🟢 參與中 (獨立網頁進行中・禁重複進入)" : "🚀 點選進入「參與中」獨立網頁"))}
@@ -4845,14 +4850,21 @@ public class portalController : Controller
             string cPolText = sRow.Table.Columns.Contains("voteCommentPolicyText") ? (sRow["voteCommentPolicyText"]?.ToString() ?? "") : "";
             bool restPart = sRow.Table.Columns.Contains("restrictToParticipant") && sRow["restrictToParticipant"] != DBNull.Value && Convert.ToBoolean(sRow["restrictToParticipant"]);
             int pCnt = sRow.Table.Columns.Contains("participantCount") && sRow["participantCount"] != DBNull.Value ? Convert.ToInt32(sRow["participantCount"]) : 0;
+            string rowDecisionNote = sRow.Table.Columns.Contains("finalDecisionNote") && sRow["finalDecisionNote"] != DBNull.Value
+                ? (sRow["finalDecisionNote"]?.ToString() ?? "").Trim()
+                : "";
 
             sb.Append($@"
                         <tr>
                             <td>
                                 <strong>{h(sRow["sessionCode"])}</strong><br/>
                                 <span style='font-size:12.5px;color:#334155;'>{h(sRow["sessionTitle"])}</span>
+                                {(!string.IsNullOrWhiteSpace(rowDecisionNote) ? $"<br/><span style='font-size:12px;color:#15803d;font-weight:700;'>🏆 定案決議說明：{h(rowDecisionNote)}</span>" : "")}
                             </td>
-                            <td><span class='badge {badgeCls}'>{h(sRow["sessionStatusText"])}</span></td>
+                            <td>
+                                <span class='badge {badgeCls}'>{h(sRow["sessionStatusText"])}</span>
+                                {(sRow["finalStoryPoint"] != DBNull.Value ? $"<div style='font-size:12px;color:#15803d;font-weight:700;margin-top:4px;'>定案：{sRow["finalStoryPoint"]} pt</div>" : "")}
+                            </td>
                             <td>
                                 <span style='font-size:12px;color:#2563eb;font-weight:700;'>{h(sRow["targetKindText"])}</span><br/>
                                 <strong>{h(sRow["targetDisplayName"])}</strong>
@@ -4904,7 +4916,10 @@ public class portalController : Controller
                     </div>
                 </div>
                 <div style=""font-size:13px;color:#334155;margin-bottom:10px;"">
-                    <strong>估算標的：</strong>{h(sRow["targetDisplayName"])} ｜ <strong>核定決策說明：</strong>{h(sRow["finalDecisionNote"] ?? "進行中")}
+                    <strong>估算標的：</strong>{h(sRow["targetDisplayName"])}
+                    {(sRow["finalDecisionNote"] != DBNull.Value && !string.IsNullOrWhiteSpace(sRow["finalDecisionNote"]?.ToString())
+                        ? $@" ｜ 🏆 <strong style=""color:#15803d;"">定案決議說明：{h(sRow["finalDecisionNote"])}</strong>"
+                        : (sStatus == "finalized" ? "" : " ｜ <strong>狀態：</strong>進行中"))}
                 </div>");
 
             // 列出每一回合的討論摘要與投票紀錄
