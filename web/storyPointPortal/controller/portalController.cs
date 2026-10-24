@@ -3813,31 +3813,41 @@ public class portalController : Controller
         .sp-th-lock-btn {{ display:inline-flex; align-items:center; justify-content:center; width:24px; height:22px; border-radius:5px; border:1px solid #cbd5e1; background:#ffffff; color:#64748b; font-size:11px; cursor:pointer; padding:0; transition:all .15s; flex-shrink:0; }}
         .sp-th-lock-btn:hover {{ border-color:#2563eb; color:#2563eb; background:#eff6ff; }}
         .sp-th-lock-btn.active {{ background:#1e40af; color:#ffffff; border-color:#1e3a8a; box-shadow:0 1px 3px rgba(30,64,175,0.3); }}
-        /* 表格資料列滑鼠快捷選單 (Row Context Menu) 與左側快速觸發鈕樣式 */
-        tbody tr.sp-context-row {{ cursor:context-menu; transition:background .12s; }}
-        tbody tr.sp-context-row:hover td {{ background:#f0f7ff; }}
-        tbody tr.sp-context-active-row td {{ background:#dbeafe !important; }}
-        .sp-row-quick-btn {{ display:inline-flex; align-items:center; gap:3px; padding:2px 7px; margin-left:6px; border-radius:6px; border:1px solid #93c5fd; background:#eff6ff; color:#1d4ed8; font-size:11px; font-weight:700; cursor:pointer; transition:all .15s; vertical-align:middle; line-height:1.3; }}
-        .sp-row-quick-btn:hover {{ background:#2563eb; color:#ffffff; border-color:#1d4ed8; box-shadow:0 2px 6px rgba(37,99,235,0.28); }}
-        .sp-context-menu {{ position:fixed; z-index:100000; min-width:255px; max-width:340px; background:#ffffff; border:1px solid #93c5fd; border-radius:12px; box-shadow:0 18px 38px rgba(15,23,42,0.26), 0 4px 12px rgba(37,99,235,0.12); padding:6px; display:none; user-select:none; animation:spCtxFadeIn .12s ease-out; }}
-        .sp-context-menu.open {{ display:block; }}
+        /* 表格資料列滑鼠右鍵快捷選單 (Row Context Menu) 與單筆編輯 Modal 視窗樣式 */
+        table tbody tr {{ cursor:context-menu; transition:background .12s; }}
+        table tbody tr:hover td {{ background:#f0f7ff; }}
+        table tbody tr.sp-context-active-row td {{ background:#dbeafe !important; box-shadow:inset 0 1px 0 #3b82f6, inset 0 -1px 0 #3b82f6; }}
+        .sp-context-menu {{ position:fixed; z-index:100000; min-width:265px; max-width:360px; background:#ffffff; border:1.5px solid #3b82f6; border-radius:12px; box-shadow:0 18px 38px rgba(15,23,42,0.28), 0 4px 12px rgba(37,99,235,0.14); padding:6px; display:none; user-select:none; animation:spCtxFadeIn .12s ease-out; }}
+        .sp-context-menu.visible, .sp-context-menu.open {{ display:block !important; }}
         @keyframes spCtxFadeIn {{ from {{ opacity:0; transform:scale(0.96) translateY(-4px); }} to {{ opacity:1; transform:scale(1) translateY(0); }} }}
-        .sp-ctx-header {{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 10px; margin-bottom:4px; background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%); color:#ffffff; border-radius:8px; font-size:12px; font-weight:700; }}
+        .sp-ctx-header {{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 11px; margin-bottom:4px; background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%); color:#ffffff; border-radius:8px; font-size:12px; font-weight:700; }}
         .sp-ctx-header-title {{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:265px; }}
         .sp-ctx-close {{ background:transparent; border:none; color:#cbd5e1; font-size:13px; cursor:pointer; padding:0 4px; line-height:1; border-radius:4px; }}
         .sp-ctx-close:hover {{ color:#ffffff; background:rgba(255,255,255,0.15); }}
-        .sp-ctx-item {{ width:100%; display:flex; align-items:center; gap:9px; padding:8px 11px; border:none; background:transparent; color:#1e293b; font-size:13px; font-weight:600; font-family:inherit; text-align:left; border-radius:7px; cursor:pointer; transition:background .12s, color .12s; }}
+        .sp-ctx-item {{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:9px; padding:8px 11px; border:none; background:transparent; color:#1e293b; font-size:13px; font-weight:600; font-family:inherit; text-align:left; border-radius:7px; cursor:pointer; transition:background .12s, color .12s; }}
         .sp-ctx-item:hover {{ background:#eff6ff; color:#1d4ed8; }}
+        .sp-ctx-item.primary-action {{ color:#1d4ed8; font-weight:700; }}
+        .sp-ctx-item.primary-action:hover {{ background:#dbeafe; color:#1e3a8a; }}
+        .sp-ctx-item.warn {{ color:#b45309; }}
+        .sp-ctx-item.warn:hover {{ background:#fef3c7; color:#92400e; }}
         .sp-ctx-item.danger {{ color:#dc2626; }}
         .sp-ctx-item.danger:hover {{ background:#fef2f2; color:#991b1b; }}
-        .sp-ctx-item.disabled {{ opacity:0.45; cursor:not-allowed; }}
-        .sp-ctx-item-icon {{ width:18px; text-align:center; font-size:14px; flex-shrink:0; }}
-        .sp-ctx-item-text {{ flex:1; line-height:1.35; }}
-        .sp-ctx-item-sub {{ font-size:11px; color:#64748b; font-weight:500; display:block; }}
+        .sp-ctx-item:disabled, .sp-ctx-item.disabled {{ opacity:0.45; cursor:not-allowed; }}
+        .sp-ctx-icon {{ display:inline-block; width:20px; text-align:center; font-size:14px; margin-right:6px; }}
         .sp-ctx-divider {{ height:1px; background:#e2e8f0; margin:5px 4px; }}
+        /* 單筆紀錄編輯 Modal 彈出視窗樣式（不捲動網頁，直接原地彈出 Modal 編輯） */
+        .sp-modal-overlay {{ position:fixed; inset:0; z-index:100005; background:rgba(15,23,42,0.58); backdrop-filter:blur(3px); display:none; align-items:center; justify-content:center; padding:18px; overflow-y:auto; }}
+        .sp-modal-overlay.visible, .sp-modal-overlay.open {{ display:flex !important; }}
+        .sp-modal-dialog {{ width:100%; max-width:860px; max-height:90vh; background:#ffffff; border-radius:14px; border:2px solid #2563eb; box-shadow:0 24px 60px rgba(15,23,42,0.42); display:flex; flex-direction:column; overflow:hidden; animation:spCtxFadeIn .15s ease-out; }}
+        .sp-modal-header {{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 20px; background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%); color:#ffffff; }}
+        .sp-modal-title {{ font-size:16px; font-weight:800; display:flex; align-items:center; gap:8px; }}
+        .sp-modal-close-btn {{ background:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.28); color:#ffffff; border-radius:8px; padding:5px 12px; font-size:13px; font-weight:700; cursor:pointer; transition:all .15s; }}
+        .sp-modal-close-btn:hover {{ background:#dc2626; border-color:#f87171; }}
+        .sp-modal-body {{ padding:20px; overflow-y:auto; flex:1; background:#ffffff; }}
+        .sp-modal-footer {{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 20px; background:#f8fafc; border-top:1px solid #cbd5e1; flex-wrap:wrap; }}
         .sp-form-flash {{ animation:spFormPulse 1.3s ease; }}
         @keyframes spFormPulse {{ 0% {{ box-shadow:0 0 0 0 rgba(37,99,235,0.55); border-color:#2563eb; }} 50% {{ box-shadow:0 0 0 6px rgba(37,99,235,0.22); border-color:#1d4ed8; }} 100% {{ box-shadow:0 1px 3px rgba(0,0,0,0.04); }} }}
-        .sp-toast-notice {{ position:fixed; bottom:24px; right:24px; z-index:100001; background:#0f172a; color:#ffffff; border-left:4px solid #3b82f6; padding:11px 16px; border-radius:10px; font-size:13px; font-weight:700; box-shadow:0 12px 28px rgba(15,23,42,0.3); opacity:0; transform:translateY(12px); transition:all .2s ease; pointer-events:none; }}
+        .sp-toast-notice {{ position:fixed; bottom:24px; right:24px; z-index:100010; background:#0f172a; color:#ffffff; border-left:4px solid #3b82f6; padding:11px 16px; border-radius:10px; font-size:13px; font-weight:700; box-shadow:0 12px 28px rgba(15,23,42,0.3); opacity:0; transform:translateY(12px); transition:all .2s ease; pointer-events:none; }}
         .sp-toast-notice.show {{ opacity:1; transform:translateY(0); }}
         input[type=text], input[type=number], input[type=password], input[type=date], input[type=datetime-local], select, textarea {{ width:100%; padding:8px 11px; border:1px solid #cbd5e1; border-radius:7px; font-size:13.5px; font-family:inherit; }}
         .form-row {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:12px; align-items:end; }}
@@ -4805,12 +4815,12 @@ public class portalController : Controller
             </div>");
         }
 
-        // 下方列出各議程目前已生效的回合設定總覽表（支援表格篩選與滑鼠右鍵快捷選單操作，無須捲動至最右邊）
+        // 下方列出各議程目前已生效的回合設定總覽表（支援表格篩選、滑鼠右鍵選擇紀錄與彈出 Modal 單筆編輯，無須下拉選單或捲動網頁）
         sb.Append(@"
             <div style='margin-top:18px;border-top:1px solid #e2e8f0;padding-top:14px;'>
                 <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
                     <div style='font-weight:700;font-size:15px;color:#0f172a;'>📋 各投票議程的回合設定總覽（投什麼 ／ 誰可參與 ／ 點數上下限 ／ 共識與計時規則）</div>
-                    <span class='badge badge-revealed'>🖱️ 於任一列按「滑鼠右鍵」或點擊左側「⚡ 操作 ▾」即可開啟快捷選單（進入盲投網頁、載入編輯設定等）</span>
+                    <span class='badge badge-revealed'>🖱️ 直接於任一筆紀錄按「滑鼠右鍵」即可選擇該筆紀錄並開啟操作選單（彈出 Modal 單筆編輯設定、進入盲投網頁等）</span>
                 </div>
                 <table id='roundSetupSessionTable'>
                     <thead>
@@ -4846,12 +4856,9 @@ public class portalController : Controller
                 : "";
 
             sb.Append($@"
-                        <tr class='sp-context-row' data-row-kind='session' data-row-title='{h(sCodeStr)} - {h(sTitleStr)}' data-session-pk='{sPk}' data-session-code='{h(sCodeStr)}' data-session-title='{h(sTitleStr)}' data-session-status='{h(sStatus)}' title='💡 按滑鼠右鍵或點擊「⚡ 操作 ▾」開啟快捷選單'>
-                            <td>
-                                <div style='display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;'>
-                                    <strong>{h(sCodeStr)}</strong>
-                                    <button type='button' class='sp-row-quick-btn' onclick='openRowContextMenuFromBtn(event, this)' title='點擊開啟快捷選單（亦可於本列任一處按滑鼠右鍵）'>⚡ 操作 ▾</button>
-                                </div>
+                        <tr class='sp-context-row' data-row-kind='session' data-row-title='{h(sCodeStr)} - {h(sTitleStr)}' data-session-pk='{sPk}' data-session-code='{h(sCodeStr)}' data-session-title='{h(sTitleStr)}' data-session-status='{h(sStatus)}' title='💡 按滑鼠右鍵選擇此筆議程紀錄並開啟操作選單（彈出 Modal 單筆編輯、進入獨立盲投網頁）'>
+                            <td data-sort-value='{h(sCodeStr)}'>
+                                <div><strong>{h(sCodeStr)}</strong></div>
                                 <span style='font-size:12.5px;color:#334155;'>{h(sTitleStr)}</span>
                                 {(!string.IsNullOrWhiteSpace(rowDecisionNote) ? $"<br/><span style='font-size:12px;color:#15803d;font-weight:700;'>🏆 定案決議說明：{h(rowDecisionNote)}</span>" : "")}
                             </td>
@@ -4931,7 +4938,7 @@ public class portalController : Controller
                 foreach (DataRow vRow in voteRecordTable.Rows)
                 {
                     if (Convert.ToInt32(vRow["votingSessionPk"]) != sPk || Convert.ToInt32(vRow["roundNumber"]) != rNum) continue;
-                    sb.Append($@"<tr>
+                    sb.Append($@"<tr class='sp-context-row' data-row-kind='readonlyRecord' data-row-title='第 {rNum} 回合投票：{h(vRow["employeeCode"])} - {h(vRow["employeeName"])}' title='💡 按滑鼠右鍵選擇此筆紀錄並開啟操作選單'>
                         <td>{h(vRow["employeeCode"])}</td>
                         <td><strong>{h(vRow["employeeName"])}</strong></td>
                         <td>{h(vRow["departmentName"])}</td>
@@ -4964,7 +4971,7 @@ public class portalController : Controller
             string targetName = hRow["targetKind"].ToString() == "workItemType"
                 ? $"[代表類型] {hRow["typeCode"]} - {hRow["typeName"]}"
                 : $"[工項] {hRow["itemCode"]} - {hRow["itemTitle"]}";
-            sb.Append($@"<tr>
+            sb.Append($@"<tr class='sp-context-row' data-row-kind='readonlyRecord' data-row-title='點數異動：{h(targetName)}' title='💡 按滑鼠右鍵選擇此筆紀錄並開啟操作選單'>
                 <td>{Convert.ToDateTime(hRow["changedAt"]):yyyy-MM-dd HH:mm:ss}</td>
                 <td>{h(hRow["targetKindText"])}</td>
                 <td><strong>{h(targetName)}</strong></td>
@@ -5057,7 +5064,7 @@ public class portalController : Controller
                 <table class='wik-data-table'>
                     <thead>
                         <tr>
-                            <th>排序與快捷選單</th>
+                            <th>排序</th>
                             <th>類型代碼</th>
                             <th>工項類型名稱与標籤預覽</th>
                             <th>類型說明</th>
@@ -5088,12 +5095,9 @@ public class portalController : Controller
                 };
 
                 sb.Append($@"
-                        <tr class='sp-context-row' data-row-kind='workitemKind' data-kind-pk='{kPk}' data-kind-code='{h(kCode)}' data-kind-name='{h(kName)}' data-kind-icon='{h(kIcon)}' data-kind-color='{h(kColor)}' data-kind-sort='{kSort}' data-kind-desc='{h(kDesc)}' data-tab-suffix='{h(tabSuffix)}'>
+                        <tr class='sp-context-row' data-row-kind='workitemKind' data-kind-pk='{kPk}' data-kind-code='{h(kCode)}' data-kind-name='{h(kName)}' data-kind-icon='{h(kIcon)}' data-kind-color='{h(kColor)}' data-kind-sort='{kSort}' data-kind-desc='{h(kDesc)}' data-tab-suffix='{h(tabSuffix)}' title='💡 按滑鼠右鍵選擇此筆工項類型並開啟操作選單（彈出 Modal 單筆編輯、刪除、篩選）'>
                             <td data-sort-value='{kSort}'>
-                                <div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>
-                                    <strong>{kSort}</strong>
-                                    <button type='button' class='sp-row-quick-btn' onclick='openRowContextMenuFromBtn(event, this)' title='點擊或於本列任一處按滑鼠右鍵開啟紀錄操作快捷選單（修改 / 刪除，免捲到最右邊）'>⚡ 操作 ▾</button>
-                                </div>
+                                <strong>{kSort}</strong>
                             </td>
                             <td><code>{h(kCode)}</code></td>
                             <td><span class='badge' style='{badgeStyle}'>{h(kIcon)} {h(kName)}</span></td>
@@ -5348,11 +5352,11 @@ public class portalController : Controller
                 </div>
             </div>
 
-            <!-- 工項清單多維度即時篩選列 + 滑鼠快捷選單操作說明 -->
+            <!-- 工項清單多維度即時篩選列 + 滑鼠右鍵快捷選單操作說明 -->
             <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                 <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
                     <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
-                        💡 <strong>操作提示：</strong>於表格內任一列<strong>按滑鼠右鍵</strong>（或點擊首欄「<strong>⚡ 操作 ▾</strong>」按鈕）即可直接跳出快捷選單執行<strong>編輯、修改指派員工、發起盲投、刪除、以此欄值篩選</strong>等操作，免水平捲動到最右邊！
+                        💡 <strong>操作提示：</strong>直接於表格內任一筆紀錄<strong>按滑鼠右鍵</strong>，即可選擇該筆紀錄並開啟右鍵選單執行<strong>單筆編輯 (彈出 Modal 視窗)、修改指派員工 (彈出 Modal 視窗)、發起盲投、刪除、以此欄值篩選</strong>等操作，不用下拉選單、也不會捲動網頁！
                     </div>
                     <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick='resetWorkItemFilter()'>🔄 清除全部篩選條件</button>
                 </div>
@@ -5419,7 +5423,7 @@ public class portalController : Controller
             <table id='workItemDataTable'>
                 <thead>
                     <tr>
-                        <th>工項代碼與快捷選單</th>
+                        <th>工項代碼</th>
                         <th>工項類型</th>
                         <th>工項標題</th>
                         <th>起訖時間 (起時 ~ 迄時)</th>
@@ -5490,12 +5494,14 @@ public class portalController : Controller
 
             string wCodeStr = wRow["itemCode"]?.ToString() ?? "";
             string wTitleStr = wRow["itemTitle"]?.ToString() ?? "";
+            string wDescStr = wRow["itemDescription"]?.ToString() ?? "";
+            string wSprintStr = wRow["sprintName"]?.ToString() ?? "";
             string wTypePkStr = wRow["workItemTypePk"] != DBNull.Value ? wRow["workItemTypePk"].ToString()! : "0";
             string wTypeNameStr = wRow["typeName"]?.ToString() ?? "";
             string wStatusStr = wRow["executionStatus"]?.ToString() ?? "todo";
             string wReasonStr = wRow["adjustmentReason"]?.ToString() ?? "";
             string wAssigneeStr = wRow["assigneeSummary"]?.ToString() ?? "";
-            string wiSearchBlob = $"{wCodeStr} {wTitleStr} {wRow["itemDescription"]} {wRow["sprintName"]} {wKind} {wKindText} {wRow["typeCode"]} {wTypeNameStr} {wAssigneeStr} {wReasonStr} {notifRecipients}".ToLowerInvariant();
+            string wiSearchBlob = $"{wCodeStr} {wTitleStr} {wDescStr} {wSprintStr} {wKind} {wKindText} {wRow["typeCode"]} {wTypeNameStr} {wAssigneeStr} {wReasonStr} {notifRecipients}".ToLowerInvariant();
 
             sb.Append($@"<tr class='wi-row sp-context-row'
                 data-row-kind='workitem'
@@ -5503,6 +5509,8 @@ public class portalController : Controller
                 data-wi-pk='{wiPkVal}'
                 data-wi-code='{h(wCodeStr)}'
                 data-wi-title='{h(wTitleStr)}'
+                data-wi-desc='{h(wDescStr)}'
+                data-wi-sprint='{h(wSprintStr)}'
                 data-wi-type-pk='{h(wTypePkStr)}'
                 data-wi-type-name='{h(wTypeNameStr)}'
                 data-wi-pt='{editPt.ToString(CultureInfo.InvariantCulture)}'
@@ -5513,13 +5521,11 @@ public class portalController : Controller
                 data-wi-start='{h(startIsoJs)}'
                 data-wi-end='{h(endIsoJs)}'
                 data-wi-expired='{(isExpiredProc ? "1" : "0")}'
-                data-wi-assignee='{h(wAssigneeStr)}'>
+                data-wi-assignee='{h(wAssigneeStr)}'
+                title='💡 按滑鼠右鍵選擇此筆工項並開啟操作選單（彈出 Modal 單筆編輯、修改指派員工、發起盲投、刪除）'>
                 <td data-sort-value='{h(wCodeStr)}'>
-                    <div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>
-                        <strong>{h(wCodeStr)}</strong>
-                        <button type='button' class='sp-row-quick-btn' onclick='openRowContextMenuFromBtn(event, this)' title='點擊或於本列任一處按滑鼠右鍵開啟工項快捷操作選單（編輯、修改負責員工、發起盲投、刪除...免捲到最右邊）'>⚡ 操作 ▾</button>
-                    </div>
-                    <div style='font-size:11px;color:#64748b;margin-top:2px;'>{h(wRow["sprintName"])}</div>
+                    <div><strong>{h(wCodeStr)}</strong></div>
+                    <div style='font-size:11px;color:#64748b;margin-top:2px;'>{h(wSprintStr)}</div>
                 </td>
                 <td style='white-space:nowrap;'>{kindBadge}</td>
                 <td><strong>{h(wTitleStr)}</strong><div style='font-size:12px;color:#64748b;'>{h(wRow["itemDescription"])}</div></td>
@@ -5603,7 +5609,7 @@ public class portalController : Controller
             <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                 <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
                     <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
-                        💡 <strong>操作提示：</strong>於代表類型列<strong>按滑鼠右鍵</strong>（或點擊首欄「<strong>⚡ 操作 ▾</strong>」）即可開啟快捷選單執行編輯、發起盲投或刪除，無須水平捲動！
+                        💡 <strong>操作提示：</strong>直接於代表類型列<strong>按滑鼠右鍵</strong>即可選擇該筆紀錄並開啟右鍵選單執行<strong>單筆編輯 (彈出 Modal 視窗)、發起盲投、刪除、以此欄值篩選</strong>，不用下拉選單、也不會捲動網頁！
                     </div>
                     <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick='resetWorkItemTypeFilter()'>🔄 清除全部篩選條件</button>
                 </div>
@@ -5637,7 +5643,7 @@ public class portalController : Controller
                 </div>
             </div>
             <table id='workItemTypeDataTable'>
-                <thead><tr><th>類型代碼與快捷選單</th><th>代表類型名稱</th><th>預設工項類型</th><th>分類</th><th>複雜度與驗收說明</th><th>標準 Story Point</th><th>估算狀態</th><th>套用工項數</th></tr></thead><tbody>");
+                <thead><tr><th>類型代碼</th><th>代表類型名稱</th><th>預設工項類型</th><th>分類</th><th>複雜度與驗收說明</th><th>標準 Story Point</th><th>估算狀態</th><th>套用工項數</th></tr></thead><tbody>");
         foreach (DataRow tRow in typeTable.Rows)
         {
             int tPkVal = Convert.ToInt32(tRow["workItemTypePk"]);
@@ -5663,12 +5669,10 @@ public class portalController : Controller
                 data-type-desc='{h(tDescStr)}'
                 data-type-pt='{h(ptJs)}'
                 data-type-kind='{h(dKind)}'
-                data-type-status='{(hasStdPt ? "finalized" : "pending")}'>
+                data-type-status='{(hasStdPt ? "finalized" : "pending")}'
+                title='💡 按滑鼠右鍵選擇此筆代表類型並開啟操作選單（彈出 Modal 單筆編輯、發起盲投、刪除）'>
                 <td data-sort-value='{h(tCodeStr)}'>
-                    <div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>
-                        <strong>{h(tCodeStr)}</strong>
-                        <button type='button' class='sp-row-quick-btn' onclick='openRowContextMenuFromBtn(event, this)' title='點擊或於本列任一處按滑鼠右鍵開啟代表類型快捷操作選單（編輯、發起盲投、刪除...免捲到最右邊）'>⚡ 操作 ▾</button>
-                    </div>
+                    <strong>{h(tCodeStr)}</strong>
                 </td>
                 <td><strong>{h(tNameStr)}</strong></td>
                 <td><span class='badge badge-user'>{h(dKindIcon)} {h(dKindText)}</span></td>
@@ -5716,13 +5720,18 @@ public class portalController : Controller
                     <tbody>");
             foreach (DataRow dRow in deptTable.Rows)
             {
+                int dPkVal = dRow.Table.Columns.Contains("departmentPk") && dRow["departmentPk"] != DBNull.Value ? Convert.ToInt32(dRow["departmentPk"]) : 0;
+                string dCodeVal = dRow["departmentCode"]?.ToString() ?? "";
+                string dNameVal = dRow["departmentName"]?.ToString() ?? "";
+                string dMgrVal = dRow["managerName"]?.ToString() ?? "";
+                string dNoteVal = dRow["departmentNote"]?.ToString() ?? "";
                 decimal deptDed = dRow.Table.Columns.Contains("totalDeductedDepartmentStoryPoint") && dRow["totalDeductedDepartmentStoryPoint"] != DBNull.Value
                     ? Convert.ToDecimal(dRow["totalDeductedDepartmentStoryPoint"])
                     : 0m;
-                sb.Append($@"<tr>
-                    <td><strong>{h(dRow["departmentCode"])}</strong></td>
-                    <td><strong style='font-size:14.5px;'>{h(dRow["departmentName"])}</strong><div style='font-size:11.5px;color:#64748b;'>{h(dRow["departmentNote"])}</div></td>
-                    <td>{h(dRow["managerName"])}</td>
+                sb.Append($@"<tr class='sp-context-row' data-row-kind='department' data-dept-pk='{dPkVal}' data-dept-code='{h(dCodeVal)}' data-dept-name='{h(dNameVal)}' data-dept-mgr='{h(dMgrVal)}' data-dept-note='{h(dNoteVal)}' title='💡 按滑鼠右鍵選擇此筆部門紀錄並開啟操作選單（彈出 Modal 單筆編輯部門、篩選部門工項與員工）'>
+                    <td><strong>{h(dCodeVal)}</strong></td>
+                    <td><strong style='font-size:14.5px;'>{h(dNameVal)}</strong><div style='font-size:11.5px;color:#64748b;'>{h(dNoteVal)}</div></td>
+                    <td>{h(dMgrVal)}</td>
                     <td>{dRow["activeEmployeeCount"]} 人</td>
                     <td>{dRow["distinctWorkItemCount"]} 件</td>
                     <td><strong style='font-size:18px;color:#2563eb;'>{dRow["totalDepartmentStoryPoint"]} pt</strong></td>
@@ -5768,6 +5777,8 @@ public class portalController : Controller
                 <tbody>");
         foreach (DataRow eRow in empTable.Rows)
         {
+            int stEmpPk = Convert.ToInt32(eRow["employeePk"]);
+            bool stEmpActive = Convert.ToBoolean(eRow["isActive"]);
             string empJobTitle = eRow["jobTitle"]?.ToString() ?? "";
             bool isDeptMgr = (eRow.Table.Columns.Contains("isDepartmentManager") && eRow["isDepartmentManager"] != DBNull.Value)
                 ? Convert.ToBoolean(eRow["isDepartmentManager"])
@@ -5778,6 +5789,7 @@ public class portalController : Controller
                 ? Convert.ToInt32(eRow["hierarchyLevel"])
                 : 1;
             bool hasParentMgr = eRow.Table.Columns.Contains("managerEmployeePk") && eRow["managerEmployeePk"] != DBNull.Value;
+            string stMgrPkStr = hasParentMgr ? eRow["managerEmployeePk"].ToString()! : "";
             string mgrNameStr = (hasParentMgr && eRow.Table.Columns.Contains("managerEmployeeName") && eRow["managerEmployeeName"] != DBNull.Value)
                 ? (eRow["managerEmployeeName"]?.ToString() ?? "")
                 : "";
@@ -5797,7 +5809,22 @@ public class portalController : Controller
             decimal empDed = eRow.Table.Columns.Contains("totalDeductedStoryPoint") && eRow["totalDeductedStoryPoint"] != DBNull.Value
                 ? Convert.ToDecimal(eRow["totalDeductedStoryPoint"])
                 : 0m;
-            sb.Append($@"<tr>
+            bool stIsSelf = (stEmpPk == curEmpPk);
+            sb.Append($@"<tr class='sp-context-row'
+                data-row-kind='employee'
+                data-emp-pk='{stEmpPk}'
+                data-emp-code='{h(eRow["employeeCode"])}'
+                data-emp-name='{h(eRow["employeeName"])}'
+                data-emp-acc='{h(eRow["loginAccount"])}'
+                data-emp-mail='{h(eRow["emailAddress"])}'
+                data-emp-title='{h(empJobTitle)}'
+                data-emp-dept-pk='{eRow["departmentPk"]}'
+                data-emp-role='{h(eRow["roleName"])}'
+                data-emp-active='{(stEmpActive ? "true" : "false")}'
+                data-emp-ismgr='{(isDeptMgr ? "true" : "false")}'
+                data-emp-mgrpk='{h(stMgrPkStr)}'
+                data-emp-self='{(stIsSelf ? "1" : "0")}'
+                title='💡 按滑鼠右鍵選擇此筆員工紀錄並開啟操作選單（彈出 Modal 單筆編輯員工、檢視指派工項）'>
                 <td><strong>{h(eRow["employeeCode"])}</strong></td>
                 <td><span class='badge' style='background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;margin-right:4px;'>{levelPrefix}</span><strong>{h(eRow["employeeName"])}</strong> ({h(eRow["loginAccount"])})</td>
                 <td><span class='badge badge-user'>{h(eRow["departmentName"])}</span></td>
@@ -6175,7 +6202,7 @@ public class portalController : Controller
                 <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                     <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
                         <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
-                            💡 <strong>操作提示：</strong>於員工列表任一列<strong>按滑鼠右鍵</strong>（或點擊首欄「<strong>⚡ 操作 ▾</strong>」）即可跳出快捷選單執行<strong>修改資料/密碼、啟用/停用、刪除、檢視指派工項</strong>，不用捲到最右邊！
+                            💡 <strong>操作提示：</strong>直接於員工列表任一筆紀錄<strong>按滑鼠右鍵</strong>，即可選擇該筆紀錄並開啟右鍵選單執行<strong>單筆編輯資料/密碼 (彈出 Modal 視窗)、啟用/停用、刪除、檢視指派工項</strong>，不用下拉選單、也不會捲動網頁！
                         </div>
                         <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick='resetEmployeeFilter()'>🔄 清除全部篩選條件</button>
                     </div>
@@ -6223,7 +6250,7 @@ public class portalController : Controller
                 </div>
 
                 <table id='empDataTable'>
-                    <thead><tr><th>員工編號與快捷選單</th><th>員工姓名</th><th>登入帳號</th><th>所屬部門</th><th>是否為部門主管 / 職稱</th><th>上一層主管 / 到期通知對象</th><th>電子郵件</th><th>系統角色</th><th>帳號狀態</th><th>目前賦予 Story Point</th></tr></thead><tbody>");
+                    <thead><tr><th>員工編號</th><th>員工姓名</th><th>登入帳號</th><th>所屬部門</th><th>是否為部門主管 / 職稱</th><th>上一層主管 / 到期通知對象</th><th>電子郵件</th><th>系統角色</th><th>帳號狀態</th><th>目前賦予 Story Point</th></tr></thead><tbody>");
             foreach (DataRow eRow in empTable.Rows)
             {
                 int rowEmpPk = Convert.ToInt32(eRow["employeePk"]);
@@ -6303,12 +6330,10 @@ public class portalController : Controller
                     data-emp-active='{(empActive ? "true" : "false")}'
                     data-emp-ismgr='{(isDeptMgrRow ? "true" : "false")}'
                     data-emp-mgrpk='{h(mgrPkStr)}'
-                    data-emp-self='{(isSelf ? "1" : "0")}'>
+                    data-emp-self='{(isSelf ? "1" : "0")}'
+                    title='💡 按滑鼠右鍵選擇此筆員工紀錄並開啟操作選單（彈出 Modal 單筆編輯員工、啟用/停用、刪除）'>
                     <td data-sort-value='{h(empCodeStr)}'>
-                        <div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>
-                            <strong>{h(empCodeStr)}</strong>
-                            <button type='button' class='sp-row-quick-btn' onclick='openRowContextMenuFromBtn(event, this)' title='點擊或於本列任一處按滑鼠右鍵開啟員工快捷操作選單（修改資料、啟用/停用、刪除、檢視指派工項，免捲到最右邊）'>⚡ 操作 ▾</button>
-                        </div>
+                        <strong>{h(empCodeStr)}</strong>
                     </td>
                     <td><strong>{h(empNameStr)}</strong></td>
                     <td><code>{h(empAccStr)}</code></td>
@@ -6664,7 +6689,7 @@ public class portalController : Controller
 
                 string searchBlob = $"{lRow["logPk"]} {timeStr} {srcName} {objName} {execRes} {errCode} {errLine} {errMsg} {opAcc}".ToLowerInvariant();
 
-                sb.Append($@"<tr class='syslog-row {trLevelClass}' data-level='{lvl}' data-source='{h(srcName)}' data-search='{h(searchBlob)}'>
+                sb.Append($@"<tr class='syslog-row sp-context-row {trLevelClass}' data-row-kind='readonlyRecord' data-row-title='系統 Log #{h(lRow["logPk"])} ({h(objName)})' data-level='{lvl}' data-source='{h(srcName)}' data-search='{h(searchBlob)}' title='💡 按滑鼠右鍵選擇此筆 Log 紀錄並開啟操作選單'>
                     <td style='white-space:nowrap;'><code>#{h(lRow["logPk"])}</code></td>
                     <td style='white-space:nowrap;font-size:12.5px;'>{h(timeStr)}</td>
                     <td style='white-space:nowrap;'>{levelBadge}</td>
@@ -7140,13 +7165,7 @@ public class portalController : Controller
         }
 
         function openRoundSetupForSession(sessionPk) {
-            switchTab('roundSetup');
-            const sel = document.getElementById('setupSessionSelector');
-            if (sel) {
-                sel.value = String(sessionPk);
-                onSetupSessionSelectChange();
-            }
-            window.scrollTo({ top: 120, behavior: 'smooth' });
+            openSessionSetupEditModal(sessionPk);
         }
 
         function initFloatingTooltips() {
@@ -7375,7 +7394,7 @@ public class portalController : Controller
 
                 const statusSpan = document.createElement('div');
                 statusSpan.className = 'sp-table-toolbar-status';
-                statusSpan.innerHTML = '<span>⇅ 點擊表頭排序</span><span>｜</span><span>📌 圖釘鎖定欄位</span><span>｜</span><span>🖱️ 右鍵或點「⚡ 操作 ▾」開啟快捷選單</span>';
+                statusSpan.innerHTML = '<span>⇅ 點擊表頭排序</span><span>｜</span><span>📌 圖釘鎖定欄位</span><span>｜</span><span>🖱️ 滑鼠右鍵選擇紀錄並開啟操作選單（編輯彈出 Modal 視窗）</span>';
 
                 // 建立即時篩選控制區 (.sp-table-toolbar-filter)
                 const filterDiv = document.createElement('div');
@@ -7740,7 +7759,7 @@ public class portalController : Controller
             const lockText = lockedArr.length > 0
                 ? '<span style=""color:#1e40af;font-weight:700;"">🔒 已鎖定：' + lockedArr.join('、') + '</span>'
                 : '📌 圖釘鎖定欄位';
-            statusSpan.innerHTML = `<span>${sortText}</span><span>｜</span><span>${lockText}</span><span>｜</span><span>🖱️ 右鍵或點「⚡ 操作 ▾」開啟快捷選單</span>`;
+            statusSpan.innerHTML = `<span>${sortText}</span><span>｜</span><span>${lockText}</span><span>｜</span><span>🖱️ 滑鼠右鍵選擇紀錄並開啟操作選單（編輯彈出 Modal 視窗）</span>`;
         }
 
         function updateSingleTableStickyOffsets(state) {
@@ -7791,14 +7810,24 @@ public class portalController : Controller
         window.addEventListener('resize', refreshAllTableStickyOffsets);
 
         // =====================================================================
-        // 全域表格紀錄「滑鼠快捷選單 (Context Menu)」引擎
+        // 全域表格紀錄「滑鼠右鍵選單 (Context Menu)」與「單筆紀錄編輯 Modal 視窗」引擎
         // 支援：
-        //   1. 在任何表格資料列 (tbody tr) 按下滑鼠右鍵 (contextmenu)，或點擊第一欄的「⚡ 操作 ▾」按鈕
-        //   2. 自動判斷該列資料類型 (workitem / workitemKind / workitemType / employee / session / 通用表格列)
-        //   3. 提供「✏️ 編輯 / 修改」、「👥 修改指派員工與配額」、「🃏 發起多人盲投」、「🚫 停用 / ✅ 啟用」、「🗑️ 刪除」、「🔍 以此儲存格值篩選」、「📋 複製本列紀錄」等操作，完全免捲動到表格最右邊！
+        //   1. 全站所有 <table> 的任何資料列 (tbody tr) 按下滑鼠右鍵 (contextmenu)，立即反白選取該筆紀錄並彈出右鍵選單（不使用下拉選單）
+        //   2. 自動判斷該列資料類型 (workitem / workitemKind / workitemType / employee / department / session / readonlyRecord / 通用表格列)
+        //   3. 點選「✏️ 編輯 / 修改」時，直接原地彈出置中 Modal 對話視窗進行單筆編輯，絕不捲動網頁至其他位置！
         // =====================================================================
         let spContextMenuEl = null;
         let spActiveContextRow = null;
+        let spRecordEditModalOverlayEl = null;
+
+        function escapeModalHtml(str) {
+            return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/""/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
 
         function showToastNotice(msg) {
             let toast = document.getElementById('spToastNotice');
@@ -7837,7 +7866,7 @@ public class portalController : Controller
 
         function closeRowContextMenu() {
             if (spContextMenuEl) {
-                spContextMenuEl.classList.remove('visible');
+                spContextMenuEl.classList.remove('visible', 'open');
             }
             if (spActiveContextRow) {
                 spActiveContextRow.classList.remove('sp-context-active-row');
@@ -7845,16 +7874,628 @@ public class portalController : Controller
             }
         }
 
-        function openRowContextMenuFromBtn(evt, btnEl) {
-            if (evt) {
-                evt.preventDefault();
-                evt.stopPropagation();
+        function ensureRecordEditModalOverlay() {
+            if (!spRecordEditModalOverlayEl) {
+                spRecordEditModalOverlayEl = document.createElement('div');
+                spRecordEditModalOverlayEl.id = 'spRecordEditModalOverlay';
+                spRecordEditModalOverlayEl.className = 'sp-modal-overlay';
+                spRecordEditModalOverlayEl.addEventListener('click', function (evt) {
+                    if (evt.target === spRecordEditModalOverlayEl) {
+                        closeRecordEditModal();
+                    }
+                });
+                document.body.appendChild(spRecordEditModalOverlayEl);
             }
-            const tr = btnEl ? btnEl.closest('tr') : null;
+            return spRecordEditModalOverlayEl;
+        }
+
+        function closeRecordEditModal() {
+            if (spRecordEditModalOverlayEl) {
+                spRecordEditModalOverlayEl.classList.remove('visible', 'open');
+                spRecordEditModalOverlayEl.innerHTML = '';
+            }
+        }
+
+        function openRecordModalShell(titleHtml, badgeHtml, bodyHtml) {
+            closeRowContextMenu();
+            const overlay = ensureRecordEditModalOverlay();
+            overlay.innerHTML = `
+                <div class=""sp-modal-dialog"" id=""spRecordEditModal"" role=""dialog"" aria-modal=""true"">
+                    <div class=""sp-modal-header"">
+                        <div class=""sp-modal-title"">
+                            <span>${titleHtml}</span>
+                            ${badgeHtml || ''}
+                        </div>
+                        <button type=""button"" class=""sp-modal-close-btn"" onclick=""closeRecordEditModal()"" title=""關閉視窗 (Esc)"">✖</button>
+                    </div>
+                    <div class=""sp-modal-body"">
+                        ${bodyHtml}
+                    </div>
+                </div>
+            `;
+            overlay.classList.add('visible', 'open');
+            const firstInput = overlay.querySelector('input:not([type=""hidden""]):not([readonly]), select, textarea');
+            if (firstInput) {
+                setTimeout(() => firstInput.focus(), 40);
+            }
+        }
+
+        function openWorkItemEditModal(pk, code, title, typePk, pt, status, reason, kind, startIso, endIso, sprintName, forceExpired) {
+            const kindOptionsHtml = document.getElementById('wiKindSelect') ? document.getElementById('wiKindSelect').innerHTML : '<option value=""project"">🚀 專案 (project)</option><option value=""maintenance"">🛠️ 維運 (maintenance)</option><option value=""consulting"">💼 顧問時數 (consulting)</option>';
+            const typeOptionsHtml = document.getElementById('wiTypeSelect') ? document.getElementById('wiTypeSelect').innerHTML : '<option value=""0"">-- 不使用代表類型 --</option>';
+            const curSprint = sprintName || (document.getElementById('wiSprint') ? document.getElementById('wiSprint').value : '2026-Q4 Sprint 2');
+            let resolvedStart = startIso || formatLocalIsoMinute(new Date());
+            let resolvedEnd = endIso || formatLocalIsoMinute(new Date(Date.now() + 24 * 3600 * 1000));
+            if (forceExpired) {
+                const now = new Date();
+                resolvedStart = formatLocalIsoMinute(new Date(now.getTime() - 7 * 24 * 3600 * 1000));
+                resolvedEnd = formatLocalIsoMinute(new Date(now.getTime() - 10 * 60 * 1000));
+            }
+
+            const bodyHtml = `
+                <form method=""post"" action=""/workitem/save"">
+                    <input type=""hidden"" name=""workItemPk"" value=""${escapeModalHtml(pk)}"" />
+                    <div class=""form-row"">
+                        <div>
+                            <label>工項代碼</label>
+                            <input type=""text"" name=""itemCode"" id=""modalWiCode"" value=""${escapeModalHtml(code)}"" required />
+                        </div>
+                        <div>
+                            <label>工項類型</label>
+                            <select name=""workItemKind"" id=""modalWiKind"" required style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">
+                                ${kindOptionsHtml}
+                            </select>
+                        </div>
+                        <div>
+                            <label>工項標題</label>
+                            <input type=""text"" name=""itemTitle"" id=""modalWiTitle"" value=""${escapeModalHtml(title)}"" required />
+                        </div>
+                    </div>
+                    <div class=""form-row"">
+                        <div>
+                            <label>開始時間 (起時)</label>
+                            <input type=""datetime-local"" name=""startDate"" id=""modalWiStartDate"" value=""${escapeModalHtml(resolvedStart)}"" required />
+                        </div>
+                        <div>
+                            <label>結束時間 (迄時 - 到期自動扣點寄信)</label>
+                            <input type=""datetime-local"" name=""endDate"" id=""modalWiEndDate"" value=""${escapeModalHtml(resolvedEnd)}"" required style=""border-color:#dc2626;font-weight:700;"" />
+                        </div>
+                        <div>
+                            <label>快速設定起訖時間</label>
+                            <div style=""display:flex;gap:6px;flex-wrap:wrap;"">
+                                <button type=""button"" class=""btn btn-outline"" style=""padding:6px 10px;font-size:12px;"" onclick=""setModalWorkItemPresetDays(1)"">+1天</button>
+                                <button type=""button"" class=""btn btn-outline"" style=""padding:6px 10px;font-size:12px;"" onclick=""setModalWorkItemPresetDays(7)"">+1周</button>
+                                <button type=""button"" class=""btn btn-outline"" style=""padding:6px 10px;font-size:12px;"" onclick=""setModalWorkItemPresetDays(30)"">+1月</button>
+                                <button type=""button"" class=""btn btn-warning"" style=""padding:6px 10px;font-size:12px;"" onclick=""setModalWorkItemPresetDays(-1)"">⏰ 設為已到期</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class=""form-row"">
+                        <div style=""grid-column: span 2;"">
+                            <label>工項代表類型（選擇後自動帶入標準點數）</label>
+                            <select name=""workItemTypePk"" id=""modalWiTypeSelect"" onchange=""onModalWorkItemTypeChange()"">
+                                ${typeOptionsHtml}
+                            </select>
+                        </div>
+                        <div>
+                            <label>Story Point 點數</label>
+                            <input type=""number"" step=""0.5"" name=""storyPoint"" id=""modalWiStoryPoint"" value=""${escapeModalHtml(pt)}"" placeholder=""留空即自動帶入代表類型點數"" />
+                        </div>
+                    </div>
+                    <div class=""form-row"">
+                        <div>
+                            <label>所屬 Sprint / 階段</label>
+                            <input type=""text"" name=""sprintName"" id=""modalWiSprint"" value=""${escapeModalHtml(curSprint)}"" />
+                        </div>
+                        <div>
+                            <label>執行狀態</label>
+                            <select name=""executionStatus"" id=""modalWiStatus"">
+                                <option value=""todo"">待處理 (To Do)</option>
+                                <option value=""inProgress"">進行中 (In Progress)</option>
+                                <option value=""done"">已完成 (Done)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>點數微調原因</label>
+                            <input type=""text"" name=""adjustmentReason"" id=""modalWiReason"" value=""${escapeModalHtml(reason)}"" placeholder=""選填：說明為何與代表類型不同"" />
+                        </div>
+                    </div>
+                    <div class=""sp-modal-footer"">
+                        <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
+                        <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆工項修改</button>
+                    </div>
+                </form>
+            `;
+            openRecordModalShell(
+                '✏️ 單筆編輯工項紀錄',
+                `<span class=""badge badge-user"">${escapeModalHtml(code)} - ${escapeModalHtml(title)}</span>`,
+                bodyHtml
+            );
+            const kSel = document.getElementById('modalWiKind');
+            if (kSel && kind) kSel.value = kind;
+            const tSel = document.getElementById('modalWiTypeSelect');
+            if (tSel && typePk !== undefined && typePk !== null) tSel.value = String(typePk);
+            const sSel = document.getElementById('modalWiStatus');
+            if (sSel && status) sSel.value = status;
+        }
+
+        function setModalWorkItemPresetDays(daysOffset) {
+            const now = new Date();
+            const sEl = document.getElementById('modalWiStartDate');
+            const eEl = document.getElementById('modalWiEndDate');
+            if (!sEl || !eEl) return;
+            if (daysOffset < 0) {
+                sEl.value = formatLocalIsoMinute(new Date(now.getTime() - 7 * 24 * 3600 * 1000));
+                eEl.value = formatLocalIsoMinute(new Date(now.getTime() - 10 * 60 * 1000));
+            } else {
+                const base = sEl.value ? new Date(sEl.value) : now;
+                const startDt = isNaN(base.getTime()) ? now : base;
+                sEl.value = formatLocalIsoMinute(startDt);
+                const endDt = new Date(startDt.getTime());
+                endDt.setDate(endDt.getDate() + (daysOffset || 1));
+                eEl.value = formatLocalIsoMinute(endDt);
+            }
+        }
+
+        function onModalWorkItemTypeChange() {
+            const sel = document.getElementById('modalWiTypeSelect');
+            if (!sel) return;
+            const opt = sel.options[sel.selectedIndex];
+            const pt = opt ? opt.getAttribute('data-pt') : '';
+            const kind = opt ? opt.getAttribute('data-kind') : '';
+            if (pt && document.getElementById('modalWiStoryPoint')) {
+                document.getElementById('modalWiStoryPoint').value = pt;
+            }
+            if (kind && document.getElementById('modalWiKind')) {
+                document.getElementById('modalWiKind').value = kind;
+            }
+        }
+
+        function openWorkItemAssignModal(wiPk, wiCode, wiTitle, wiPt, currentAssigneeText) {
+            const empOptionsHtml = document.getElementById('assignEmployeeSelect') ? document.getElementById('assignEmployeeSelect').innerHTML : '';
+            const bodyHtml = `
+                <form method=""post"" action=""/workitem/assign"">
+                    <input type=""hidden"" name=""workItemPk"" value=""${escapeModalHtml(wiPk)}"" />
+                    <div style=""background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#1e3a8a;"">
+                        <div><strong>📌 目標工項：</strong>${escapeModalHtml(wiCode)} - ${escapeModalHtml(wiTitle)} （總點數：<strong>${escapeModalHtml(wiPt || '0')} pt</strong>）</div>
+                        <div style=""margin-top:4px;""><strong>👥 目前負責員工與配額：</strong>${escapeModalHtml(currentAssigneeText || '尚未指派')}</div>
+                    </div>
+                    <div class=""form-row"">
+                        <div style=""grid-column: span 3;"">
+                            <label>選擇要賦予或調整配額的員工</label>
+                            <select name=""employeePk"" id=""modalAssignEmpSelect"" required>
+                                ${empOptionsHtml}
+                            </select>
+                        </div>
+                    </div>
+                    <div class=""form-row"">
+                        <div>
+                            <label>指派動作</label>
+                            <select name=""actionType"">
+                                <option value=""upsert"">➕ 新增或更新該員工分攤比例</option>
+                                <option value=""replaceSingle"">🎯 改由該員工單獨 100% 負責</option>
+                                <option value=""remove"">🗑️ 移除該員工在此工項的指派</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>負責角色</label>
+                            <input type=""text"" name=""assignmentRole"" value=""主要負責"" />
+                        </div>
+                        <div>
+                            <label>分攤比例 (%)</label>
+                            <input type=""number"" step=""5"" name=""allocationPercent"" value=""100"" />
+                        </div>
+                    </div>
+                    <div class=""form-row"">
+                        <div style=""grid-column: span 3;"">
+                            <label>指派備註</label>
+                            <input type=""text"" name=""assignmentNote"" placeholder=""例如：負責後端 Stored Procedure 與單元測試"" />
+                        </div>
+                    </div>
+                    <div class=""sp-modal-footer"">
+                        <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
+                        <button type=""submit"" class=""btn btn-success"">✅ 儲存員工指派與分攤配額</button>
+                    </div>
+                </form>
+            `;
+            openRecordModalShell(
+                '👥 單筆修改工項之賦予員工與分攤配額',
+                `<span class=""badge badge-user"">${escapeModalHtml(wiCode)}</span>`,
+                bodyHtml
+            );
+        }
+
+        function openWorkItemKindEditModal(pk, code, name, icon, color, sortOrder, desc, tabSuffix) {
+            const sfx = tabSuffix || 'workitems';
+            const bodyHtml = `
+                <form method=""post"" action=""/workitem/kind/save"">
+                    <input type=""hidden"" name=""workItemKindPk"" value=""${escapeModalHtml(pk)}"" />
+                    <input type=""hidden"" name=""returnTab"" value=""${escapeModalHtml(sfx)}"" />
+                    <div class=""form-row"">
+                        <div>
+                            <label>類型代碼 (kindCode)</label>
+                            <input type=""text"" name=""kindCode"" value=""${escapeModalHtml(code)}"" required />
+                        </div>
+                        <div>
+                            <label>類型顯示名稱 (kindName)</label>
+                            <input type=""text"" name=""kindName"" value=""${escapeModalHtml(name)}"" required />
+                        </div>
+                        <div>
+                            <label>圖示 Emoji</label>
+                            <input type=""text"" name=""badgeIcon"" value=""${escapeModalHtml(icon || '📌')}"" required />
+                        </div>
+                    </div>
+                    <div class=""form-row"">
+                        <div>
+                            <label>徽章主題色 (badgeColor)</label>
+                            <select name=""badgeColor"" id=""modalWikColor"">
+                                <option value=""blue"">🔵 藍色 (blue - 專案)</option>
+                                <option value=""green"">🟢 綠色 (green - 維運)</option>
+                                <option value=""amber"">🟡 琥珀金 (amber - 顧問時數)</option>
+                                <option value=""purple"">🟣 紫色 (purple - 研發創新)</option>
+                                <option value=""rose"">🔴 玫瑰紅 (rose - 緊急支援)</option>
+                                <option value=""teal"">🩵 藍綠色 (teal - 客戶導入)</option>
+                                <option value=""slate"">⚪ 灰藍色 (slate - 一般行政)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>排序順序 (sortOrder)</label>
+                            <input type=""number"" name=""sortOrder"" value=""${escapeModalHtml(sortOrder || 40)}"" step=""10"" />
+                        </div>
+                        <div>
+                            <label>類型適用範圍與說明</label>
+                            <input type=""text"" name=""description"" value=""${escapeModalHtml(desc || '')}"" placeholder=""說明此工項類型的定義與使用情境"" />
+                        </div>
+                    </div>
+                    <div class=""sp-modal-footer"">
+                        <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
+                        <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆工項類型修改</button>
+                    </div>
+                </form>
+            `;
+            openRecordModalShell(
+                '✏️ 單筆編輯工項類型 (tbWorkItemKind)',
+                `<span class=""badge badge-user"">${escapeModalHtml(icon || '📌')} ${escapeModalHtml(name)} (${escapeModalHtml(code)})</span>`,
+                bodyHtml
+            );
+            const cSel = document.getElementById('modalWikColor');
+            if (cSel && color) cSel.value = color;
+        }
+
+        function openWorkItemTypeEditModal(pk, code, name, cat, desc, pt, kind) {
+            const kindOptionsHtml = document.getElementById('typeKind')
+                ? document.getElementById('typeKind').innerHTML
+                : (document.getElementById('wiKindSelect') ? document.getElementById('wiKindSelect').innerHTML : '<option value=""project"">🚀 專案 (project)</option>');
+            const bodyHtml = `
+                <form method=""post"" action=""/workitem/type/save"">
+                    <input type=""hidden"" name=""workItemTypePk"" value=""${escapeModalHtml(pk)}"" />
+                    <div class=""form-row"">
+                        <div>
+                            <label>代表類型代碼</label>
+                            <input type=""text"" name=""typeCode"" value=""${escapeModalHtml(code)}"" required />
+                        </div>
+                        <div>
+                            <label>預設工項類型</label>
+                            <select name=""defaultWorkItemKind"" id=""modalTypeKind"" required style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">
+                                ${kindOptionsHtml}
+                            </select>
+                        </div>
+                        <div>
+                            <label>代表類型名稱</label>
+                            <input type=""text"" name=""typeName"" value=""${escapeModalHtml(name)}"" required />
+                        </div>
+                    </div>
+                    <div class=""form-row"">
+                        <div>
+                            <label>分類群組</label>
+                            <input type=""text"" name=""categoryName"" value=""${escapeModalHtml(cat || '一般分類')}"" required />
+                        </div>
+                        <div>
+                            <label>標準 Story Point 點數</label>
+                            <input type=""number"" step=""0.5"" name=""standardStoryPoint"" value=""${escapeModalHtml(pt)}"" placeholder=""留空代表待盲投估算"" />
+                        </div>
+                        <div>
+                            <label>類型規模與複雜度說明</label>
+                            <input type=""text"" name=""description"" value=""${escapeModalHtml(desc || '')}"" />
+                        </div>
+                    </div>
+                    <div style=""margin:8px 0 14px 0;"">
+                        <label style=""display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;"">
+                            <input type=""checkbox"" name=""syncExistingOpenWorkItem"" value=""true"" checked style=""width:auto;"" />
+                            <span>儲存後同步將標準點數與預設工項類型套用至所有未結案工項</span>
+                        </label>
+                    </div>
+                    <div class=""sp-modal-footer"">
+                        <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
+                        <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆代表類型修改</button>
+                    </div>
+                </form>
+            `;
+            openRecordModalShell(
+                '✏️ 單筆編輯工項代表類型 (tbWorkItemType)',
+                `<span class=""badge badge-user"">${escapeModalHtml(code)} - ${escapeModalHtml(name)}</span>`,
+                bodyHtml
+            );
+            const kSel = document.getElementById('modalTypeKind');
+            if (kSel && kind) kSel.value = kind;
+        }
+
+        function openEmployeeEditModal(pk, code, name, acc, mail, title, deptPk, role, isActiveStr, isDeptMgrStr, mgrPkStr) {
+            const deptOptionsHtml = document.getElementById('empDept') ? document.getElementById('empDept').innerHTML : '<option value=""1"">預設部門</option>';
+            const mgrOptionsHtml = document.getElementById('empManagerPk') ? document.getElementById('empManagerPk').innerHTML : '<option value="""">🌳 自動依所屬部門之部門主管掛載</option>';
+            const bodyHtml = `
+                <form method=""post"" action=""/employee/save"">
+                    <input type=""hidden"" name=""employeePk"" value=""${escapeModalHtml(pk)}"" />
+                    <div class=""form-row"">
+                        <div>
+                            <label>員工編號</label>
+                            <input type=""text"" name=""employeeCode"" value=""${escapeModalHtml(code)}"" required />
+                        </div>
+                        <div>
+                            <label>員工姓名</label>
+                            <input type=""text"" name=""employeeName"" value=""${escapeModalHtml(name)}"" required />
+                        </div>
+                        <div>
+                            <label>所屬部門</label>
+                            <select name=""departmentPk"" id=""modalEmpDept"">
+                                ${deptOptionsHtml}
+                            </select>
+                        </div>
+                    </div>
+                    <div class=""form-row"">
+                        <div>
+                            <label>登入帳號</label>
+                            <input type=""text"" name=""loginAccount"" value=""${escapeModalHtml(acc)}"" required />
+                        </div>
+                        <div>
+                            <label>重設登入密碼（留空代表不更改密碼）</label>
+                            <div style=""position:relative;display:flex;align-items:center;"">
+                                <input type=""password"" name=""plainPassword"" id=""modalEmpPwd"" placeholder=""留空代表不更改密碼"" style=""padding-right:64px;"" />
+                                <button type=""button"" id=""btnToggleModalEmpPwd"" onclick=""togglePasswordVisibilityById('modalEmpPwd','btnToggleModalEmpPwd')"" style=""position:absolute;right:6px;background:#e2e8f0;border:none;border-radius:5px;padding:3px 7px;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer;"">👁️ 顯示</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label>系統角色權限</label>
+                            <select name=""roleName"" id=""modalEmpRole"">
+                                <option value=""participant"">🙋 參與者 (僅可投票、僅可看自己的工項與分數)</option>
+                                <option value=""admin"">👑 管理者 (可修改工項指派、員工帳密與主持定案)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class=""form-row"">
+                        <div>
+                            <label>電子郵件</label>
+                            <input type=""text"" name=""emailAddress"" value=""${escapeModalHtml(mail || 'user@company.com')}"" required />
+                        </div>
+                        <div>
+                            <label>職級 / 職稱</label>
+                            <input type=""text"" name=""jobTitle"" value=""${escapeModalHtml(title || '資深工程師')}"" list=""empJobTitleDatalist"" required />
+                        </div>
+                        <div>
+                            <label>帳號狀態</label>
+                            <select name=""isActive"" id=""modalEmpActive"">
+                                <option value=""true"">🟢 啟用中 (允許登入與參與投票)</option>
+                                <option value=""false"">🚫 已停用 (禁止登入系統)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class=""form-row"" style=""background:#f8fafc;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;"">
+                        <div>
+                            <label>是否為部門主管 (同部門可多位主管)</label>
+                            <select name=""isDepartmentManager"" id=""modalEmpIsDeptMgr"">
+                                <option value=""false"">👨‍💻 否 (一般部門同仁)</option>
+                                <option value=""true"">👑 是 (部門主管 / 人資主管)</option>
+                            </select>
+                        </div>
+                        <div style=""grid-column: span 2;"">
+                            <label>上一層主管 (樹狀階層)</label>
+                            <select name=""managerEmployeePk"" id=""modalEmpManagerPk"">
+                                ${mgrOptionsHtml}
+                            </select>
+                        </div>
+                    </div>
+                    <div class=""sp-modal-footer"">
+                        <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
+                        <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆員工與登入帳密修改</button>
+                    </div>
+                </form>
+            `;
+            openRecordModalShell(
+                '✏️ 單筆編輯員工資料、部門主管與樹狀階層',
+                `<span class=""badge badge-user"">${escapeModalHtml(code)} - ${escapeModalHtml(name)} (${escapeModalHtml(acc)})</span>`,
+                bodyHtml
+            );
+            if (document.getElementById('modalEmpDept') && deptPk) document.getElementById('modalEmpDept').value = String(deptPk);
+            if (document.getElementById('modalEmpRole') && role) document.getElementById('modalEmpRole').value = role;
+            if (document.getElementById('modalEmpActive')) document.getElementById('modalEmpActive').value = (isActiveStr === 'false' || isActiveStr === false) ? 'false' : 'true';
+            if (document.getElementById('modalEmpIsDeptMgr')) document.getElementById('modalEmpIsDeptMgr').value = (isDeptMgrStr === 'true' || isDeptMgrStr === true) ? 'true' : 'false';
+            if (document.getElementById('modalEmpManagerPk')) document.getElementById('modalEmpManagerPk').value = mgrPkStr ? String(mgrPkStr) : '';
+        }
+
+        function openDepartmentEditModal(deptPk, deptCode, deptName, mgrName, deptNote) {
+            const bodyHtml = `
+                <form method=""post"" action=""/employee/department/save"">
+                    <input type=""hidden"" name=""departmentPk"" value=""${escapeModalHtml(deptPk)}"" />
+                    <div class=""form-row"">
+                        <div>
+                            <label>部門代碼 (departmentCode)</label>
+                            <input type=""text"" name=""departmentCode"" value=""${escapeModalHtml(deptCode)}"" required />
+                        </div>
+                        <div>
+                            <label>部門名稱 (departmentName)</label>
+                            <input type=""text"" name=""departmentName"" value=""${escapeModalHtml(deptName)}"" required />
+                        </div>
+                        <div>
+                            <label>部門主管姓名</label>
+                            <input type=""text"" name=""managerName"" value=""${escapeModalHtml(mgrName || '')}"" placeholder=""例如：吳經理"" />
+                        </div>
+                    </div>
+                    <div class=""form-row"">
+                        <div style=""grid-column: span 3;"">
+                            <label>部門職掌備註</label>
+                            <input type=""text"" name=""departmentNote"" value=""${escapeModalHtml(deptNote || '')}"" placeholder=""描述部門負責業務範圍"" />
+                        </div>
+                    </div>
+                    <div class=""sp-modal-footer"">
+                        <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
+                        <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆部門設定</button>
+                    </div>
+                </form>
+            `;
+            openRecordModalShell(
+                '🏢 單筆編輯部門資料 (tbDepartment)',
+                `<span class=""badge badge-user"">${escapeModalHtml(deptCode)} - ${escapeModalHtml(deptName)}</span>`,
+                bodyHtml
+            );
+        }
+
+        function openSessionSetupEditModal(sessionPk, targetKindOverride, targetPkOverride) {
+            const sPk = sessionPk ? Number(sessionPk) : 0;
+            const cfg = (sPk > 0 && typeof sessionConfigMap !== 'undefined' && sessionConfigMap[sPk]) ? sessionConfigMap[sPk] : null;
+            const tKind = targetKindOverride || (cfg ? cfg.targetKind : 'workItemType');
+            const wiTypePk = (tKind === 'workItemType' && targetPkOverride) ? targetPkOverride : (cfg ? cfg.workItemTypePk : 0);
+            const wiPk = (tKind === 'workItem' && targetPkOverride) ? targetPkOverride : (cfg ? cfg.workItemPk : 0);
+            const typeOptionsHtml = document.getElementById('setupWorkItemTypePk') ? document.getElementById('setupWorkItemTypePk').innerHTML : '';
+            const wiOptionsHtml = document.getElementById('setupWorkItemPk') ? document.getElementById('setupWorkItemPk').innerHTML : '';
+            const deckOptionsHtml = document.getElementById('setupCardDeckPk') ? document.getElementById('setupCardDeckPk').innerHTML : '<option value=""1"">標準 Fibonacci 牌組</option>';
+
+            let defaultTitle = cfg ? (cfg.title || '') : '';
+            if (!defaultTitle && targetPkOverride) {
+                const srcSel = document.getElementById(tKind === 'workItem' ? 'setupWorkItemPk' : 'setupWorkItemTypePk');
+                if (srcSel) {
+                    const matchOpt = Array.from(srcSel.options).find(o => String(o.value) === String(targetPkOverride));
+                    if (matchOpt) {
+                        defaultTitle = (tKind === 'workItem' ? '【工項點數盲投】' : '【代表類型點數盲投】') + matchOpt.text.split('(')[0].trim();
+                    }
+                }
+            }
+
+            const participantPks = cfg && Array.isArray(cfg.participants) ? cfg.participants : [];
+            const allParticipantCheckboxes = Array.from(document.querySelectorAll('.setup-participant-cb'));
+            let participantHtml = '';
+            if (allParticipantCheckboxes.length > 0) {
+                participantHtml = allParticipantCheckboxes.map(cb => {
+                    const empVal = parseInt(cb.value, 10);
+                    const isChecked = cfg ? (participantPks.indexOf(empVal) !== -1) : cb.checked;
+                    const labelEl = cb.closest('label');
+                    const text = labelEl ? (labelEl.innerText || labelEl.textContent || '').trim() : ('員工 #' + empVal);
+                    return `<label style=""display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;font-size:12.5px;cursor:pointer;"">
+                        <input type=""checkbox"" name=""participantPks"" value=""${empVal}"" ${isChecked ? 'checked' : ''} style=""width:auto;"" />
+                        <span>${escapeModalHtml(text)}</span>
+                    </label>`;
+                }).join('');
+            }
+
+            const bodyHtml = `
+                <form method=""post"" action=""/voting/session/create"">
+                    <input type=""hidden"" name=""votingSessionPk"" value=""${sPk > 0 ? sPk : ''}"" />
+                    <input type=""hidden"" name=""submitMode"" value=""saveStaySetup"" />
+                    <div class=""form-row"">
+                        <div>
+                            <label>估算目標類型</label>
+                            <select name=""targetKind"" id=""modalSetupTargetKind"" onchange=""const isWi=this.value==='workItem'; document.getElementById('modalSetupTypeBox').style.display=isWi?'none':''; document.getElementById('modalSetupWiBox').style.display=isWi?'':'none';"">
+                                <option value=""workItemType"" ${tKind === 'workItemType' ? 'selected' : ''}>🏷️ 工項代表類型 (tbWorkItemType)</option>
+                                <option value=""workItem"" ${tKind === 'workItem' ? 'selected' : ''}>📋 實際工項 (tbWorkItem)</option>
+                            </select>
+                        </div>
+                        <div id=""modalSetupTypeBox"" style=""grid-column: span 2; ${tKind === 'workItem' ? 'display:none;' : ''}"">
+                            <label>選擇工項代表類型</label>
+                            <select name=""workItemTypePk"" id=""modalSetupWorkItemTypePk"">${typeOptionsHtml}</select>
+                        </div>
+                        <div id=""modalSetupWiBox"" style=""grid-column: span 2; ${tKind === 'workItem' ? '' : 'display:none;'}"">
+                            <label>選擇實際工項</label>
+                            <select name=""workItemPk"" id=""modalSetupWorkItemPk"">${wiOptionsHtml}</select>
+                        </div>
+                    </div>
+                    <div class=""form-row"">
+                        <div style=""grid-column: span 2;"">
+                            <label>盲投議程標題</label>
+                            <input type=""text"" name=""sessionTitle"" value=""${escapeModalHtml(defaultTitle)}"" placeholder=""請輸入議程標題"" required />
+                        </div>
+                        <div>
+                            <label>使用撲克牌組</label>
+                            <select name=""cardDeckPk"" id=""modalSetupDeckPk"">${deckOptionsHtml}</select>
+                        </div>
+                    </div>
+                    <div class=""form-row"">
+                        <div>
+                            <label>最小點數下限 (minStoryPoint)</label>
+                            <input type=""number"" step=""0.5"" name=""minStoryPoint"" value=""${cfg ? cfg.minStoryPoint : 0.5}"" />
+                        </div>
+                        <div>
+                            <label>最大點數上限 (maxStoryPoint)</label>
+                            <input type=""number"" step=""0.5"" name=""maxStoryPoint"" value=""${cfg ? cfg.maxStoryPoint : 21}"" />
+                        </div>
+                        <div>
+                            <label>分歧容許差距 (maxAllowedSpread)</label>
+                            <input type=""number"" step=""0.5"" name=""maxAllowedSpread"" value=""${cfg ? cfg.maxAllowedSpread : 5}"" />
+                        </div>
+                    </div>
+                    <div class=""form-row"">
+                        <div>
+                            <label>共識收斂演算法</label>
+                            <select name=""consensusRule"" id=""modalSetupConsensusRule"">
+                                <option value=""nearestFibonacci"">📐 最接近費氏牌值 (Nearest Fibonacci)</option>
+                                <option value=""average"">📊 算術平均數 (Arithmetic Mean)</option>
+                                <option value=""median"">🎯 中位數 (Median)</option>
+                                <option value=""trimmedMean"">✂️ 去頭尾平均數 (Trimmed Mean)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>回合思考時限 (秒)</label>
+                            <input type=""number"" step=""30"" name=""roundTimeLimitSecond"" value=""${cfg ? cfg.roundTimeLimitSecond : 180}"" />
+                        </div>
+                        <div>
+                            <label>備註/目標提示</label>
+                            <input type=""text"" name=""roundGoalNote"" value=""${escapeModalHtml(cfg ? cfg.roundGoalNote : '')}"" placeholder=""選填：本回合估算重點提示"" />
+                        </div>
+                    </div>
+                    <div style=""margin:8px 0;"">
+                        <label style=""font-weight:700;margin-bottom:6px;display:block;"">👥 受邀參與盲投成員</label>
+                        <div style=""display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow-y:auto;padding:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;"">
+                            ${participantHtml}
+                        </div>
+                    </div>
+                    <div class=""sp-modal-footer"">
+                        <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
+                        <button type=""submit"" class=""btn btn-primary"">${sPk > 0 ? '💾 儲存更新此筆議程回合設定' : '🚀 建立並啟動多人盲投議程'}</button>
+                    </div>
+                </form>
+            `;
+            openRecordModalShell(
+                sPk > 0 ? '🃏 單筆編輯盲投議程回合設定' : '🃏 發起多人盲投估算議程',
+                `<span class=""badge badge-user"">${sPk > 0 ? 'Session #' + sPk : '新議程'}</span>`,
+                bodyHtml
+            );
+            if (document.getElementById('modalSetupWorkItemTypePk') && wiTypePk) document.getElementById('modalSetupWorkItemTypePk').value = String(wiTypePk);
+            if (document.getElementById('modalSetupWorkItemPk') && wiPk) document.getElementById('modalSetupWorkItemPk').value = String(wiPk);
+            if (cfg && document.getElementById('modalSetupConsensusRule')) document.getElementById('modalSetupConsensusRule').value = cfg.consensusRule || 'nearestFibonacci';
+        }
+
+        function openRowDetailReadonlyModal(tr) {
             if (!tr) return;
-            const td = btnEl.closest('td');
-            const rect = btnEl.getBoundingClientRect();
-            openRowContextMenuForRow(tr, td, rect.left, rect.bottom + 4);
+            const table = tr.closest('table');
+            const state = table ? spTableStateMap.get(table) : null;
+            const headers = state ? state.colNames : Array.from(table?.querySelectorAll('thead th') || []).map(th => (th.innerText || th.textContent || '').trim());
+            const cells = Array.from(tr.children);
+            const rowsHtml = cells.map((td, idx) => {
+                const colName = headers[idx] || ('欄位 ' + (idx + 1));
+                const val = extractCellFilterDisplayText(td) || '-';
+                return `<div style=""display:grid;grid-template-columns:160px 1fr;gap:10px;padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:13px;"">
+                    <div style=""font-weight:700;color:#1e3a8a;"">${escapeModalHtml(colName)}</div>
+                    <div style=""color:#0f172a;word-break:break-word;"">${escapeModalHtml(val)}</div>
+                </div>`;
+            }).join('');
+
+            const bodyHtml = `
+                <div style=""border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;overflow:hidden;"">
+                    ${rowsHtml}
+                </div>
+                <div class=""sp-modal-footer"">
+                    <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 關閉視窗</button>
+                </div>
+            `;
+            openRecordModalShell('🔍 單筆紀錄完整明細檢視', '<span class=""badge badge-user"">唯讀檢視</span>', bodyHtml);
         }
 
         function initTableRowContextMenu() {
@@ -7865,9 +8506,10 @@ public class portalController : Controller
                 document.body.appendChild(spContextMenuEl);
             }
 
-            // 在任何表格資料列按滑鼠右鍵即彈出快捷選單
+            // 在全站任何 <table> 的資料列 (tbody tr) 按滑鼠右鍵即選取該筆紀錄並彈出右鍵操作選單
             document.addEventListener('contextmenu', function (evt) {
-                const target = evt.target;
+                const rawTarget = evt.target;
+                const target = (rawTarget && rawTarget.nodeType === 1) ? rawTarget : (rawTarget ? rawTarget.parentElement : null);
                 if (!target || !target.closest) return;
                 // 若在輸入框、下拉選單或文字區按右鍵則保留瀏覽器原生選單
                 if (target.closest('input, textarea, select')) return;
@@ -7880,7 +8522,9 @@ public class portalController : Controller
 
             document.addEventListener('click', function (evt) {
                 if (spContextMenuEl && spContextMenuEl.classList.contains('visible')) {
-                    if (evt.target && evt.target.closest && evt.target.closest('#spRowContextMenu')) {
+                    const rawTarget = evt.target;
+                    const target = (rawTarget && rawTarget.nodeType === 1) ? rawTarget : (rawTarget ? rawTarget.parentElement : null);
+                    if (target && target.closest && target.closest('#spRowContextMenu')) {
                         return;
                     }
                     closeRowContextMenu();
@@ -7890,6 +8534,7 @@ public class portalController : Controller
             document.addEventListener('keydown', function (evt) {
                 if (evt.key === 'Escape') {
                     closeRowContextMenu();
+                    closeRecordEditModal();
                 }
             });
 
@@ -7949,7 +8594,7 @@ public class portalController : Controller
             // 標題區
             const headerDiv = document.createElement('div');
             headerDiv.className = 'sp-ctx-header';
-            let headerTitle = '📋 表格紀錄快捷選單';
+            let headerTitle = '📋 表格紀錄滑鼠右鍵操作選單';
 
             if (rowKind === 'workitem') {
                 const wiPk = tr.getAttribute('data-wi-pk') || '';
@@ -7963,48 +8608,28 @@ public class portalController : Controller
                 const wiKindText = tr.getAttribute('data-wi-kind-text') || '';
                 const wiStart = tr.getAttribute('data-wi-start') || '';
                 const wiEnd = tr.getAttribute('data-wi-end') || '';
+                const wiSprint = tr.getAttribute('data-wi-sprint') || '';
+                const wiAssignee = tr.getAttribute('data-wi-assignee') || '';
 
-                headerTitle = `📋 工項快捷操作：${wiCode} - ${wiTitle}`;
+                headerTitle = `📋 工項右鍵操作：${wiCode} - ${wiTitle}`;
                 headerDiv.innerHTML = `<span>${headerTitle}</span><span class='badge badge-user' style='font-size:11px;'>${wiKindText}｜${wiPt} pt</span>`;
                 spContextMenuEl.appendChild(headerDiv);
 
                 if (isCurrentUserAdmin) {
-                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '編輯 / 修改此工項設定', '帶入表單', 'primary-action', function () {
-                        loadWorkItemToForm(wiPk, wiCode, wiTitle, wiTypePk, wiPt, wiStatus, wiReason, wiKind, wiStart, wiEnd);
-                        showToastNotice('✏️ 已將工項「' + wiCode + '」帶入上方編修表單');
+                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此工項設定（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
+                        openWorkItemEditModal(wiPk, wiCode, wiTitle, wiTypePk, wiPt, wiStatus, wiReason, wiKind, wiStart, wiEnd, wiSprint, false);
                     }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('👥', '修改此工項之賦予員工與分攤配額', '指派面板', '', function () {
-                        const sel = document.getElementById('assignWorkItemSelect');
-                        if (sel) {
-                            sel.value = String(wiPk);
-                            const card = document.getElementById('assignWorkItemCard') || sel.closest('.card');
-                            if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            sel.focus();
-                            showToastNotice('👥 已選擇工項「' + wiCode + '」，請設定負責員工與分攤比例');
-                        }
+                    spContextMenuEl.appendChild(createCtxMenuItem('👥', '修改此工項之賦予員工與配額（彈出 Modal 視窗）', 'Modal 指派', '', function () {
+                        openWorkItemAssignModal(wiPk, wiCode, wiTitle, wiPt, wiAssignee);
                     }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('🃏', '針對此工項發起「多人盲投估算」', '回合設定', '', function () {
-                        switchTab('roundsetup');
-                        const tType = document.getElementById('setupTargetType');
-                        if (tType) {
-                            tType.value = 'workItem';
-                            toggleSetupTargetPicker();
-                            const wiPicker = document.querySelector('#setupWorkItemPicker select[name=""workItemPk""]');
-                            if (wiPicker) {
-                                wiPicker.value = String(wiPk);
-                                autoFillSetupTitle();
-                            }
-                        }
-                        window.scrollTo({ top: 140, behavior: 'smooth' });
-                        showToastNotice('🃏 已切換至盲投設定並帶入工項「' + wiCode + '」');
+                    spContextMenuEl.appendChild(createCtxMenuItem('🃏', '針對此工項發起「多人盲投估算」（彈出 Modal 視窗）', 'Modal 盲投', '', function () {
+                        openSessionSetupEditModal(0, 'workItem', wiPk);
                     }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('⚡', '設為已到期並帶入表單（測試自動扣點寄信）', '到期測試', '', function () {
-                        loadWorkItemToForm(wiPk, wiCode, wiTitle, wiTypePk, wiPt, wiStatus, wiReason, wiKind, wiStart, wiEnd);
-                        setWorkItemDatePreset(-1);
-                        showToastNotice('⏰ 已將工項「' + wiCode + '」迄時設為已到期，點擊儲存即可測試自動扣點寄信');
+                    spContextMenuEl.appendChild(createCtxMenuItem('⏰', '設為已到期並彈出 Modal 編輯（測試自動扣點寄信）', '到期測試', '', function () {
+                        openWorkItemEditModal(wiPk, wiCode, wiTitle, wiTypePk, wiPt, wiStatus, wiReason, wiKind, wiStart, wiEnd, wiSprint, true);
                     }));
 
                     spContextMenuEl.appendChild(createCtxDivider());
@@ -8028,14 +8653,13 @@ public class portalController : Controller
                 const kDesc = tr.getAttribute('data-kind-desc') || '';
                 const tabSuffix = tr.getAttribute('data-tab-suffix') || 'workitems';
 
-                headerTitle = `🗂️ 工項類型快捷操作：${kIcon} ${kName} (${kCode})`;
+                headerTitle = `🗂️ 工項類型右鍵操作：${kIcon} ${kName} (${kCode})`;
                 headerDiv.innerHTML = `<span>${headerTitle}</span>`;
                 spContextMenuEl.appendChild(headerDiv);
 
                 if (isCurrentUserAdmin) {
-                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '編輯 / 修改此工項類型', '帶入表單', 'primary-action', function () {
-                        loadWorkItemKindToForm(kPk, kCode, kName, kIcon, kColor, kSort, kDesc, tabSuffix);
-                        showToastNotice('✏️ 已將工項類型「' + kName + '」帶入上方編修表單');
+                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此工項類型（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
+                        openWorkItemKindEditModal(kPk, kCode, kName, kIcon, kColor, kSort, kDesc, tabSuffix);
                     }));
 
                     spContextMenuEl.appendChild(createCtxMenuItem('🔍', '篩選套用此類型 (' + kName + ') 的所有工項', '工項篩選', '', function () {
@@ -8044,8 +8668,8 @@ public class portalController : Controller
                         if (fKind) {
                             fKind.value = kCode;
                             filterWorkItemTable();
-                            document.getElementById('workItemDataTable')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         }
+                        showToastNotice('🔍 已篩選工項類型為「' + kName + '」的工項紀錄');
                     }));
 
                     spContextMenuEl.appendChild(createCtxDivider());
@@ -8069,30 +8693,17 @@ public class portalController : Controller
                 const tPt = tr.getAttribute('data-type-pt') || '';
                 const tKind = tr.getAttribute('data-type-kind') || 'project';
 
-                headerTitle = `🏷️ 代表類型快捷操作：${tCode} - ${tName}`;
+                headerTitle = `🏷️ 代表類型右鍵操作：${tCode} - ${tName}`;
                 headerDiv.innerHTML = `<span>${headerTitle}</span><span class='badge badge-user' style='font-size:11px;'>${tPt ? tPt + ' pt' : '待估算'}</span>`;
                 spContextMenuEl.appendChild(headerDiv);
 
                 if (isCurrentUserAdmin) {
-                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '編輯 / 修改此工項代表類型', '帶入表單', 'primary-action', function () {
-                        loadTypeToForm(tPk, tCode, tName, tCat, tDesc, tPt, tKind);
-                        showToastNotice('✏️ 已將代表類型「' + tCode + '」帶入上方編修表單');
+                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此工項代表類型（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
+                        openWorkItemTypeEditModal(tPk, tCode, tName, tCat, tDesc, tPt, tKind);
                     }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('🃏', '針對此代表類型發起「多人盲投估算」', '回合設定', '', function () {
-                        switchTab('roundsetup');
-                        const tType = document.getElementById('setupTargetType');
-                        if (tType) {
-                            tType.value = 'workItemType';
-                            toggleSetupTargetPicker();
-                            const typePicker = document.querySelector('#setupTypePicker select[name=""workItemTypePk""]');
-                            if (typePicker) {
-                                typePicker.value = String(tPk);
-                                autoFillSetupTitle();
-                            }
-                        }
-                        window.scrollTo({ top: 140, behavior: 'smooth' });
-                        showToastNotice('🃏 已切換至盲投設定並帶入代表類型「' + tName + '」');
+                    spContextMenuEl.appendChild(createCtxMenuItem('🃏', '針對此代表類型發起「多人盲投估算」（彈出 Modal 視窗）', 'Modal 盲投', '', function () {
+                        openSessionSetupEditModal(0, 'workItemType', tPk);
                     }));
 
                     spContextMenuEl.appendChild(createCtxMenuItem('🔍', '檢視套用此代表類型的所有工項', '工項篩選', '', function () {
@@ -8101,8 +8712,8 @@ public class portalController : Controller
                         if (fType) {
                             fType.value = tName;
                             filterWorkItemTable();
-                            document.getElementById('workItemDataTable')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         }
+                        showToastNotice('🔍 已篩選代表類型為「' + tName + '」的工項紀錄');
                     }));
 
                     spContextMenuEl.appendChild(createCtxDivider());
@@ -8130,14 +8741,13 @@ public class portalController : Controller
                 const empMgrPk = tr.getAttribute('data-emp-mgrpk') || '';
                 const isSelf = tr.getAttribute('data-emp-self') === '1';
 
-                headerTitle = `👤 員工快捷操作：${empCode} - ${empName}`;
+                headerTitle = `👤 員工右鍵操作：${empCode} - ${empName}`;
                 headerDiv.innerHTML = `<span>${headerTitle}</span><span class='badge badge-user' style='font-size:11px;'>${empAcc}</span>`;
                 spContextMenuEl.appendChild(headerDiv);
 
                 if (isCurrentUserAdmin) {
-                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '修改員工資料、部門主管註記與登入密碼', '帶入表單', 'primary-action', function () {
-                        loadEmpToForm(empPk, empCode, empName, empAcc, empMail, empTitle, empDeptPk, empRole, empActive, empIsMgr, empMgrPk);
-                        showToastNotice('✏️ 已將員工「' + empName + '」帶入上方編修表單');
+                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯員工資料、部門主管與登入帳密（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
+                        openEmployeeEditModal(empPk, empCode, empName, empAcc, empMail, empTitle, empDeptPk, empRole, empActive, empIsMgr, empMgrPk);
                     }));
 
                     spContextMenuEl.appendChild(createCtxMenuItem('📋', '篩選檢視此員工負責的所有工項', '工項清單', '', function () {
@@ -8146,8 +8756,8 @@ public class portalController : Controller
                         if (fEmp) {
                             fEmp.value = empName;
                             filterWorkItemTable();
-                            document.getElementById('workItemDataTable')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         }
+                        showToastNotice('📋 已篩選由「' + empName + '」負責的工項');
                     }));
 
                     spContextMenuEl.appendChild(createCtxDivider());
@@ -8176,6 +8786,34 @@ public class portalController : Controller
 
                     spContextMenuEl.appendChild(createCtxDivider());
                 }
+            } else if (rowKind === 'department') {
+                const deptPk = tr.getAttribute('data-dept-pk') || '';
+                const deptCode = tr.getAttribute('data-dept-code') || '';
+                const deptName = tr.getAttribute('data-dept-name') || '';
+                const deptMgr = tr.getAttribute('data-dept-mgr') || '';
+                const deptNote = tr.getAttribute('data-dept-note') || '';
+
+                headerTitle = `🏢 部門右鍵操作：${deptCode} - ${deptName}`;
+                headerDiv.innerHTML = `<span>${headerTitle}</span>`;
+                spContextMenuEl.appendChild(headerDiv);
+
+                if (isCurrentUserAdmin) {
+                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此部門資料與主管設定（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
+                        openDepartmentEditModal(deptPk, deptCode, deptName, deptMgr, deptNote);
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('👥', '篩選檢視此部門 (' + deptName + ') 的所有員工', '員工清單', '', function () {
+                        switchTab('employees');
+                        const fDept = document.getElementById('filterEmpDept');
+                        if (fDept) {
+                            fDept.value = deptName;
+                            filterEmployeeTable();
+                        }
+                        showToastNotice('👥 已篩選「' + deptName + '」部門員工');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxDivider());
+                }
             } else if (rowKind === 'session') {
                 const sPk = tr.getAttribute('data-session-pk') || '';
                 const sCode = tr.getAttribute('data-session-code') || '';
@@ -8183,9 +8821,15 @@ public class portalController : Controller
                 const sUrl = tr.getAttribute('data-session-url') || ('/voting/session?sessionPk=' + sPk);
                 const sLocked = tr.getAttribute('data-session-locked') === '1';
 
-                headerTitle = `🃏 盲投議程快捷操作：${sCode}`;
+                headerTitle = `🃏 盲投議程右鍵操作：${sCode}`;
                 headerDiv.innerHTML = `<span>${headerTitle}</span>`;
                 spContextMenuEl.appendChild(headerDiv);
+
+                if (isCurrentUserAdmin && sPk) {
+                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此盲投議程回合設定（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
+                        openSessionSetupEditModal(sPk);
+                    }));
+                }
 
                 spContextMenuEl.appendChild(createCtxMenuItem('🚀', sLocked ? '此盲投 Session 已在獨立網頁開啟中' : '開啟此盲投 Session 獨立網頁', '#' + sPk, 'primary-action', function () {
                     window.open(sUrl, '_blank', 'noopener');
@@ -8196,6 +8840,11 @@ public class portalController : Controller
                 headerDiv.innerHTML = `<span>${headerTitle}</span>`;
                 spContextMenuEl.appendChild(headerDiv);
             }
+
+            // 任何表格列皆可彈出 Modal 檢視完整欄位明細
+            spContextMenuEl.appendChild(createCtxMenuItem('🪟', '彈出 Modal 視窗檢視此筆紀錄完整明細', 'Modal 檢視', '', function () {
+                openRowDetailReadonlyModal(tr);
+            }));
 
             // 通用表格篩選與複製快捷動作（任何表格皆適用）
             if (clickedTd && state) {
@@ -8238,7 +8887,7 @@ public class portalController : Controller
             }));
 
             // 顯示並智慧定位於滑鼠座標（避免超出視窗右緣或底緣）
-            spContextMenuEl.classList.add('visible');
+            spContextMenuEl.classList.add('visible', 'open');
             const menuRect = spContextMenuEl.getBoundingClientRect();
             let left = clientX;
             let top = clientY;
@@ -8443,7 +9092,7 @@ public class portalController : Controller
             if (sortEl) sortEl.value = sortOrder || 40;
             if (descEl) descEl.value = desc || '';
             if (btnEl) btnEl.textContent = '💾 儲存修改工項類型 (' + code + ')';
-            window.scrollTo({ top: 150, behavior: 'smooth' });
+            openWorkItemKindEditModal(pk, code, name, icon, color, sortOrder, desc, sfx);
         }
 
         function resetWorkItemKindForm(tabSuffix) {
@@ -8490,13 +9139,13 @@ public class portalController : Controller
         }
 
         function loadWorkItemToForm(pk, code, title, typePk, pt, status, reason, kind, startIso, endIso) {
-            document.getElementById('wiPk').value = pk;
-            document.getElementById('wiCode').value = code;
-            document.getElementById('wiTitle').value = title;
-            document.getElementById('wiTypeSelect').value = typePk;
-            document.getElementById('wiStoryPoint').value = pt;
-            document.getElementById('wiStatus').value = status;
-            document.getElementById('wiReason').value = reason || '';
+            if (document.getElementById('wiPk')) document.getElementById('wiPk').value = pk;
+            if (document.getElementById('wiCode')) document.getElementById('wiCode').value = code;
+            if (document.getElementById('wiTitle')) document.getElementById('wiTitle').value = title;
+            if (document.getElementById('wiTypeSelect')) document.getElementById('wiTypeSelect').value = typePk;
+            if (document.getElementById('wiStoryPoint')) document.getElementById('wiStoryPoint').value = pt;
+            if (document.getElementById('wiStatus')) document.getElementById('wiStatus').value = status;
+            if (document.getElementById('wiReason')) document.getElementById('wiReason').value = reason || '';
             if (kind && document.getElementById('wiKindSelect')) {
                 document.getElementById('wiKindSelect').value = kind;
             }
@@ -8509,7 +9158,7 @@ public class portalController : Controller
             if (document.getElementById('wiFormTitle')) {
                 document.getElementById('wiFormTitle').textContent = '✏️ 修改工項（正在編修：' + code + ' - ' + title + '）';
             }
-            window.scrollTo({ top: 380, behavior: 'smooth' });
+            openWorkItemEditModal(pk, code, title, typePk, pt, status, reason, kind, startIso, endIso, '', false);
         }
 
         function resetTypeForm() {
@@ -8528,31 +9177,31 @@ public class portalController : Controller
         }
 
         function loadTypeToForm(pk, code, name, cat, desc, pt, kind) {
-            document.getElementById('typePk').value = pk;
-            document.getElementById('typeCode').value = code;
-            document.getElementById('typeName').value = name;
-            document.getElementById('typeCat').value = cat;
-            document.getElementById('typeDesc').value = desc;
-            document.getElementById('typePt').value = pt;
+            if (document.getElementById('typePk')) document.getElementById('typePk').value = pk;
+            if (document.getElementById('typeCode')) document.getElementById('typeCode').value = code;
+            if (document.getElementById('typeName')) document.getElementById('typeName').value = name;
+            if (document.getElementById('typeCat')) document.getElementById('typeCat').value = cat;
+            if (document.getElementById('typeDesc')) document.getElementById('typeDesc').value = desc;
+            if (document.getElementById('typePt')) document.getElementById('typePt').value = pt;
             if (kind && document.getElementById('typeKind')) {
                 document.getElementById('typeKind').value = kind;
             }
             if (document.getElementById('typeFormTitle')) {
                 document.getElementById('typeFormTitle').textContent = '✏️ 修改「工項代表類型」（正在編修：' + code + ' - ' + name + '）';
             }
-            window.scrollTo({ top: 380, behavior: 'smooth' });
+            openWorkItemTypeEditModal(pk, code, name, cat, desc, pt, kind);
         }
 
         function loadEmpToForm(pk, code, name, acc, mail, title, deptPk, role, isActiveStr, isDeptMgrStr, mgrPkStr) {
-            document.getElementById('empPk').value = pk;
-            document.getElementById('empCode').value = code;
-            document.getElementById('empName').value = name;
-            document.getElementById('empAcc').value = acc;
-            document.getElementById('empMail').value = mail;
-            document.getElementById('empTitle').value = title;
-            document.getElementById('empDept').value = deptPk;
-            document.getElementById('empRole').value = role;
-            document.getElementById('empPwd').value = '';
+            if (document.getElementById('empPk')) document.getElementById('empPk').value = pk;
+            if (document.getElementById('empCode')) document.getElementById('empCode').value = code;
+            if (document.getElementById('empName')) document.getElementById('empName').value = name;
+            if (document.getElementById('empAcc')) document.getElementById('empAcc').value = acc;
+            if (document.getElementById('empMail')) document.getElementById('empMail').value = mail;
+            if (document.getElementById('empTitle')) document.getElementById('empTitle').value = title;
+            if (document.getElementById('empDept')) document.getElementById('empDept').value = deptPk;
+            if (document.getElementById('empRole')) document.getElementById('empRole').value = role;
+            if (document.getElementById('empPwd')) document.getElementById('empPwd').value = '';
             const qSel = document.getElementById('empQuickEditSelector');
             if (qSel) qSel.value = String(pk);
             if (document.getElementById('empActive')) {
@@ -8570,7 +9219,7 @@ public class portalController : Controller
             if (document.getElementById('empSubmitBtn')) {
                 document.getElementById('empSubmitBtn').innerHTML = '💾 儲存修改員工與登入帳密';
             }
-            window.scrollTo({ top: 150, behavior: 'smooth' });
+            openEmployeeEditModal(pk, code, name, acc, mail, title, deptPk, role, isActiveStr, isDeptMgrStr, mgrPkStr);
         }
 
         function onQuickSelectEmployeeToEdit(empPkVal) {
@@ -9694,6 +10343,19 @@ public class portalController : Controller
         .btn-danger { background: #dc2626; color: #fff; }
         .btn-outline { background: #fff; color: #1e293b; border: 1px solid #cbd5e1; }
         .form-row { margin-bottom: 12px; }
+        table tbody tr { cursor: context-menu; }
+        tr.sp-context-active-row td { background: #dbeafe !important; }
+        .sp-context-menu { position: fixed; z-index: 10050; min-width: 260px; max-width: 360px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; box-shadow: 0 14px 34px rgba(15, 23, 42, 0.24); padding: 6px; display: none; user-select: none; }
+        .sp-context-menu.visible, .sp-context-menu.open { display: block !important; }
+        .sp-ctx-header { padding: 7px 10px; font-size: 12px; font-weight: 800; color: #1e3a8a; background: #eff6ff; border-radius: 8px; margin-bottom: 5px; border: 1px solid #bfdbfe; }
+        .sp-ctx-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; border: none; background: transparent; padding: 8px 10px; font-size: 13px; font-weight: 700; color: #1e293b; border-radius: 7px; cursor: pointer; }
+        .sp-ctx-item:hover { background: #eff6ff; color: #1d4ed8; }
+        .sp-modal-overlay { position: fixed; inset: 0; z-index: 10040; background: rgba(15, 23, 42, 0.58); backdrop-filter: blur(2px); display: none; align-items: center; justify-content: center; padding: 18px; }
+        .sp-modal-overlay.open { display: flex !important; }
+        .sp-modal-dialog { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 14px; width: 100%; max-width: 720px; max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 22px 48px rgba(15, 23, 42, 0.34); overflow: hidden; }
+        .sp-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); color: #ffffff; font-weight: 800; }
+        .sp-modal-body { padding: 18px; overflow-y: auto; }
+        .sp-modal-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 12px; border-top: 1px solid #e2e8f0; margin-top: 12px; }
     </style>
 </head>
 <body>
@@ -10413,6 +11075,97 @@ public class portalController : Controller
             });
         }
         initUniversalTableSortAndLock();
+
+        (function initStandaloneTableContextMenu() {
+            const ctxEl = document.createElement('div');
+            ctxEl.id = 'spRowContextMenu';
+            ctxEl.className = 'sp-context-menu';
+            document.body.appendChild(ctxEl);
+            const modalOverlay = document.createElement('div');
+            modalOverlay.id = 'spRecordEditModalOverlay';
+            modalOverlay.className = 'sp-modal-overlay';
+            document.body.appendChild(modalOverlay);
+            let activeRow = null;
+
+            function closeCtx() {
+                ctxEl.classList.remove('visible', 'open');
+                if (activeRow) { activeRow.classList.remove('sp-context-active-row'); activeRow = null; }
+            }
+            function closeModal() {
+                modalOverlay.classList.remove('open');
+                modalOverlay.innerHTML = '';
+            }
+            modalOverlay.addEventListener('click', function (e) { if (e.target === modalOverlay) closeModal(); });
+            document.addEventListener('click', function (e) {
+                const t = (e.target && e.target.nodeType === 1) ? e.target : (e.target ? e.target.parentElement : null);
+                if (t && t.closest && t.closest('#spRowContextMenu')) return;
+                closeCtx();
+            });
+            document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeCtx(); closeModal(); } });
+
+            document.addEventListener('contextmenu', function (evt) {
+                const rawTarget = evt.target;
+                const target = (rawTarget && rawTarget.nodeType === 1) ? rawTarget : (rawTarget ? rawTarget.parentElement : null);
+                if (!target || !target.closest) return;
+                if (target.closest('input, textarea, select')) return;
+                const tr = target.closest('table tbody tr');
+                if (!tr) return;
+                evt.preventDefault();
+                if (activeRow) activeRow.classList.remove('sp-context-active-row');
+                activeRow = tr;
+                tr.classList.add('sp-context-active-row');
+
+                const td = target.closest('td');
+                const table = tr.closest('table');
+                const headers = Array.from(table.querySelectorAll('thead th')).map(th => (th.innerText || '').replace(/[⇅▲▼🔒📌]/g, '').trim());
+                ctxEl.innerHTML = `<div class='sp-ctx-header'>📋 表格紀錄滑鼠右鍵選單</div>`;
+
+                const detailBtn = document.createElement('button');
+                detailBtn.type = 'button';
+                detailBtn.className = 'sp-ctx-item';
+                detailBtn.innerHTML = `<span>🪟 彈出 Modal 視窗檢視此筆紀錄明細</span>`;
+                detailBtn.onclick = function () {
+                    closeCtx();
+                    const rowsHtml = Array.from(tr.cells).map((c, idx) => `<div style='display:grid;grid-template-columns:160px 1fr;gap:10px;padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:13px;'><div style='font-weight:700;color:#1e3a8a;'>${headers[idx] || ('欄位 ' + (idx + 1))}</div><div>${(c.innerText || '').trim()}</div></div>`).join('');
+                    modalOverlay.innerHTML = `<div class='sp-modal-dialog'><div class='sp-modal-header'><span>🪟 單筆紀錄完整明細</span><button type='button' class='btn btn-outline' style='padding:2px 8px;' id='btnCloseStandaloneModal'>✖</button></div><div class='sp-modal-body'><div style='border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;'>${rowsHtml}</div></div></div>`;
+                    modalOverlay.classList.add('open');
+                    document.getElementById('btnCloseStandaloneModal').onclick = closeModal;
+                };
+                ctxEl.appendChild(detailBtn);
+
+                if (td) {
+                    const cellText = (td.innerText || '').trim();
+                    if (cellText) {
+                        const filterBtn = document.createElement('button');
+                        filterBtn.type = 'button';
+                        filterBtn.className = 'sp-ctx-item';
+                        filterBtn.innerHTML = `<span>🔍 以此儲存格值篩選本表格</span>`;
+                        filterBtn.onclick = function () {
+                            closeCtx();
+                            const fInput = table.previousElementSibling ? table.previousElementSibling.querySelector('input[type=text]') : null;
+                            if (fInput) { fInput.value = cellText; fInput.dispatchEvent(new Event('input')); }
+                        };
+                        ctxEl.appendChild(filterBtn);
+                    }
+                }
+
+                const copyBtn = document.createElement('button');
+                copyBtn.type = 'button';
+                copyBtn.className = 'sp-ctx-item';
+                copyBtn.innerHTML = `<span>📋 複製本列紀錄文字至剪貼簿</span>`;
+                copyBtn.onclick = function () {
+                    closeCtx();
+                    const txt = Array.from(tr.cells).map(c => (c.innerText || '').trim()).join('\t');
+                    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt);
+                };
+                ctxEl.appendChild(copyBtn);
+
+                ctxEl.classList.add('visible', 'open');
+                const rect = ctxEl.getBoundingClientRect();
+                ctxEl.style.left = Math.max(8, Math.min(evt.clientX, window.innerWidth - rect.width - 12)) + 'px';
+                ctxEl.style.top = Math.max(8, Math.min(evt.clientY, window.innerHeight - rect.height - 12)) + 'px';
+            });
+        })();
 
         // 6. 單回合倒數計時器
         (function initRoundCountdown() {

@@ -675,9 +675,9 @@ function enableGridHeaderSortAndLock {
             }
         })
 
-        # 建立資料列滑鼠右鍵快捷選單 (ContextMenuStrip)
+        # 建立資料列滑鼠右鍵快捷選單 (ContextMenuStrip)：右鍵選擇紀錄並彈出 Modal 視窗單筆編輯或檢視
         $ctxMenu = new-object system.windows.forms.contextmenustrip
-        $miEdit = $ctxMenu.items.add('✏️ 編輯 / 載入此筆紀錄至表單')
+        $miEdit = $ctxMenu.items.add($(if ($null -ne $onEditRow) { '✏️ 單筆編輯此筆紀錄（彈出 Modal 視窗）' } else { '🪟 檢視此筆紀錄完整明細（彈出 Modal 視窗）' }))
         $miDelete = $ctxMenu.items.add('🗑️ 刪除此筆紀錄')
         $null = $ctxMenu.items.add((new-object system.windows.forms.toolstripseparator))
         $miFilterCell = $ctxMenu.items.add('🔍 以此儲存格值篩選本表格')
@@ -685,7 +685,7 @@ function enableGridHeaderSortAndLock {
         $null = $ctxMenu.items.add((new-object system.windows.forms.toolstripseparator))
         $miCopyRow = $ctxMenu.items.add('📋 複製本列紀錄至剪貼簿')
 
-        $miEdit.visible = ($null -ne $onEditRow)
+        $miEdit.visible = $true
         $miDelete.visible = ($null -ne $onDeleteRow)
 
         $ctxState = @{
@@ -695,8 +695,72 @@ function enableGridHeaderSortAndLock {
         }
 
         $miEdit.add_click({
-            if ($null -ne $onEditRow -and $null -ne $ctxState.currentRowItem) {
-                & $onEditRow $ctxState.currentRowItem
+            if ($null -ne $ctxState.currentRowItem) {
+                $rowItem = $ctxState.currentRowItem
+                $dlg = new-object system.windows.forms.form
+                $dlg.text = $(if ($null -ne $onEditRow) { '✏️ 單筆紀錄編輯 (Modal 視窗)' } else { '🪟 單筆紀錄明細檢視 (Modal 視窗)' })
+                $dlg.size = new-object system.drawing.size(620, 520)
+                $dlg.startposition = [system.windows.forms.formstartposition]::centerscreen
+                $dlg.formborderstyle = [system.windows.forms.formborderstyle]::fixeddialog
+                $dlg.maximizebox = $false
+                $dlg.minimizebox = $false
+                $dlg.font = new-object system.drawing.font('Microsoft JhengHei UI', 9.5)
+
+                $panel = new-object system.windows.forms.panel
+                $panel.location = new-object system.drawing.point(12, 12)
+                $panel.size = new-object system.drawing.size(580, 410)
+                $panel.autoscroll = $true
+                $dlg.controls.add($panel)
+
+                $editorMap = @{}
+                $yPos = 10
+                foreach ($col in $rowItem.table.columns) {
+                    $cName = [string]$col.columnname
+                    $lbl = new-object system.windows.forms.label
+                    $lbl.text = "${cName}："
+                    $lbl.location = new-object system.drawing.point(10, ($yPos + 4))
+                    $lbl.size = new-object system.drawing.size(185, 22)
+                    $panel.controls.add($lbl)
+
+                    $txt = new-object system.windows.forms.textbox
+                    $txt.location = new-object system.drawing.point(200, $yPos)
+                    $txt.size = new-object system.drawing.size(345, 24)
+                    $txt.text = if ($rowItem[$cName] -ne [dbnull]::value) { [string]$rowItem[$cName] } else { '' }
+                    $txt.readonly = ($null -eq $onEditRow -or $cName -match 'Pk$')
+                    $panel.controls.add($txt)
+                    $editorMap[$cName] = $txt
+                    $yPos += 32
+                }
+
+                $btnOk = new-object system.windows.forms.button
+                $btnOk.text = $(if ($null -ne $onEditRow) { '💾 套用並載入儲存' } else { '✖ 關閉視窗' })
+                $btnOk.location = new-object system.drawing.point(330, 432)
+                $btnOk.size = new-object system.drawing.size(140, 34)
+                $btnOk.backcolor = [system.drawing.color]::fromargb(37, 99, 235)
+                $btnOk.forecolor = [system.drawing.color]::white
+                $btnOk.dialogresult = [system.windows.forms.dialogresult]::ok
+                $dlg.controls.add($btnOk)
+
+                $btnCancel = new-object system.windows.forms.button
+                $btnCancel.text = '取消'
+                $btnCancel.location = new-object system.drawing.point(480, 432)
+                $btnCancel.size = new-object system.drawing.size(110, 34)
+                $btnCancel.dialogresult = [system.windows.forms.dialogresult]::cancel
+                $dlg.controls.add($btnCancel)
+
+                if ($dlg.showdialog() -eq [system.windows.forms.dialogresult]::ok -and $null -ne $onEditRow) {
+                    foreach ($cName in $editorMap.keys) {
+                        $colObj = $rowItem.table.columns[$cName]
+                        if (-not $colObj.readonly -and $cName -notmatch 'Pk$') {
+                            try {
+                                $rowItem[$cName] = $editorMap[$cName].text
+                            }
+                            catch { }
+                        }
+                    }
+                    & $onEditRow $rowItem
+                }
+                $dlg.dispose()
             }
         }.GetNewClosure())
 
