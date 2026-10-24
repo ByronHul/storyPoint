@@ -365,9 +365,9 @@ public class emailNotificationService
                 string assigneeSummary = Convert.ToString(row["assigneeSummary"]) ?? "尚未指派";
                 string departmentSummary = Convert.ToString(row["departmentSummary"]) ?? "-";
                 string mgrEmailCsv = Convert.ToString(row["departmentManagerEmailCsv"]) ?? "";
-                string mgrNameCsv = Convert.ToString(row["departmentManagerNameCsv"]) ?? "部門經理/管理層";
+                string mgrNameCsv = Convert.ToString(row["departmentManagerNameCsv"]) ?? "該同仁的部門主管";
                 string hrEmailCsv = Convert.ToString(row["hrEmailCsv"]) ?? "";
-                string hrNameCsv = Convert.ToString(row["hrNameCsv"]) ?? "HR 人資部門";
+                string hrNameCsv = Convert.ToString(row["hrNameCsv"]) ?? "人資主管";
                 string allEmailCsv = Convert.ToString(row["allRecipientEmailCsv"]) ?? "";
 
                 var recipientList = new List<(string email, string displayName)>();
@@ -390,10 +390,10 @@ public class emailNotificationService
   <div style=""max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #cbd5e1;border-radius:10px;overflow:hidden;"">
     <div style=""background:#1e3a8a;color:#ffffff;padding:16px 22px;"">
       <h2 style=""margin:0;font-size:18px;"">⏰ Story Point 工項達到迄時自動轉態與扣點通知</h2>
-      <div style=""font-size:13px;color:#bfdbfe;margin-top:4px;"">通知對象：部門管理層 ({WebUtility.HtmlEncode(mgrNameCsv)}) 、 HR ({WebUtility.HtmlEncode(hrNameCsv)})</div>
+      <div style=""font-size:13px;color:#bfdbfe;margin-top:4px;"">通知對象：該同仁的部門主管 ({WebUtility.HtmlEncode(mgrNameCsv)}) 、 人資主管 ({WebUtility.HtmlEncode(hrNameCsv)})</div>
     </div>
     <div style=""padding:20px 22px;"">
-      <p style=""margin-top:0;"">部門管理層與 HR 您好，以下工項已達到設定之<strong>迄時 (結束時間)</strong>，系統已自動轉換該工項狀態為「<strong>已完成 (done)</strong>」，並自動扣掉該工項之 Story Point：</p>
+      <p style=""margin-top:0;"">部門主管與人資主管 您好，以下工項已達到設定之<strong>迄時 (結束時間)</strong>，系統已自動轉換該工項狀態為「<strong>已完成 (done)</strong>」，並自動扣掉該工項之 Story Point：</p>
       <table style=""width:100%;border-collapse:collapse;font-size:14px;margin:14px 0;"">
         <tr>
           <td style=""padding:8px 12px;border:1px solid #e2e8f0;background:#f1f5f9;font-weight:bold;width:150px;"">工項代碼 / 標題</td>
@@ -420,10 +420,10 @@ public class emailNotificationService
           <td style=""padding:8px 12px;border:1px solid #e2e8f0;"">{WebUtility.HtmlEncode(assigneeSummary)}（部門：{WebUtility.HtmlEncode(departmentSummary)}）</td>
         </tr>
         <tr>
-          <td style=""padding:8px 12px;border:1px solid #e2e8f0;background:#f1f5f9;font-weight:bold;"">通知收件對象</td>
+          <td style=""padding:8px 12px;border:1px solid #e2e8f0;background:#f1f5f9;font-weight:bold;"">通知收件對象 (樹狀遞迴階層)</td>
           <td style=""padding:8px 12px;border:1px solid #e2e8f0;font-size:12px;color:#475569;"">
-            <div><strong>部門管理層：</strong>{WebUtility.HtmlEncode(mgrNameCsv)} ({WebUtility.HtmlEncode(mgrEmailCsv)})</div>
-            <div><strong>HR 人資部門：</strong>{WebUtility.HtmlEncode(hrNameCsv)} ({WebUtility.HtmlEncode(hrEmailCsv)})</div>
+            <div><strong>該同仁的部門主管：</strong>{WebUtility.HtmlEncode(mgrNameCsv)} ({WebUtility.HtmlEncode(mgrEmailCsv)})</div>
+            <div><strong>人資主管 (HR)：</strong>{WebUtility.HtmlEncode(hrNameCsv)} ({WebUtility.HtmlEncode(hrEmailCsv)})</div>
           </td>
         </tr>
       </table>
@@ -441,12 +441,12 @@ public class emailNotificationService
                     $"狀態自動轉換：{oldStatusText} -> 已完成 (done)\n" +
                     $"Story Point 扣點：原 {originalPt:0.##} pt -> 扣除 -{deductedPt:0.##} pt -> 剩餘 {remainingPt:0.##} pt\n" +
                     $"負責員工與部門：{assigneeSummary}（部門：{departmentSummary}）\n" +
-                    $"通知部門管理層：{mgrNameCsv} ({mgrEmailCsv})\n" +
-                    $"通知 HR 部門：{hrNameCsv} ({hrEmailCsv})\n";
+                    $"通知該同仁的部門主管：{mgrNameCsv} ({mgrEmailCsv})\n" +
+                    $"通知人資主管：{hrNameCsv} ({hrEmailCsv})\n";
 
                 var (sendOk, sendStatus) = await sendEmailAsync(recipientList, subject, htmlBody, plainBody, operatorAccount);
 
-                string recipientDisplay = $"部門管理層[{mgrNameCsv}] + HR[{hrNameCsv}] ({allEmailCsv})";
+                string recipientDisplay = $"該同仁部門主管[{mgrNameCsv}] + 人資主管[{hrNameCsv}] ({allEmailCsv})";
                 await _sqlService.executeStoredProcedureDataSetAsync(
                     "storyPoint.spMarkWorkItemExpiryNotified",
                     new Dictionary<string, object?>

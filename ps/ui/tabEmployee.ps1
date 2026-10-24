@@ -147,16 +147,31 @@ process {
     $btnDeleteEmp.backcolor = [system.drawing.color]::fromargb(220, 38, 38)
     $btnDeleteEmp.forecolor = [system.drawing.color]::white
 
+    $chkIsDeptMgr = new-object system.windows.forms.checkbox
+    $chkIsDeptMgr.text = '部門主管'
+    $chkIsDeptMgr.location = new-object system.drawing.point(1090, 52)
+    $chkIsDeptMgr.autosize = $true
+
+    $lblMgrPk = new-object system.windows.forms.label
+    $lblMgrPk.text = '上層主管 ID：'
+    $lblMgrPk.location = new-object system.drawing.point(1170, 54)
+    $lblMgrPk.autosize = $true
+
+    $txtMgrPk = new-object system.windows.forms.textbox
+    $txtMgrPk.location = new-object system.drawing.point(1255, 50)
+    $txtMgrPk.width = 45
+    $txtMgrPk.text = '0'
+
     $btnImportCsv = new-object system.windows.forms.button
     $btnImportCsv.text = '📤 批次載入 CSV'
-    $btnImportCsv.location = new-object system.drawing.point(1040, 10)
-    $btnImportCsv.size = new-object system.drawing.size(105, 30)
+    $btnImportCsv.location = new-object system.drawing.point(1155, 10)
+    $btnImportCsv.size = new-object system.drawing.size(115, 30)
     $btnImportCsv.backcolor = [system.drawing.color]::fromargb(22, 163, 74)
     $btnImportCsv.forecolor = [system.drawing.color]::white
 
     $gridEmp = new-object system.windows.forms.datagridview
     $gridEmp.location = new-object system.drawing.point(12, 88)
-    $gridEmp.size = new-object system.drawing.size(1130, 520)
+    $gridEmp.size = new-object system.drawing.size(1290, 520)
     $gridEmp.readonly = $true
     $gridEmp.allowusertoaddrows = $false
     $gridEmp.autosizecolumnsmode = 'Fill'
@@ -166,7 +181,7 @@ process {
         $dt = & $empScript -actionType 'listEmployee'
         $gridEmp.datasource = $dt
         if ($null -ne $statusLabel) {
-            $statusLabel.text = "已載入 $($dt.rows.count) 位員工與個人 Story Point 負載"
+            $statusLabel.text = "已載入 $($dt.rows.count) 位員工（含部門主管標記與樹狀遞迴階層）與個人 Story Point 負載"
         }
     }
 
@@ -181,6 +196,8 @@ process {
                 $txtAcc.text = [string]$rowItem.loginAccount
                 $txtDept.text = [string]$rowItem.departmentPk
                 $cmbTitle.text = [string]$rowItem.jobTitle
+                $chkIsDeptMgr.checked = [bool]$rowItem.isDepartmentManager
+                $txtMgrPk.text = if ($null -ne $rowItem.managerEmployeePk -and $rowItem.managerEmployeePk -ne [dbnull]::value) { [string]$rowItem.managerEmployeePk } else { '0' }
                 $txtPwd.text = ''
                 if ([string]$rowItem.roleName -eq 'admin') {
                     $cmbRole.selectedindex = 1
@@ -189,7 +206,7 @@ process {
                     $cmbRole.selectedindex = 0
                 }
                 if ($null -ne $statusLabel) {
-                    $statusLabel.text = "已載入員工【$($rowItem.employeeCode) - $($rowItem.employeeName) ($($rowItem.loginAccount))】至上方表單，可直接輸入新密碼後點擊「💾 儲存員工與帳密」"
+                    $statusLabel.text = "已載入員工【$($rowItem.employeeCode) - $($rowItem.employeeName) ($($rowItem.loginAccount))】至上方表單，可直接修改部門主管/樹狀上層主管或密碼後點擊「💾 儲存員工與帳密」"
                 }
             }
         }
@@ -198,11 +215,15 @@ process {
     $btnRefresh.add_click($loadEmpData)
     $btnSaveEmp.add_click({
         $titleVal = if (-not [string]::isnullorempty($cmbTitle.text)) { $cmbTitle.text.trim() } else { '部門經理' }
+        $mgrPkInt = 0
+        [void][int]::tryparse($txtMgrPk.text, [ref]$mgrPkInt)
         $null = & $empScript -actionType 'upsertEmployee' `
             -employeeCode $txtCode.text.trim() -employeeName $txtName.text.trim() `
             -loginAccount $txtAcc.text.trim() -plainPassword $txtPwd.text.trim() `
             -emailAddress "$($txtAcc.text.trim())@company.com" -jobTitle $titleVal `
-            -departmentPk ([int]$txtDept.text) -roleName $cmbRole.selecteditem.tostring()
+            -departmentPk ([int]$txtDept.text) `
+            -isDepartmentManager $chkIsDeptMgr.checked -managerEmployeePk $mgrPkInt `
+            -roleName $cmbRole.selecteditem.tostring()
         & $loadEmpData
     })
     $btnExportCsv.add_click({
@@ -241,6 +262,7 @@ process {
         $lblDept, $txtDept, $lblRole, $cmbRole, $lblTitle, $cmbTitle, $btnImportCsv,
         $btnSaveEmp, $btnRefresh, $btnExportCsv,
         $lblTargetPk, $txtTargetPk, $btnDisableEmp, $btnEnableEmp, $btnDeleteEmp,
+        $chkIsDeptMgr, $lblMgrPk, $txtMgrPk,
         $gridEmp
     ))
 

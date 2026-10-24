@@ -825,6 +825,10 @@ public class portalController : Controller
         string? cleanDiscussionNote = string.IsNullOrWhiteSpace(roundDiscussionNote)
             ? null
             : roundDiscussionNote.Trim();
+        string? cleanFinalDecisionNote = string.IsNullOrWhiteSpace(finalDecisionNote)
+            ? null
+            : finalDecisionNote.Trim();
+        string? effectiveDecisionNote = cleanFinalDecisionNote ?? cleanDiscussionNote;
 
         try
         {
@@ -834,7 +838,7 @@ public class portalController : Controller
                 ["controlAction"] = resolvedAction,
                 ["roundDiscussionNote"] = cleanDiscussionNote,
                 ["finalStoryPoint"] = finalStoryPoint,
-                ["finalDecisionNote"] = finalDecisionNote,
+                ["finalDecisionNote"] = effectiveDecisionNote,
                 ["syncExistingOpenWorkItem"] = syncExistingOpenWorkItem,
                 ["operatorEmployeePk"] = getCurrentEmployeePk(),
                 ["operatorAccount"] = getCurrentLoginAccount()
@@ -848,7 +852,9 @@ public class portalController : Controller
                 "nextRound" => !string.IsNullOrEmpty(cleanDiscussionNote)
                     ? $"已將本回合討論紀錄（「{cleanDiscussionNote}」）寫入回合紀錄，並成功開啟下一回合重新盲投！"
                     : "已開啟下一回合重新盲投！",
-                "finalize" => $"已拍板定案最終 Story Point 為 {finalStoryPoint} 點，並自動更新目標點數與歷程！",
+                "finalize" => !string.IsNullOrEmpty(effectiveDecisionNote)
+                    ? $"已拍板定案最終 Story Point 為 {finalStoryPoint:0.##} 點（定案決議說明：「{effectiveDecisionNote}」），並自動更新目標點數與歷程！"
+                    : $"已拍板定案最終 Story Point 為 {finalStoryPoint:0.##} 點，並自動更新目標點數與歷程！",
                 _ => "投票議程狀態已更新"
             };
 
@@ -1741,7 +1747,9 @@ public class portalController : Controller
         [FromForm] string emailAddress,
         [FromForm] string jobTitle,
         [FromForm] int departmentPk,
-        [FromForm] string roleName,
+        [FromForm] bool isDepartmentManager = false,
+        [FromForm] int? managerEmployeePk = null,
+        [FromForm] string roleName = "participant",
         [FromForm] bool isActive = true)
     {
         if (!isAdminUser())
@@ -1764,6 +1772,10 @@ public class portalController : Controller
                 ? null
                 : sqlDataService.computeSha256(plainPassword.Trim());
 
+            int? cleanMgrPk = (managerEmployeePk.HasValue && managerEmployeePk.Value > 0)
+                ? managerEmployeePk.Value
+                : null;
+
             var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpsertEmployee", new Dictionary<string, object?>
             {
                 ["employeePk"] = employeePk,
@@ -1774,6 +1786,8 @@ public class portalController : Controller
                 ["emailAddress"] = (emailAddress ?? "").Trim(),
                 ["jobTitle"] = (jobTitle ?? "").Trim(),
                 ["departmentPk"] = departmentPk,
+                ["isDepartmentManager"] = isDepartmentManager,
+                ["managerEmployeePk"] = cleanMgrPk,
                 ["roleName"] = roleName == "admin" ? "admin" : "participant",
                 ["isActive"] = isActive,
                 ["operatorAccount"] = getCurrentLoginAccount()
@@ -1788,7 +1802,8 @@ public class portalController : Controller
                 }
             }
 
-            return Redirect("/?tab=employees&msg=" + Uri.EscapeDataString($"員工「{employeeCode} - {employeeName} ({loginAccount})」資料與帳密儲存成功！"));
+            string mgrLabel = isDepartmentManager ? "（已設為部門主管）" : "";
+            return Redirect("/?tab=employees&msg=" + Uri.EscapeDataString($"員工「{employeeCode} - {employeeName} ({loginAccount})」{mgrLabel}資料、樹狀主管階層與帳密儲存成功！"));
         }
         catch (Exception ex)
         {
@@ -1869,12 +1884,12 @@ public class portalController : Controller
     [Authorize]
     public IActionResult downloadEmployeeImportTemplate([FromQuery] string format = "csv")
     {
-        string[] headers = { "員工編號", "員工姓名", "登入帳號", "登入密碼", "電子郵件", "職稱", "所屬部門", "系統角色", "是否啟用" };
+        string[] headers = { "員工編號", "員工姓名", "登入帳號", "登入密碼", "電子郵件", "職稱", "所屬部門", "系統角色", "是否啟用", "是否為部門主管(1/0)", "上層主管(員工編號或帳號或姓名)" };
         var rows = new List<string[]>
         {
-            new[] { "EMP009", "林志豪 (Leo)", "leo.lin", "pass123", "leo.lin@company.com", "部門經理", "全端應用開發部", "admin", "1" },
-            new[] { "EMP010", "許雅筑 (Chloe)", "chloe.hsu", "pass123", "chloe.hsu@company.com", "資深工程師", "全端應用開發部", "participant", "1" },
-            new[] { "EMP011", "鄭家銘 (Mark)", "mark.cheng", "admin123", "mark.cheng@company.com", "部門經理 / 敏捷教練", "產品規劃與專案管理部", "admin", "1" }
+            new[] { "EMP009", "林志豪 (Leo)", "leo.lin", "pass123", "leo.lin@company.com", "部門經理", "開發", "admin", "1", "1", "byron.hu" },
+            new[] { "EMP010", "許雅筑 (Chloe)", "chloe.hsu", "pass123", "chloe.hsu@company.com", "資深工程師", "開發", "participant", "1", "0", "leo.lin" },
+            new[] { "EMP011", "鄭家銘 (Mark)", "mark.cheng", "admin123", "mark.cheng@company.com", "部門經理 / 敏捷教練", "BI", "admin", "1", "1", "byron.hu" }
         };
 
         if (string.Equals(format, "excel", StringComparison.OrdinalIgnoreCase) ||
@@ -1913,7 +1928,7 @@ public class portalController : Controller
 
         try
         {
-            // 先載入現有部門對照表 (支援部門代碼或部門名稱自動對應，若不存在可自動建立)
+            // 先載入現有部門與員工對照表 (支援部門代碼或部門名稱自動對應，以及上層主管樹狀遞迴關聯對應)
             var dashDs = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spGetStoryPointDashboard");
             var deptMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             foreach (DataRow dRow in dashDs.Tables[0].Rows)
@@ -1923,6 +1938,21 @@ public class portalController : Controller
                 string dName = dRow["departmentName"]?.ToString()?.Trim() ?? "";
                 if (!string.IsNullOrEmpty(dCode)) deptMap[dCode] = dPk;
                 if (!string.IsNullOrEmpty(dName)) deptMap[dName] = dPk;
+            }
+
+            var empLookupMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            if (dashDs.Tables.Count > 1)
+            {
+                foreach (DataRow eRow in dashDs.Tables[1].Rows)
+                {
+                    int ePk = Convert.ToInt32(eRow["employeePk"]);
+                    string eCode = eRow["employeeCode"]?.ToString()?.Trim() ?? "";
+                    string eAcc = eRow["loginAccount"]?.ToString()?.Trim() ?? "";
+                    string eName = eRow["employeeName"]?.ToString()?.Trim() ?? "";
+                    if (!string.IsNullOrEmpty(eCode)) empLookupMap[eCode] = ePk;
+                    if (!string.IsNullOrEmpty(eAcc)) empLookupMap[eAcc] = ePk;
+                    if (!string.IsNullOrEmpty(eName)) empLookupMap[eName] = ePk;
+                }
             }
 
             int importedCount = 0;
@@ -1951,6 +1981,8 @@ public class portalController : Controller
                 string deptToken = cols.Length > 6 ? cols[6].Trim().Trim('"') : "";
                 string roleToken = cols.Length > 7 ? cols[7].Trim().Trim('"').ToLowerInvariant() : "participant";
                 string activeToken = cols.Length > 8 ? cols[8].Trim().Trim('"').ToLowerInvariant() : "1";
+                string isDeptMgrToken = cols.Length > 9 ? cols[9].Trim().Trim('"').ToLowerInvariant() : "";
+                string mgrToken = cols.Length > 10 ? cols[10].Trim().Trim('"') : "";
 
                 int resolvedDeptPk = defaultDepartmentPk > 0 ? defaultDepartmentPk : 1;
                 if (!string.IsNullOrWhiteSpace(deptToken))
@@ -1987,9 +2019,26 @@ public class portalController : Controller
 
                 string resolvedRole = (roleToken == "admin" || roleToken.Contains("管理")) ? "admin" : "participant";
                 bool resolvedActive = !(activeToken == "0" || activeToken == "false" || activeToken.Contains("停用") || activeToken == "no");
+                bool resolvedIsDeptMgr = !string.IsNullOrWhiteSpace(isDeptMgrToken)
+                    ? (isDeptMgrToken == "1" || isDeptMgrToken == "true" || isDeptMgrToken == "yes" || isDeptMgrToken == "是" || isDeptMgrToken.Contains("主管"))
+                    : jobTitle.Contains("部門經理");
+
+                int? resolvedMgrPk = null;
+                if (!string.IsNullOrWhiteSpace(mgrToken))
+                {
+                    if (empLookupMap.TryGetValue(mgrToken, out int foundMgrPk))
+                    {
+                        resolvedMgrPk = foundMgrPk;
+                    }
+                    else if (int.TryParse(mgrToken, out int numericMgrPk) && numericMgrPk > 0)
+                    {
+                        resolvedMgrPk = numericMgrPk;
+                    }
+                }
+
                 string? pwdHash = string.IsNullOrWhiteSpace(rawPwd) ? null : sqlDataService.computeSha256(rawPwd);
 
-                await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpsertEmployee", new Dictionary<string, object?>
+                var savedEmpDs = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpsertEmployee", new Dictionary<string, object?>
                 {
                     ["employeeCode"] = empCode,
                     ["employeeName"] = empName,
@@ -1998,10 +2047,19 @@ public class portalController : Controller
                     ["emailAddress"] = email,
                     ["jobTitle"] = jobTitle,
                     ["departmentPk"] = resolvedDeptPk,
+                    ["isDepartmentManager"] = resolvedIsDeptMgr,
+                    ["managerEmployeePk"] = resolvedMgrPk,
                     ["roleName"] = resolvedRole,
                     ["isActive"] = resolvedActive,
                     ["operatorAccount"] = getCurrentLoginAccount()
                 });
+                if (savedEmpDs.Tables.Count > 0 && savedEmpDs.Tables[0].Rows.Count > 0)
+                {
+                    int savedPk = Convert.ToInt32(savedEmpDs.Tables[0].Rows[0]["employeePk"]);
+                    empLookupMap[empCode] = savedPk;
+                    empLookupMap[loginAcc] = savedPk;
+                    empLookupMap[empName] = savedPk;
+                }
                 importedCount++;
             }
 
@@ -2009,7 +2067,7 @@ public class portalController : Controller
                               string.Equals(importFormat, "excel", StringComparison.OrdinalIgnoreCase)
                 ? "Excel"
                 : "CSV";
-            return Redirect("/?tab=employees&msg=" + Uri.EscapeDataString($"已透過 {fmtLabel} 格式成功批次載入並更新 {importedCount} 筆員工資料與登入帳密！"));
+            return Redirect("/?tab=employees&msg=" + Uri.EscapeDataString($"已透過 {fmtLabel} 格式成功批次載入並更新 {importedCount} 筆員工資料、部門主管註記與樹狀階層帳密！"));
         }
         catch (Exception ex)
         {
@@ -2406,12 +2464,17 @@ public class portalController : Controller
             }
             else
             {
-                reportTitle = isAdmin ? "各員工身上的工項與總 Story Point 統計報表" : "我的個人工項與總 Story Point 分數統計報表";
-                headers = new[] { "員工編號", "員工姓名", "登入帳號", "所屬部門", "職稱", "系統角色", "賦予工項數", "員工總StoryPoint", "待處理點數", "進行中點數", "已完成點數", "賦予工項清單" };
+                reportTitle = isAdmin ? "各員工身上的工項、部門主管註記、樹狀遞迴階層與總 Story Point 統計報表" : "我的個人工項與總 Story Point 分數統計報表";
+                headers = new[] { "員工編號", "員工姓名", "登入帳號", "所屬部門", "職稱", "是否為部門主管", "上層直屬主管", "該同仁的部門主管", "人資主管", "樹狀遞迴階層路徑", "系統角色", "賦予工項數", "員工總StoryPoint", "待處理點數", "進行中點數", "已完成點數", "賦予工項清單" };
                 defaultGroupColIndex = 3; // 預設依「所屬部門」群組彙總
-                primaryPointColIndex = 7;
+                primaryPointColIndex = 12;
                 foreach (DataRow r in dashDs.Tables[1].Rows)
                 {
+                    bool isMgr = r.Table.Columns.Contains("isDepartmentManager") && r["isDepartmentManager"] != DBNull.Value && Convert.ToBoolean(r["isDepartmentManager"]);
+                    string mgrName = r.Table.Columns.Contains("managerEmployeeName") ? (r["managerEmployeeName"]?.ToString() ?? "") : "";
+                    string deptMgrName = r.Table.Columns.Contains("departmentManagerName") ? (r["departmentManagerName"]?.ToString() ?? "") : "";
+                    string hrMgrName = r.Table.Columns.Contains("hrManagerName") ? (r["hrManagerName"]?.ToString() ?? "") : "";
+                    string treePath = r.Table.Columns.Contains("hierarchyPath") ? (r["hierarchyPath"]?.ToString() ?? "") : "";
                     rows.Add(new[]
                     {
                         r["employeeCode"]?.ToString() ?? "",
@@ -2419,6 +2482,11 @@ public class portalController : Controller
                         r["loginAccount"]?.ToString() ?? "",
                         r["departmentName"]?.ToString() ?? "",
                         r["jobTitle"]?.ToString() ?? "",
+                        isMgr ? "是 (部門主管)" : "否",
+                        string.IsNullOrWhiteSpace(mgrName) ? "頂層 Root" : mgrName,
+                        deptMgrName,
+                        hrMgrName,
+                        treePath,
                         r["roleDisplayName"]?.ToString() ?? "",
                         r["assignedItemCount"]?.ToString() ?? "0",
                         r["totalAllocatedStoryPoint"]?.ToString() ?? "0",
@@ -5544,9 +5612,10 @@ public class portalController : Controller
                 <thead>
                     <tr>
                         <th>員工編號</th>
-                        <th>員工姓名</th>
+                        <th>員工姓名 (樹狀階層)</th>
                         <th>所屬部門</th>
-                        <th>職級 / 職稱</th>
+                        <th>部門主管註記 / 職級</th>
+                        <th>上層主管 / 通知對象 (部門主管 + 人資主管)</th>
                         <th>角色</th>
                         <th>賦予工項數</th>
                         <th>{(isAdmin ? "員工身上總 Story Point" : "我身上的總 Story Point 分數")}</th>
@@ -5559,18 +5628,37 @@ public class portalController : Controller
         foreach (DataRow eRow in empTable.Rows)
         {
             string empJobTitle = eRow["jobTitle"]?.ToString() ?? "";
-            bool isDeptMgr = empJobTitle.Contains("部門經理");
-            string titleHtml = isDeptMgr
-                ? $"<span class='badge' style='background:#fef3c7;color:#92400e;border:1px solid #f59e0b;margin-right:4px;'>👔 部門經理</span><strong>{h(empJobTitle)}</strong>"
-                : h(empJobTitle);
+            bool isDeptMgr = (eRow.Table.Columns.Contains("isDepartmentManager") && eRow["isDepartmentManager"] != DBNull.Value)
+                ? Convert.ToBoolean(eRow["isDepartmentManager"])
+                : empJobTitle.Contains("部門經理");
+            string deptCodeStr = eRow.Table.Columns.Contains("departmentCode") ? (eRow["departmentCode"]?.ToString() ?? "") : "";
+            bool isHrMgr = isDeptMgr && string.Equals(deptCodeStr, "HR", StringComparison.OrdinalIgnoreCase);
+            int hLevel = eRow.Table.Columns.Contains("hierarchyLevel") && eRow["hierarchyLevel"] != DBNull.Value
+                ? Convert.ToInt32(eRow["hierarchyLevel"])
+                : 1;
+            string hPath = eRow.Table.Columns.Contains("hierarchyPath") ? (eRow["hierarchyPath"]?.ToString() ?? "") : "";
+            string deptMgrName = eRow.Table.Columns.Contains("departmentManagerName") ? (eRow["departmentManagerName"]?.ToString() ?? "") : "";
+            string hrMgrName = eRow.Table.Columns.Contains("hrManagerName") ? (eRow["hrManagerName"]?.ToString() ?? "") : "";
+
+            string mgrFlagBadge = isHrMgr
+                ? "<span class='badge' style='background:#fce7f3;color:#9d174d;border:1px solid #f472b6;margin-right:4px;'>🤝 人資主管 (isDepartmentManager=1)</span>"
+                : (isDeptMgr
+                    ? "<span class='badge' style='background:#fef3c7;color:#92400e;border:1px solid #f59e0b;margin-right:4px;'>👑 部門主管 (isDepartmentManager=1)</span>"
+                    : "<span class='badge' style='background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;margin-right:4px;'>👨‍💻 一般同仁</span>");
+            string titleHtml = $"{mgrFlagBadge}<strong>{h(empJobTitle)}</strong>";
+            string levelPrefix = hLevel <= 1 ? "🌳 L1 Root" : $"↳ L{hLevel}";
             decimal empDed = eRow.Table.Columns.Contains("totalDeductedStoryPoint") && eRow["totalDeductedStoryPoint"] != DBNull.Value
                 ? Convert.ToDecimal(eRow["totalDeductedStoryPoint"])
                 : 0m;
             sb.Append($@"<tr>
                 <td><strong>{h(eRow["employeeCode"])}</strong></td>
-                <td><strong>{h(eRow["employeeName"])}</strong> ({h(eRow["loginAccount"])})</td>
+                <td><span class='badge' style='background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;margin-right:4px;'>{levelPrefix}</span><strong>{h(eRow["employeeName"])}</strong> ({h(eRow["loginAccount"])})</td>
                 <td><span class='badge badge-user'>{h(eRow["departmentName"])}</span></td>
                 <td>{titleHtml}</td>
+                <td style='font-size:12px;'>
+                    <div style='color:#0f172a;font-weight:700;'>🌳 {h(hPath)}</div>
+                    <div style='color:#475569;margin-top:2px;'>📩 到期通知：部門主管[<strong>{h(deptMgrName)}</strong>] + 人資主管[<strong>{h(hrMgrName)}</strong>]</div>
+                </td>
                 <td>{h(eRow["roleDisplayName"])}</td>
                 <td><strong>{eRow["assignedItemCount"]} 件</strong></td>
                 <td><strong style='font-size:18px;color:#2563eb;'>{eRow["totalAllocatedStoryPoint"]} pt</strong></td>
@@ -5603,15 +5691,17 @@ public class portalController : Controller
             <div class='grid-2'>
                 <div class='card'>
                     <div class='card-title'>
-                        <span id='empFormTitle'>➕ 新增 / 修改員工資料與登入帳密 (tbEmployee)</span>
+                        <span id='empFormTitle'>➕ 新增 / 修改員工資料、部門主管註記與樹狀階層 (tbEmployee)</span>
                         <div style='display:flex;gap:6px;align-items:center;flex-wrap:wrap;'>
                             <button type='button' class='btn btn-primary' style='padding:4px 10px;font-size:12px;' onclick=""switchTab('myAccount')"">🔑 修改我本人的帳密</button>
                             <select id='empQuickEditSelector' onchange='onQuickSelectEmployeeToEdit(this.value)' style='padding:4px 8px;font-size:12px;width:auto;min-width:190px;border-radius:6px;border:1px solid #93c5fd;background:#eff6ff;color:#1e3a8a;font-weight:700;'>
-                                <option value=''>⚡ 快速選擇既有帳號修改密碼...</option>");
+                                <option value=''>⚡ 快速選擇既有帳號修改...</option>");
             foreach (DataRow er in empTable.Rows)
             {
                 bool ea = Convert.ToBoolean(er["isActive"]);
-                sb.Append($"<option value='{er["employeePk"]}' data-code='{h(er["employeeCode"])}' data-name='{h(er["employeeName"])}' data-acc='{h(er["loginAccount"])}' data-mail='{h(er["emailAddress"])}' data-title='{h(er["jobTitle"])}' data-dept='{er["departmentPk"]}' data-role='{h(er["roleName"])}' data-active='{(ea ? "true" : "false")}'>{h(er["loginAccount"])} - {h(er["employeeName"])} ({h(er["employeeCode"])})</option>");
+                bool erIsMgr = er.Table.Columns.Contains("isDepartmentManager") && er["isDepartmentManager"] != DBNull.Value && Convert.ToBoolean(er["isDepartmentManager"]);
+                string erMgrPk = er.Table.Columns.Contains("managerEmployeePk") && er["managerEmployeePk"] != DBNull.Value ? er["managerEmployeePk"].ToString()! : "";
+                sb.Append($"<option value='{er["employeePk"]}' data-code='{h(er["employeeCode"])}' data-name='{h(er["employeeName"])}' data-acc='{h(er["loginAccount"])}' data-mail='{h(er["emailAddress"])}' data-title='{h(er["jobTitle"])}' data-dept='{er["departmentPk"]}' data-ismgr='{(erIsMgr ? "true" : "false")}' data-mgrpk='{erMgrPk}' data-role='{h(er["roleName"])}' data-active='{(ea ? "true" : "false")}'>{(erIsMgr ? "👑 " : "")}{h(er["loginAccount"])} - {h(er["employeeName"])} ({h(er["employeeCode"])})</option>");
             }
             sb.Append($@"
                             </select>
@@ -5622,7 +5712,7 @@ public class portalController : Controller
                         <input type='hidden' name='employeePk' id='empPk' value='' />
                         <div class='form-row'>
                             <div>
-                                <label data-tip='員工唯一識別編號（例如：EMP001）' title='員工唯一識別編號（例如：EMP001）'>員工編號 <span class='sp-tip-icon'>ⓘ</span></label>
+                                <label data-tip='員工唯一識別編號（例如：EMP001 或 200701）' title='員工唯一識別編號（例如：EMP001 或 200701）'>員工編號 <span class='sp-tip-icon'>ⓘ</span></label>
                                 <input type='text' name='employeeCode' id='empCode' value='{nextEmpCode}' required />
                             </div>
                             <div>
@@ -5662,13 +5752,13 @@ public class portalController : Controller
                         </div>
                         <div class='form-row'>
                             <div>
-                                <label data-tip='員工公司電子郵件信箱（當工項到期扣點時，若為部門經理或 HR，系統將自動寄信至此信箱）' title='員工公司電子郵件信箱（當工項到期扣點時，若為部門經理或 HR，系統將自動寄信至此信箱）'>電子郵件 <span class='sp-tip-icon'>ⓘ</span></label>
+                                <label data-tip='員工公司電子郵件信箱（當同仁工項到期扣點時，系統會透過樹狀遞迴階層寄信給該同仁的部門主管與人資主管信箱）' title='員工公司電子郵件信箱（當同仁工項到期扣點時，系統會透過樹狀遞迴階層寄信給該同仁的部門主管與人資主管信箱）'>電子郵件 <span class='sp-tip-icon'>ⓘ</span></label>
                                 <input type='text' name='emailAddress' id='empMail' value='user@company.com' required />
                             </div>
                             <div>
-                                <label data-tip='員工職級與職務名稱（包含「部門經理」等職級；設定為「部門經理」時，所屬部門工項到期自動扣點會寄信通知）' title='員工職級與職務名稱（包含「部門經理」等職級；設定為「部門經理」時，所屬部門工項到期自動扣點會寄信通知）'>職級 / 職稱 (含部門經理) <span class='sp-tip-icon'>ⓘ</span></label>
+                                <label data-tip='員工職級與職務名稱（若選擇「部門經理」相關職級，下方「是否為部門主管」將自動切換為「是」）' title='員工職級與職務名稱（若選擇「部門經理」相關職級，下方「是否為部門主管」將自動切換為「是」）'>職級 / 職稱 (含部門經理) <span class='sp-tip-icon'>ⓘ</span></label>
                                 <div style='display:flex;gap:6px;'>
-                                    <select id='empTitleQuickSelect' onchange=""if(this.value) document.getElementById('empTitle').value=this.value;"" style='width:138px;flex-shrink:0;background:#eff6ff;border-color:#93c5fd;font-weight:700;color:#1e3a8a;padding:6px 8px;font-size:12.5px;'>
+                                    <select id='empTitleQuickSelect' onchange=""if(this.value){ document.getElementById('empTitle').value=this.value; if(this.value.indexOf('部門經理')!==-1) document.getElementById('empIsDeptMgr').value='true'; }"" style='width:138px;flex-shrink:0;background:#eff6ff;border-color:#93c5fd;font-weight:700;color:#1e3a8a;padding:6px 8px;font-size:12.5px;'>
                                         <option value=''>⚡ 選擇職級...</option>
                                         <option value='部門經理'>👔 部門經理</option>
                                         <option value='董事長兼部門經理'>👑 董事長兼部門經理</option>
@@ -5682,7 +5772,7 @@ public class portalController : Controller
                                         <option value='工程師'>👨‍💻 工程師</option>
                                         <option value='人資專員 (HR)'>🤝 人資專員 (HR)</option>
                                     </select>
-                                    <input type='text' name='jobTitle' id='empTitle' list='empJobTitleDatalist' value='部門經理' placeholder='請選擇或輸入職級（如：部門經理）' required />
+                                    <input type='text' name='jobTitle' id='empTitle' list='empJobTitleDatalist' value='資深工程師' placeholder='請選擇或輸入職級（如：部門經理）' required />
                                     <datalist id='empJobTitleDatalist'>
                                         <option value='部門經理'></option>
                                         <option value='董事長兼部門經理'></option>
@@ -5706,7 +5796,31 @@ public class portalController : Controller
                                 </select>
                             </div>
                         </div>
-                        <div style='margin-top:6px;display:flex;justify-content:flex-end;'>
+                        <div class='form-row' style='background:#f8fafc;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;'>
+                            <div>
+                                <label data-tip='記載該員工是否為部門主管（tbEmployee.isDepartmentManager）：設為「是」代表為該部門之部門主管（若所屬部門為 HR 則同時為人資主管），同仁工項到期時通知信將寄給該同仁的部門主管與人資主管' title='記載該員工是否為部門主管（tbEmployee.isDepartmentManager）：設為「是」代表為該部門之部門主管（若所屬部門為 HR 則同時為人資主管），同仁工項到期時通知信將寄給該同仁的部門主管與人資主管'>是否為部門主管 <span class='sp-tip-icon'>ⓘ</span></label>
+                                <select name='isDepartmentManager' id='empIsDeptMgr' style='font-weight:700;border-color:#2563eb;'>
+                                    <option value='false'>👨‍💻 否 (一般部門同仁)</option>
+                                    <option value='true'>👑 是 (部門主管 / 人資主管，接收到期通知信)</option>
+                                </select>
+                            </div>
+                            <div style='grid-column: span 2;'>
+                                <label data-tip='用樹狀遞迴階層記載該員工的上層主管（tbEmployee.managerEmployeePk 自我參照外鍵）：若留空，系統將依該部門之部門主管自動掛載於樹狀階層下；工項到期時透過 T-SQL Recursive CTE 向上遞迴解析該同仁的部門主管' title='用樹狀遞迴階層記載該員工的上層主管（tbEmployee.managerEmployeePk 自我參照外鍵）：若留空，系統將依該部門之部門主管自動掛載於樹狀階層下；工項到期時透過 T-SQL Recursive CTE 向上遞迴解析該同仁的部門主管'>上層主管 (樹狀遞迴階層) <span class='sp-tip-icon'>ⓘ</span></label>
+                                <select name='managerEmployeePk' id='empManagerPk' style='font-weight:700;border-color:#2563eb;'>
+                                    <option value=''>🌳 自動依所屬部門之部門主管掛載 (或頂層 Root 節點)</option>");
+            foreach (DataRow mgrRow in empTable.Rows)
+            {
+                bool mIsMgr = mgrRow.Table.Columns.Contains("isDepartmentManager") && mgrRow["isDepartmentManager"] != DBNull.Value && Convert.ToBoolean(mgrRow["isDepartmentManager"]);
+                int mLvl = mgrRow.Table.Columns.Contains("hierarchyLevel") && mgrRow["hierarchyLevel"] != DBNull.Value ? Convert.ToInt32(mgrRow["hierarchyLevel"]) : 1;
+                string mPrefix = mIsMgr ? $"👑 [L{mLvl} 部門主管]" : $"👤 [L{mLvl}]";
+                sb.Append($"<option value='{mgrRow["employeePk"]}'>{mPrefix} {h(mgrRow["employeeName"])} ({h(mgrRow["employeeCode"])} ｜ {h(mgrRow["departmentName"])} - {h(mgrRow["jobTitle"])})</option>");
+            }
+            sb.Append(@"
+                                </select>
+                            </div>
+                        </div>
+                        <div style='margin-top:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;'>
+                            <div style='font-size:12px;color:#1e3a8a;'>📩 <strong>到期通知信規則：</strong>透過 <code>managerEmployeePk</code> 樹狀遞迴階層與 <code>isDepartmentManager</code>，工項達迄時自動寄信給「<strong>該同仁的部門主管</strong>」以及「<strong>人資主管</strong>」。</div>
                             <button type='submit' class='btn btn-primary' id='empSubmitBtn' style='min-width:220px;'>💾 新增儲存員工與登入帳密</button>
                         </div>
                     </form>
@@ -5785,20 +5899,117 @@ public class portalController : Controller
                     </div>
                     <div class='form-row'>
                         <div style='grid-column: 1 / -1;'>
-                            <label data-tip='直接貼上多筆員工 CSV 或 Excel 複製內容，每行一筆，欄位順序：員工編號,員工姓名,登入帳號,登入密碼,電子郵件,職稱,所屬部門名稱或代碼,角色(participant/admin),是否啟用(1/0)' title='直接貼上多筆員工 CSV 或 Excel 複製內容，每行一筆，欄位順序：員工編號,員工姓名,登入帳號,登入密碼,電子郵件,職稱,所屬部門名稱或代碼,角色(participant/admin),是否啟用(1/0)'>直接貼上多筆員工 CSV / Excel 文字內容 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <textarea name='csvRawText' id='batchEmpTextarea' rows='5' placeholder='EMP009,林志豪 (Leo),leo.lin,pass123,leo.lin@company.com,資深後端工程師,全端應用開發部,participant,1&#10;EMP010,許雅筑 (Chloe),chloe.hsu,pass123,chloe.hsu@company.com,前端工程師,全端應用開發部,participant,1' style='font-family:Consolas,monospace;font-size:13px;'></textarea>
+                            <label data-tip='直接貼上多筆員工 CSV 或 Excel 複製內容，每行一筆，欄位順序：員工編號,員工姓名,登入帳號,登入密碼,電子郵件,職稱,所屬部門名稱或代碼,角色(participant/admin),是否啟用(1/0),是否為部門主管(1/0),上層主管(帳號或編號)' title='直接貼上多筆員工 CSV 或 Excel 複製內容，每行一筆，欄位順序：員工編號,員工姓名,登入帳號,登入密碼,電子郵件,職稱,所屬部門名稱或代碼,角色(participant/admin),是否啟用(1/0),是否為部門主管(1/0),上層主管(帳號或編號)'>直接貼上多筆員工 CSV / Excel 文字內容 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <textarea name='csvRawText' id='batchEmpTextarea' rows='5' placeholder='EMP009,林志豪 (Leo),leo.lin,pass123,leo.lin@company.com,部門經理,開發,admin,1,1,byron.hu&#10;EMP010,許雅筑 (Chloe),chloe.hsu,pass123,chloe.hsu@company.com,資深工程師,開發,participant,1,0,leo.lin' style='font-family:Consolas,monospace;font-size:13px;'></textarea>
                         </div>
                     </div>
                     <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;'>
-                        <div style='font-size:12.5px;color:#475569;'>💡 提示：若員工編號或登入帳號已存在，系統會自動更新其部門、職稱、信箱與密碼；若填寫的部門名稱尚不存在，系統將自動建立新部門。</div>
+                        <div style='font-size:12.5px;color:#475569;'>💡 提示：若員工編號或登入帳號已存在，系統會自動更新其部門、職稱、是否為部門主管、上層主管樹狀階層、信箱與密碼。</div>
                         <button type='submit' class='btn btn-primary' style='min-width:240px;'>🚀 執行批次載入員工資料</button>
                     </div>
                 </form>
+            </div>");
+
+            // 建立視覺化「🌳 員工與部門主管樹狀遞迴階層檢視 (Recursive Tree Hierarchy & 通知信路由)」卡片
+            var treeOrderedRows = empTable.Rows.Cast<DataRow>()
+                .OrderBy(r => r.Table.Columns.Contains("hierarchySortKey") && r["hierarchySortKey"] != DBNull.Value ? r["hierarchySortKey"].ToString() : r["employeeCode"].ToString())
+                .ToList();
+            int deptMgrTotalCount = treeOrderedRows.Count(r => r.Table.Columns.Contains("isDepartmentManager") && r["isDepartmentManager"] != DBNull.Value && Convert.ToBoolean(r["isDepartmentManager"]));
+
+            sb.Append($@"
+            <div class='card' style='border:2px solid #86efac;background:linear-gradient(180deg,#f0fdf4 0%,#ffffff 100%);'>
+                <div class='card-title'>
+                    <span>🌳 組織與部門主管樹狀遞迴階層檢視（T-SQL Recursive CTE <code>managerEmployeePk</code> 自我參照階層 ＆ 到期通知信路由）</span>
+                    <div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap;'>
+                        <span class='badge badge-finalized'>👑 部門主管共 {deptMgrTotalCount} 位 (含人資主管)</span>
+                        <span class='badge badge-revealed'>📩 通知規則：同仁工項達迄時 ➔ 寄給「該同仁的部門主管」+「人資主管」</span>
+                    </div>
+                </div>
+                <div style='font-size:13px;color:#334155;margin-bottom:12px;line-height:1.6;'>
+                    系統於 <code>storyPoint.tbEmployee</code> 以 <strong><code>isDepartmentManager</code> (是否為部門主管)</strong> 與 <strong><code>managerEmployeePk</code> (上層主管自我參照外鍵)</strong> 建立樹狀遞迴階層。當任何同仁負責之工項達到迄時，<code>storyPoint.spProcessExpiredWorkItem</code> 會透過遞迴 CTE (<code>empManagerHierarchyCte</code>) 向上查找<strong>該同仁的部門主管</strong>與<strong>人資主管</strong>並寄發通知信（點擊任一節點可直接載入上方表單編修）：
+                </div>
+                <div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;'>");
+
+            // 依各部門主管分組顯示樹狀結構卡片
+            var deptManagers = treeOrderedRows
+                .Where(r => r.Table.Columns.Contains("isDepartmentManager") && r["isDepartmentManager"] != DBNull.Value && Convert.ToBoolean(r["isDepartmentManager"]))
+                .ToList();
+
+            foreach (DataRow mgrRow in deptManagers)
+            {
+                int mPk = Convert.ToInt32(mgrRow["employeePk"]);
+                string mCode = mgrRow["employeeCode"]?.ToString() ?? "";
+                string mName = mgrRow["employeeName"]?.ToString() ?? "";
+                string mAcc = mgrRow["loginAccount"]?.ToString() ?? "";
+                string mMail = mgrRow["emailAddress"]?.ToString() ?? "";
+                string mTitle = mgrRow["jobTitle"]?.ToString() ?? "";
+                int mDeptPk = Convert.ToInt32(mgrRow["departmentPk"]);
+                string mDeptName = mgrRow["departmentName"]?.ToString() ?? "";
+                string mDeptCode = mgrRow.Table.Columns.Contains("departmentCode") ? (mgrRow["departmentCode"]?.ToString() ?? "") : "";
+                string mRole = mgrRow["roleName"]?.ToString() ?? "participant";
+                bool mActive = Convert.ToBoolean(mgrRow["isActive"]);
+                string mParentPk = mgrRow.Table.Columns.Contains("managerEmployeePk") && mgrRow["managerEmployeePk"] != DBNull.Value ? mgrRow["managerEmployeePk"].ToString()! : "";
+                string mParentName = mgrRow.Table.Columns.Contains("managerEmployeeName") && mgrRow["managerEmployeeName"] != DBNull.Value ? (mgrRow["managerEmployeeName"]?.ToString() ?? "") : "";
+                int mLvl = mgrRow.Table.Columns.Contains("hierarchyLevel") && mgrRow["hierarchyLevel"] != DBNull.Value ? Convert.ToInt32(mgrRow["hierarchyLevel"]) : 1;
+                string hrMgrNameForDept = mgrRow.Table.Columns.Contains("hrManagerName") ? (mgrRow["hrManagerName"]?.ToString() ?? "許立慧") : "許立慧";
+                string hrMgrMailForDept = mgrRow.Table.Columns.Contains("hrManagerEmail") ? (mgrRow["hrManagerEmail"]?.ToString() ?? "raya.hsu@mentortrust.com") : "raya.hsu@mentortrust.com";
+
+                var directSubordinates = treeOrderedRows
+                    .Where(r => r.Table.Columns.Contains("managerEmployeePk") && r["managerEmployeePk"] != DBNull.Value
+                             && Convert.ToInt32(r["managerEmployeePk"]) == mPk
+                             && !(r.Table.Columns.Contains("isDepartmentManager") && r["isDepartmentManager"] != DBNull.Value && Convert.ToBoolean(r["isDepartmentManager"])))
+                    .ToList();
+
+                bool isHrDept = string.Equals(mDeptCode, "HR", StringComparison.OrdinalIgnoreCase);
+                string cardBorderColor = mLvl == 1 ? "#f59e0b" : (isHrDept ? "#ec4899" : "#3b82f6");
+                string headerBg = mLvl == 1 ? "#fef3c7" : (isHrDept ? "#fce7f3" : "#eff6ff");
+                string roleTag = mLvl == 1 ? "🌳 L1 頂層 Root / 部門主管" : (isHrDept ? $"🤝 L{mLvl} 人資主管 (HR)" : $"👑 L{mLvl} 部門主管");
+
+                sb.Append($@"
+                    <div style='background:#ffffff;border:1.5px solid {cardBorderColor};border-radius:10px;overflow:hidden;box-shadow:0 2px 5px rgba(15,23,42,0.04);'>
+                        <div style='background:{headerBg};padding:10px 12px;border-bottom:1px solid #e2e8f0;cursor:pointer;' onclick=""loadEmpToForm({mPk},'{escapeJsString(mCode)}','{escapeJsString(mName)}','{escapeJsString(mAcc)}','{escapeJsString(mMail)}','{escapeJsString(mTitle)}',{mDeptPk},'{escapeJsString(mRole)}','{(mActive ? "true" : "false")}','true','{mParentPk}')"">
+                            <div style='display:flex;justify-content:space-between;align-items:center;gap:6px;'>
+                                <span style='font-size:11.5px;font-weight:800;color:#1e293b;'>{roleTag} ｜ {h(mDeptName)}</span>
+                                <span style='font-size:11px;color:#475569;'>{(string.IsNullOrEmpty(mParentName) ? "Root 頂層節點" : $"上層：{h(mParentName)}")}</span>
+                            </div>
+                            <div style='font-size:15px;font-weight:800;color:#0f172a;margin-top:3px;'>👑 {h(mName)} <span style='font-size:12px;font-weight:600;color:#475569;'>({h(mCode)} / {h(mAcc)})</span></div>
+                            <div style='font-size:11.5px;color:#334155;margin-top:2px;'>📧 {h(mMail)} ｜ {h(mTitle)}</div>
+                        </div>
+                        <div style='padding:10px 12px;'>
+                            <div style='font-size:11.5px;color:#1e40af;background:#f8fafc;border:1px solid #dbeafe;border-radius:6px;padding:6px 8px;margin-bottom:8px;'>
+                                📩 <strong>本部門同仁工項到期通知收件人：</strong><br/>
+                                1️⃣ 部門主管：<strong>{h(mName)}</strong> (<code>{h(mMail)}</code>)<br/>
+                                2️⃣ 人資主管：<strong>{h(hrMgrNameForDept)}</strong> (<code>{h(hrMgrMailForDept)}</code>)
+                            </div>
+                            <div style='font-size:12px;font-weight:700;color:#475569;margin-bottom:6px;'>↳ 樹狀遞迴下屬同仁（共 {directSubordinates.Count} 人）：</div>
+                            <div style='display:flex;flex-wrap:wrap;gap:5px;'>");
+                foreach (DataRow subRow in directSubordinates)
+                {
+                    int sPk = Convert.ToInt32(subRow["employeePk"]);
+                    string sCode = subRow["employeeCode"]?.ToString() ?? "";
+                    string sName = subRow["employeeName"]?.ToString() ?? "";
+                    string sAcc = subRow["loginAccount"]?.ToString() ?? "";
+                    string sMail = subRow["emailAddress"]?.ToString() ?? "";
+                    string sTitle = subRow["jobTitle"]?.ToString() ?? "";
+                    int sDeptPk = Convert.ToInt32(subRow["departmentPk"]);
+                    string sRole = subRow["roleName"]?.ToString() ?? "participant";
+                    bool sActive = Convert.ToBoolean(subRow["isActive"]);
+                    int sLvl = subRow.Table.Columns.Contains("hierarchyLevel") && subRow["hierarchyLevel"] != DBNull.Value ? Convert.ToInt32(subRow["hierarchyLevel"]) : (mLvl + 1);
+                    sb.Append($@"<button type='button' onclick=""loadEmpToForm({sPk},'{escapeJsString(sCode)}','{escapeJsString(sName)}','{escapeJsString(sAcc)}','{escapeJsString(sMail)}','{escapeJsString(sTitle)}',{sDeptPk},'{escapeJsString(sRole)}','{(sActive ? "true" : "false")}','false','{mPk}')"" style='border:1px solid #cbd5e1;background:#f8fafc;color:#1e293b;border-radius:6px;padding:3px 8px;font-size:11.5px;cursor:pointer;font-weight:600;' title='[L{sLvl}] {h(sName)} ({h(sCode)} - {h(sTitle)}) ｜ 上層部門主管：{h(mName)} ｜ 點擊修改'>↳ L{sLvl} {h(sName)} <span style='color:#64748b;font-size:10.5px;'>({h(sCode)})</span></button>");
+                }
+                sb.Append(@"
+                            </div>
+                        </div>
+                    </div>");
+            }
+
+            sb.Append(@"
+                </div>
             </div>
 
             <div class='card'>
                 <div class='card-title'>
-                    <span>👥 員工列表、登入帳號、所屬部門、狀態與權限角色一覽表（支援增、刪、修、查與停用）</span>
+                    <span>👥 員工列表、部門主管註記、樹狀遞迴階層、登入帳號與權限角色一覽表（支援增、刪、修、查與停用）</span>
                     <span id='empFilterCountLabel' style='font-size:13px;color:#2563eb;font-weight:700;'>共 " + empTable.Rows.Count + @" 位員工</span>
                 </div>
 
@@ -5806,8 +6017,8 @@ public class portalController : Controller
                 <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                     <div class='form-row' style='margin-bottom:0;align-items:end;'>
                         <div>
-                            <label data-tip='輸入員工編號、姓名、登入帳號、電子郵件或職級關鍵字，即時篩選下方員工列表' title='輸入員工編號、姓名、登入帳號、電子郵件或職級關鍵字，即時篩選下方員工列表'>🔍 關鍵字搜尋 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' id='filterEmpKeyword' oninput='filterEmployeeTable()' placeholder='輸入員工編號 / 姓名 / 登入帳號 / 信箱 / 職級...' />
+                            <label data-tip='輸入員工編號、姓名、登入帳號、電子郵件、上層主管或職級關鍵字，即時篩選下方員工列表' title='輸入員工編號、姓名、登入帳號、電子郵件、上層主管或職級關鍵字，即時篩選下方員工列表'>🔍 關鍵字搜尋 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' id='filterEmpKeyword' oninput='filterEmployeeTable()' placeholder='輸入員工編號 / 姓名 / 帳號 / 上層主管 / 信箱...' />
                         </div>
                         <div>
                             <label data-tip='依員工所屬組織部門過濾員工列表' title='依員工所屬組織部門過濾員工列表'>🏢 所屬部門篩選 <span class='sp-tip-icon'>ⓘ</span></label>
@@ -5821,11 +6032,11 @@ public class portalController : Controller
                             </select>
                         </div>
                         <div>
-                            <label data-tip='依員工職級（如：部門經理、工程師等）過濾員工列表' title='依員工職級（如：部門經理、工程師等）過濾員工列表'>👔 職級篩選 (含部門經理) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='依「是否為部門主管 (isDepartmentManager)」過濾員工列表' title='依「是否為部門主管 (isDepartmentManager)」過濾員工列表'>👑 部門主管篩選 <span class='sp-tip-icon'>ⓘ</span></label>
                             <select id='filterEmpRank' onchange='filterEmployeeTable()'>
-                                <option value=''>全部職級</option>
-                                <option value='部門經理'>👔 部門經理 (含兼任部門經理)</option>
-                                <option value='一般職級'>👨‍💻 其他職級 (工程師 / 顧問 / 專員)</option>
+                                <option value=''>全部人員 (部門主管 + 一般同仁)</option>
+                                <option value='部門經理'>👑 部門主管 (isDepartmentManager = 1，含人資主管)</option>
+                                <option value='一般職級'>👨‍💻 一般部門同仁 (isDepartmentManager = 0)</option>
                             </select>
                         </div>
                         <div>
@@ -5848,16 +6059,52 @@ public class portalController : Controller
                 </div>
 
                 <table id='empDataTable'>
-                    <thead><tr><th>員工編號</th><th>員工姓名</th><th>登入帳號</th><th>所屬部門</th><th>職級 / 職稱</th><th>電子郵件</th><th>系統角色</th><th>帳號狀態</th><th>目前賦予 Story Point</th><th style='min-width:250px;'>管理操作 (修改 / 停用 / 刪除)</th></tr></thead><tbody>");
+                    <thead><tr><th>員工編號</th><th>員工姓名</th><th>登入帳號</th><th>所屬部門</th><th>是否為部門主管 / 職稱</th><th>上層主管與樹狀遞迴階層 (到期通知對象)</th><th>電子郵件</th><th>系統角色</th><th>帳號狀態</th><th>目前賦予 Story Point</th><th style='min-width:250px;'>管理操作 (修改 / 停用 / 刪除)</th></tr></thead><tbody>");
             foreach (DataRow eRow in empTable.Rows)
             {
                 int rowEmpPk = Convert.ToInt32(eRow["employeePk"]);
                 bool empActive = Convert.ToBoolean(eRow["isActive"]);
                 string empTitleStr = eRow["jobTitle"]?.ToString() ?? "";
-                bool isDeptMgrRow = empTitleStr.Contains("部門經理");
-                string titleCellHtml = isDeptMgrRow
-                    ? $"<span class='badge' style='background:#fef3c7;color:#92400e;border:1px solid #f59e0b;margin-right:4px;'>👔 部門經理</span><strong>{h(empTitleStr)}</strong>"
-                    : h(empTitleStr);
+                bool isDeptMgrRow = (eRow.Table.Columns.Contains("isDepartmentManager") && eRow["isDepartmentManager"] != DBNull.Value)
+                    ? Convert.ToBoolean(eRow["isDepartmentManager"])
+                    : empTitleStr.Contains("部門經理");
+                string deptCodeStr = eRow.Table.Columns.Contains("departmentCode") ? (eRow["departmentCode"]?.ToString() ?? "") : "";
+                bool isHrMgrRow = isDeptMgrRow && string.Equals(deptCodeStr, "HR", StringComparison.OrdinalIgnoreCase);
+                string mgrPkStr = eRow.Table.Columns.Contains("managerEmployeePk") && eRow["managerEmployeePk"] != DBNull.Value
+                    ? eRow["managerEmployeePk"].ToString()!
+                    : "";
+                string mgrNameStr = eRow.Table.Columns.Contains("managerEmployeeName") && eRow["managerEmployeeName"] != DBNull.Value
+                    ? (eRow["managerEmployeeName"]?.ToString() ?? "")
+                    : "";
+                int hLevel = eRow.Table.Columns.Contains("hierarchyLevel") && eRow["hierarchyLevel"] != DBNull.Value
+                    ? Convert.ToInt32(eRow["hierarchyLevel"])
+                    : 1;
+                string hPath = eRow.Table.Columns.Contains("hierarchyPath") && eRow["hierarchyPath"] != DBNull.Value
+                    ? (eRow["hierarchyPath"]?.ToString() ?? "")
+                    : (eRow["employeeName"]?.ToString() ?? "");
+                string deptMgrName = eRow.Table.Columns.Contains("departmentManagerName") && eRow["departmentManagerName"] != DBNull.Value
+                    ? (eRow["departmentManagerName"]?.ToString() ?? "")
+                    : "";
+                string hrMgrName = eRow.Table.Columns.Contains("hrManagerName") && eRow["hrManagerName"] != DBNull.Value
+                    ? (eRow["hrManagerName"]?.ToString() ?? "")
+                    : "";
+
+                string mgrBadgeHtml = isHrMgrRow
+                    ? "<span class='badge' style='background:#fce7f3;color:#9d174d;border:1px solid #f472b6;margin-right:4px;'>🤝 人資主管 (是)</span>"
+                    : (isDeptMgrRow
+                        ? "<span class='badge' style='background:#fef3c7;color:#92400e;border:1px solid #f59e0b;margin-right:4px;'>👑 部門主管 (是)</span>"
+                        : "<span class='badge' style='background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;margin-right:4px;'>否 (一般同仁)</span>");
+                string titleCellHtml = $"{mgrBadgeHtml}<strong>{h(empTitleStr)}</strong>";
+
+                string treeHierarchyCellHtml = $@"
+                    <div style='font-size:12.5px;font-weight:700;color:#0f172a;'>
+                        <span class='badge' style='background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;margin-right:4px;'>L{hLevel}</span>
+                        {h(hPath)}
+                    </div>
+                    <div style='font-size:11.5px;color:#475569;margin-top:3px;'>
+                        直屬上層：<strong>{(string.IsNullOrWhiteSpace(mgrNameStr) ? "頂層 Root (無上層)" : h(mgrNameStr))}</strong> ｜ 📩 通知：部門主管[<strong>{h(deptMgrName)}</strong>] + 人資主管[<strong>{h(hrMgrName)}</strong>]
+                    </div>";
+
                 string rBadge = eRow["roleName"].ToString() == "admin"
                     ? "<span class='badge badge-admin'>👑 管理者</span>"
                     : "<span class='badge badge-user'>🙋 參與者</span>";
@@ -5865,7 +6112,7 @@ public class portalController : Controller
                     ? "<span class='badge badge-finalized'>🟢 啟用中</span>"
                     : "<span class='badge' style='background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;'>🚫 已停用</span>";
                 string rowStyle = empActive ? "" : "opacity:0.68;background:#fef2f2;";
-                string searchBlob = $"{eRow["employeeCode"]} {eRow["employeeName"]} {eRow["loginAccount"]} {eRow["emailAddress"]} {empTitleStr}".ToLowerInvariant();
+                string searchBlob = $"{eRow["employeeCode"]} {eRow["employeeName"]} {eRow["loginAccount"]} {eRow["emailAddress"]} {empTitleStr} {hPath} {deptMgrName} {hrMgrName}".ToLowerInvariant();
 
                 sb.Append($@"<tr class='emp-row' style='{rowStyle}' data-search='{h(searchBlob)}' data-dept='{h(eRow["departmentName"])}' data-rank='{(isDeptMgrRow ? "部門經理" : "一般職級")}' data-role='{h(eRow["roleName"])}' data-active='{(empActive ? "1" : "0")}'>
                     <td><strong>{h(eRow["employeeCode"])}</strong></td>
@@ -5873,6 +6120,7 @@ public class portalController : Controller
                     <td><code>{h(eRow["loginAccount"])}</code></td>
                     <td>{h(eRow["departmentName"])}</td>
                     <td>{titleCellHtml}</td>
+                    <td>{treeHierarchyCellHtml}</td>
                     <td>{h(eRow["emailAddress"])}</td>
                     <td>{rBadge}</td>
                     <td>{statusBadge}</td>
@@ -5898,7 +6146,7 @@ public class portalController : Controller
 
                 sb.Append($@"<td>
                     <div style='display:flex;gap:6px;flex-wrap:wrap;align-items:center;'>
-                        <button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:12px;' onclick=""loadEmpToForm({rowEmpPk},'{h(eRow["employeeCode"])}','{h(eRow["employeeName"])}','{h(eRow["loginAccount"])}','{h(eRow["emailAddress"])}','{h(eRow["jobTitle"])}',{eRow["departmentPk"]},'{h(eRow["roleName"])}','{(empActive ? "true" : "false")}')"" >✏️ 修改</button>
+                        <button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:12px;' onclick=""loadEmpToForm({rowEmpPk},'{escapeJsString(eRow["employeeCode"]?.ToString())}','{escapeJsString(eRow["employeeName"]?.ToString())}','{escapeJsString(eRow["loginAccount"]?.ToString())}','{escapeJsString(eRow["emailAddress"]?.ToString())}','{escapeJsString(empTitleStr)}',{eRow["departmentPk"]},'{escapeJsString(eRow["roleName"]?.ToString())}','{(empActive ? "true" : "false")}','{(isDeptMgrRow ? "true" : "false")}','{mgrPkStr}')"" >✏️ 修改</button>
                         {toggleBtn}
                         {deleteBtn}
                     </div>
@@ -7300,7 +7548,7 @@ public class portalController : Controller
             window.scrollTo({ top: 380, behavior: 'smooth' });
         }
 
-        function loadEmpToForm(pk, code, name, acc, mail, title, deptPk, role, isActiveStr) {
+        function loadEmpToForm(pk, code, name, acc, mail, title, deptPk, role, isActiveStr, isDeptMgrStr, mgrPkStr) {
             document.getElementById('empPk').value = pk;
             document.getElementById('empCode').value = code;
             document.getElementById('empName').value = name;
@@ -7315,8 +7563,14 @@ public class portalController : Controller
             if (document.getElementById('empActive')) {
                 document.getElementById('empActive').value = isActiveStr || 'true';
             }
+            if (document.getElementById('empIsDeptMgr')) {
+                document.getElementById('empIsDeptMgr').value = (isDeptMgrStr === 'true' || isDeptMgrStr === true) ? 'true' : 'false';
+            }
+            if (document.getElementById('empManagerPk')) {
+                document.getElementById('empManagerPk').value = mgrPkStr ? String(mgrPkStr) : '';
+            }
             if (document.getElementById('empFormTitle')) {
-                document.getElementById('empFormTitle').innerHTML = '✏️ 修改員工資料與登入帳密（正在編修：' + code + ' - ' + name + '）';
+                document.getElementById('empFormTitle').innerHTML = '✏️ 修改員工資料、部門主管註記與樹狀階層（正在編修：' + code + ' - ' + name + '）';
             }
             if (document.getElementById('empSubmitBtn')) {
                 document.getElementById('empSubmitBtn').innerHTML = '💾 儲存修改員工與登入帳密';
@@ -7338,7 +7592,9 @@ public class portalController : Controller
                 opt.getAttribute('data-title') || '',
                 opt.getAttribute('data-dept') || '1',
                 opt.getAttribute('data-role') || 'participant',
-                opt.getAttribute('data-active') || 'true'
+                opt.getAttribute('data-active') || 'true',
+                opt.getAttribute('data-ismgr') || 'false',
+                opt.getAttribute('data-mgrpk') || ''
             );
             document.getElementById('empPwd')?.focus();
         }
@@ -7365,8 +7621,14 @@ public class portalController : Controller
                     if (document.getElementById('empActive')) {
                         document.getElementById('empActive').value = opt.getAttribute('data-active') || 'true';
                     }
+                    if (document.getElementById('empIsDeptMgr')) {
+                        document.getElementById('empIsDeptMgr').value = opt.getAttribute('data-ismgr') || 'false';
+                    }
+                    if (document.getElementById('empManagerPk')) {
+                        document.getElementById('empManagerPk').value = opt.getAttribute('data-mgrpk') || '';
+                    }
                     if (document.getElementById('empFormTitle')) {
-                        document.getElementById('empFormTitle').innerHTML = '✏️ 修改員工資料與登入帳密（已自動對應既有帳號：' + (opt.getAttribute('data-code') || '') + ' - ' + (opt.getAttribute('data-name') || '') + '）';
+                        document.getElementById('empFormTitle').innerHTML = '✏️ 修改員工資料、部門主管註記與樹狀階層（已自動對應既有帳號：' + (opt.getAttribute('data-code') || '') + ' - ' + (opt.getAttribute('data-name') || '') + '）';
                     }
                     if (document.getElementById('empSubmitBtn')) {
                         document.getElementById('empSubmitBtn').innerHTML = '💾 儲存修改員工與登入帳密';
@@ -7428,8 +7690,14 @@ public class portalController : Controller
             if (document.getElementById('empActive')) {
                 document.getElementById('empActive').value = 'true';
             }
+            if (document.getElementById('empIsDeptMgr')) {
+                document.getElementById('empIsDeptMgr').value = 'false';
+            }
+            if (document.getElementById('empManagerPk')) {
+                document.getElementById('empManagerPk').value = '';
+            }
             if (document.getElementById('empFormTitle')) {
-                document.getElementById('empFormTitle').innerHTML = '➕ 新增 / 修改員工資料與登入帳密 (tbEmployee)';
+                document.getElementById('empFormTitle').innerHTML = '➕ 新增 / 修改員工資料、部門主管註記與樹狀階層 (tbEmployee)';
             }
             if (document.getElementById('empSubmitBtn')) {
                 document.getElementById('empSubmitBtn').innerHTML = '💾 新增儲存員工與登入帳密';
@@ -7494,9 +7762,9 @@ public class portalController : Controller
 
         function fillSampleBatchEmployees() {
             const sample = [
-                'EMP009,林志豪 (Leo),leo.lin,pass123,leo.lin@company.com,部門經理,全端應用開發部,admin,1',
-                'EMP010,許雅筑 (Chloe),chloe.hsu,pass123,chloe.hsu@company.com,資深工程師,全端應用開發部,participant,1',
-                'EMP011,鄭家銘 (Mark),mark.cheng,admin123,mark.cheng@company.com,部門經理 / 敏捷教練,產品規劃與專案管理部,admin,1'
+                'EMP009,林志豪 (Leo),leo.lin,pass123,leo.lin@company.com,部門經理,開發,admin,1,1,byron.hu',
+                'EMP010,許雅筑 (Chloe),chloe.hsu,pass123,chloe.hsu@company.com,資深工程師,開發,participant,1,0,leo.lin',
+                'EMP011,鄭家銘 (Mark),mark.cheng,admin123,mark.cheng@company.com,部門經理 / 敏捷教練,BI,admin,1,1,byron.hu'
             ].join('\n');
             const box = document.getElementById('batchEmpTextarea');
             if (box) box.value = sample;
@@ -8494,6 +8762,11 @@ public class portalController : Controller
             </div>
         </div>");
 
+        string savedFinalDecisionNote = activeSessionRow.Table.Columns.Contains("finalDecisionNote") && activeSessionRow["finalDecisionNote"] != DBNull.Value
+            ? (activeSessionRow["finalDecisionNote"]?.ToString() ?? "")
+            : "";
+        bool hasFinalizedPoint = activeSessionRow["finalStoryPoint"] != DBNull.Value;
+
         // 綠色撲克牌桌面區塊
         sb.Append($@"
         <div class=""poker-table-box"">
@@ -8504,7 +8777,7 @@ public class portalController : Controller
                     <h2 style=""margin:8px 0 4px 0;font-size:22px;"">{h(activeSessionRow["sessionTitle"])}</h2>
                     <div style=""font-size:14px;color:#fde68a;"">
                         🎯 估點標的類型：<strong>{h(activeSessionRow["targetKindText"])}</strong> ｜ 標的名稱：<strong>{h(activeSessionRow["targetDisplayName"])}</strong>
-                        {(activeSessionRow["finalStoryPoint"] != DBNull.Value ? $" ｜ 🏆 已拍板最終點數：<strong>{activeSessionRow["finalStoryPoint"]} pt</strong>" : "")}
+                        {(hasFinalizedPoint ? $" ｜ 🏆 已拍板最終點數：<strong>{activeSessionRow["finalStoryPoint"]} pt</strong>" : "")}
                     </div>
                     <div style=""margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;font-size:12px;"">
                         <span style=""background:rgba(0,0,0,0.35);padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.25);"">📏 點數範圍：<strong>{sessionMinPt:0.##} ~ {sessionMaxPt:0.##} pt</strong></span>
@@ -8515,6 +8788,7 @@ public class portalController : Controller
                         <span style=""background:rgba(0,0,0,0.35);padding:3px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.25);"">👥 參與模式：<strong>{(restrictToParticipant ? $"僅限指定參與者 ({currentSessionParticipantRows.Count} 人)" : $"全體在職員工 ({expectedVoterCount} 人)")}</strong></span>
                     </div>
                     {(!string.IsNullOrWhiteSpace(roundTopicGoal) ? $@"<div style=""margin-top:8px;background:rgba(254,243,199,0.18);border-left:4px solid #fbbf24;padding:6px 12px;border-radius:6px;font-size:13px;color:#fef08a;"">📢 <strong>本回合聚焦目標 (第 {currentRoundNumber} 回合)：</strong>{h(roundTopicGoal)}</div>" : "")}
+                    {(hasFinalizedPoint ? $@"<div style=""margin-top:8px;background:rgba(220,252,231,0.22);border-left:4px solid #4ade80;padding:7px 12px;border-radius:6px;font-size:13.5px;color:#bbf7d0;"">🏆 <strong>已拍板定案決議（最終 Story Point：{activeSessionRow["finalStoryPoint"]} pt）：</strong>{(!string.IsNullOrWhiteSpace(savedFinalDecisionNote) ? h(savedFinalDecisionNote) : "（已完成拍板定案）")}</div>" : "")}
                 </div>
                 <div style=""text-align:right;font-size:13px;opacity:0.9;"">
                     主持人：{h(activeSessionRow["hostEmployeeName"])}<br/>
@@ -8712,6 +8986,7 @@ public class portalController : Controller
                         <div style=""font-weight:700;margin-bottom:8px;color:#15803d;"">
                             ✅ 3. 達成共識拍板定案（自動回寫工項之最終 Story Point｜依「{h(consensusRuleText)}」推薦值：<strong>{suggestedFinalPt:0.##} pt</strong>）
                         </div>
+                        {(hasFinalizedPoint ? $@"<div style=""background:#dcfce7;border:1px solid #86efac;color:#166534;padding:9px 12px;border-radius:8px;margin-bottom:10px;font-size:13px;font-weight:700;"">🏆 本議程已完成拍板定案：最終核定點數 <strong>{activeSessionRow["finalStoryPoint"]} pt</strong> ｜ 定案決議說明：<strong>{(!string.IsNullOrWhiteSpace(savedFinalDecisionNote) ? h(savedFinalDecisionNote) : "（未填寫決議說明）")}</strong></div>" : "")}
                         <div style=""display:grid;grid-template-columns:140px 1fr auto;gap:8px;align-items:end;"">
                             <div>
                                 <label>最終定案點數<span class=""caption-help-icon"" data-tip=""團隊達成共識後拍板的最終 Story Point，定案後將自動回寫至對應工項。"">ⓘ</span></label>
@@ -8719,7 +8994,7 @@ public class portalController : Controller
                             </div>
                             <div>
                                 <label>定案決議說明<span class=""caption-help-icon"" data-tip=""記錄團隊最終拍板此點數的決議理由與驗收前提假設。"">ⓘ</span></label>
-                                <input type=""text"" name=""finalDecisionNote"" placeholder=""例如：團隊第 {currentRoundNumber} 輪全數收斂於 {suggestedFinalPt:0.##} 點，包含單元測試與 API 文件"" />
+                                <input type=""text"" name=""finalDecisionNote"" id=""inputFinalDecisionNote"" value=""{h(savedFinalDecisionNote)}"" placeholder=""例如：團隊第 {currentRoundNumber} 輪全數收斂於 {suggestedFinalPt:0.##} 點，包含單元測試與 API 文件"" />
                             </div>
                             <button type=""submit"" name=""submitAction"" value=""finalize"" class=""btn btn-success"" onclick=""document.getElementById('controlActionType').value='finalize'"">
                                 🏆 拍板定案
@@ -8747,6 +9022,7 @@ public class portalController : Controller
             <div class=""card-title"">
                 <span>📊 本 Session 歷次盲投回合統計與{(isAdmin ? "全體具名" : "您個人")}出牌明細</span>
             </div>
+            {(hasFinalizedPoint ? $@"<div style=""background:#dcfce7;border:1px solid #86efac;color:#166534;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13.5px;font-weight:700;"">🏆 拍板定案結果：最終核定 <strong>{activeSessionRow["finalStoryPoint"]} pt</strong> ｜ 定案決議說明：<strong>{(!string.IsNullOrWhiteSpace(savedFinalDecisionNote) ? h(savedFinalDecisionNote) : "（未填寫決議說明）")}</strong></div>" : "")}
             <div class=""table-scroll-wrap"">
                 <table>
                     <thead>
@@ -8755,7 +9031,7 @@ public class portalController : Controller
                             <th>狀態</th>
                             <th>投票數</th>
                             <th>最低 / 最高 / 平均 / 極差</th>
-                            <th>回合討論紀錄</th>
+                            <th>回合討論紀錄 / 定案決議</th>
                         </tr>
                     </thead>
                     <tbody>");
@@ -8774,6 +9050,11 @@ public class portalController : Controller
             decimal rMin = rRow["minPoint"] != DBNull.Value ? Convert.ToDecimal(rRow["minPoint"]) : 0m;
             decimal rMax = rRow["maxPoint"] != DBNull.Value ? Convert.ToDecimal(rRow["maxPoint"]) : 0m;
             decimal rSpread = rMax - rMin;
+            string rNote = rRow["roundDiscussionNote"] != DBNull.Value ? (rRow["roundDiscussionNote"]?.ToString() ?? "") : "";
+            if (string.IsNullOrWhiteSpace(rNote) && hasFinalizedPoint && rNum == currentRoundNumber && !string.IsNullOrWhiteSpace(savedFinalDecisionNote))
+            {
+                rNote = savedFinalDecisionNote;
+            }
 
             sb.Append($@"
                         <tr>
@@ -8781,7 +9062,7 @@ public class portalController : Controller
                             <td>{rStatusText}</td>
                             <td>{rRow["voteCount"]} 票</td>
                             <td>{(isMasked ? "<span style='color:#b45309;'>🙈 盲投保密中</span>" : $"Min: <strong>{rRow["minPoint"]}</strong> / Max: <strong>{rRow["maxPoint"]}</strong> / Avg: <strong>{rRow["averagePoint"]}</strong> / 極差: <strong style='color:#dc2626;'>{rSpread:0.##}</strong>")}</td>
-                            <td>{h(rRow["roundDiscussionNote"])}</td>
+                            <td>{h(rNote)}</td>
                         </tr>");
         }
 

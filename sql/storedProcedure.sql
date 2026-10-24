@@ -2662,6 +2662,7 @@ begin
     declare @oldPoint decimal(8,2) = null;
     declare @cleanAction varchar(32) = ltrim(rtrim(isnull(@controlAction, '')));
     declare @cleanDiscussionNote nvarchar(1024) = nullif(ltrim(rtrim(isnull(@roundDiscussionNote, N''))), N'');
+    declare @cleanFinalDecisionNote nvarchar(1024) = nullif(ltrim(rtrim(isnull(@finalDecisionNote, N''))), N'');
 
     begin try
         if @operatorEmployeePk is not null and not exists (select 1 from storyPoint.tbEmployee where pk = @operatorEmployeePk)
@@ -2784,10 +2785,13 @@ begin
         end
         else if @cleanAction = 'finalize'
         begin
+            declare @effectiveFinalNote nvarchar(1024) = isnull(@cleanFinalDecisionNote, @cleanDiscussionNote);
+            declare @effectiveRoundNote nvarchar(1024) = isnull(@cleanDiscussionNote, @cleanFinalDecisionNote);
+
             update vr
             set vr.roundStatus = 'revealed',
                 vr.revealedAt = isnull(vr.revealedAt, sysdatetime()),
-                vr.roundDiscussionNote = isnull(@cleanDiscussionNote, vr.roundDiscussionNote),
+                vr.roundDiscussionNote = isnull(@effectiveRoundNote, vr.roundDiscussionNote),
                 vr.voteCount = isnull(stat.cnt, 0),
                 vr.averagePoint = stat.avgPt,
                 vr.minPoint = stat.minPt,
@@ -2808,7 +2812,7 @@ begin
             update storyPoint.tbVotingSession
             set sessionStatus = 'finalized',
                 finalStoryPoint = @finalStoryPoint,
-                finalDecisionNote = @finalDecisionNote,
+                finalDecisionNote = isnull(@effectiveFinalNote, finalDecisionNote),
                 finalizedAt = sysdatetime(),
                 updatedAt = sysdatetime()
             where pk = @votingSessionPk;
@@ -3028,6 +3032,17 @@ begin
            and vr.roundNumber = vs.currentRoundNumber
         where vs.sessionStatus = 'voting'
           and vr.roundStatus = 'revealed';
+
+        -- 若已定案 ('finalized') 之議程有填寫定案決議說明 (finalDecisionNote)，但最後一回合尚未填入回合討論紀錄 (roundDiscussionNote)，自動將定案決議說明同步補入最後一回合紀錄
+        update vr
+        set vr.roundDiscussionNote = vs.finalDecisionNote
+        from storyPoint.tbVotingRound as vr
+        inner join storyPoint.tbVotingSession as vs
+            on vr.votingSessionPk = vs.pk
+           and vr.roundNumber = vs.currentRoundNumber
+        where vs.sessionStatus = 'finalized'
+          and isnull(ltrim(rtrim(vs.finalDecisionNote)), N'') <> N''
+          and isnull(ltrim(rtrim(vr.roundDiscussionNote)), N'') = N'';
 
         -- Result Set 1: 投票議程總覽
         select

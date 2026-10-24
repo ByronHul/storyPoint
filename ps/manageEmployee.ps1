@@ -71,6 +71,12 @@ param(
     [string]$jobTitle = '',
 
     [parameter(mandatory = $false)]
+    [bool]$isDepartmentManager = $false,
+
+    [parameter(mandatory = $false)]
+    [int]$managerEmployeePk = 0,
+
+    [parameter(mandatory = $false)]
     [validateset('admin', 'participant')]
     [string]$roleName = 'participant',
 
@@ -140,6 +146,8 @@ switch ($actionType) {
             emailAddress = $emailAddress
             jobTitle = $jobTitle
             departmentPk = $departmentPk
+            isDepartmentManager = $isDepartmentManager
+            managerEmployeePk = $(if ($managerEmployeePk -gt 0) { $managerEmployeePk } else { $null })
             roleName = $roleName
             isActive = $isActive
             operatorAccount = $operatorAccount
