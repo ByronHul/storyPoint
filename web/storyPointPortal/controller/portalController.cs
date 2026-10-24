@@ -5630,7 +5630,7 @@ public class portalController : Controller
                         <th>員工姓名 (樹狀階層)</th>
                         <th>所屬部門</th>
                         <th>部門主管註記 / 職級</th>
-                        <th>上層主管 / 通知對象 (部門主管 + 人資主管)</th>
+                        <th>上一層主管 / 通知對象 (部門主管 + 人資主管)</th>
                         <th>角色</th>
                         <th>賦予工項數</th>
                         <th>{(isAdmin ? "員工身上總 Story Point" : "我身上的總 Story Point 分數")}</th>
@@ -5651,7 +5651,13 @@ public class portalController : Controller
             int hLevel = eRow.Table.Columns.Contains("hierarchyLevel") && eRow["hierarchyLevel"] != DBNull.Value
                 ? Convert.ToInt32(eRow["hierarchyLevel"])
                 : 1;
-            string hPath = eRow.Table.Columns.Contains("hierarchyPath") ? (eRow["hierarchyPath"]?.ToString() ?? "") : "";
+            bool hasParentMgr = eRow.Table.Columns.Contains("managerEmployeePk") && eRow["managerEmployeePk"] != DBNull.Value;
+            string mgrNameStr = (hasParentMgr && eRow.Table.Columns.Contains("managerEmployeeName") && eRow["managerEmployeeName"] != DBNull.Value)
+                ? (eRow["managerEmployeeName"]?.ToString() ?? "")
+                : "";
+            string parentMgrDisplay = (!string.IsNullOrWhiteSpace(mgrNameStr) && mgrNameStr != "頂層根節點(無上層)")
+                ? $"👤 上一層主管：{h(mgrNameStr)}"
+                : "🌳 上一層主管：無 (頂層根節點)";
             string deptMgrName = eRow.Table.Columns.Contains("departmentManagerName") ? (eRow["departmentManagerName"]?.ToString() ?? "") : "";
             string hrMgrName = eRow.Table.Columns.Contains("hrManagerName") ? (eRow["hrManagerName"]?.ToString() ?? "") : "";
 
@@ -5671,7 +5677,7 @@ public class portalController : Controller
                 <td><span class='badge badge-user'>{h(eRow["departmentName"])}</span></td>
                 <td>{titleHtml}</td>
                 <td style='font-size:12px;'>
-                    <div style='color:#0f172a;font-weight:700;'>🌳 {h(hPath)}</div>
+                    <div style='color:#0f172a;font-weight:700;'>{parentMgrDisplay}</div>
                     <div style='color:#475569;margin-top:2px;'>📩 到期通知：部門主管[<strong>{h(deptMgrName)}</strong>] + 人資主管[<strong>{h(hrMgrName)}</strong>]</div>
                 </td>
                 <td>{h(eRow["roleDisplayName"])}</td>
@@ -5813,14 +5819,14 @@ public class portalController : Controller
                         </div>
                         <div class='form-row' style='background:#f8fafc;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;'>
                             <div>
-                                <label data-tip='記載該員工是否為部門主管（tbEmployee.isDepartmentManager）：設為「是」代表為該部門之部門主管（若所屬部門為 HR 則同時為人資主管），同仁工項到期時通知信將寄給該同仁的部門主管與人資主管' title='記載該員工是否為部門主管（tbEmployee.isDepartmentManager）：設為「是」代表為該部門之部門主管（若所屬部門為 HR 則同時為人資主管），同仁工項到期時通知信將寄給該同仁的部門主管與人資主管'>是否為部門主管 <span class='sp-tip-icon'>ⓘ</span></label>
-                                <select name='isDepartmentManager' id='empIsDeptMgr' style='font-weight:700;border-color:#2563eb;'>
+                                <label data-tip='記載該員工是否為部門主管（tbEmployee.isDepartmentManager）：同一個部門可設定多位主管；若所屬部門有多位主管，同仁工項到期時多位主管皆會收到通知信' title='記載該員工是否為部門主管（tbEmployee.isDepartmentManager）：同一個部門可設定多位主管；若所屬部門有多位主管，同仁工項到期時多位主管皆會收到通知信'>是否為部門主管 (支援同部門多位主管) <span class='sp-tip-icon'>ⓘ</span></label>
+                                <select name='isDepartmentManager' id='empIsDeptMgr' onchange=""const mSel=document.getElementById('empManagerPk'); if(mSel) mSel.value='';"" style='font-weight:700;border-color:#2563eb;'>
                                     <option value='false'>👨‍💻 否 (一般部門同仁)</option>
-                                    <option value='true'>👑 是 (部門主管 / 人資主管，接收到期通知信)</option>
+                                    <option value='true'>👑 是 (部門主管 / 人資主管，同部門可多位主管)</option>
                                 </select>
                             </div>
                             <div style='grid-column: span 2;'>
-                                <label data-tip='用樹狀遞迴階層記載該員工的上層主管（tbEmployee.managerEmployeePk 自我參照外鍵）：若留空，系統將依該部門之部門主管自動掛載於樹狀階層下；工項到期時透過 T-SQL Recursive CTE 向上遞迴解析該同仁的部門主管' title='用樹狀遞迴階層記載該員工的上層主管（tbEmployee.managerEmployeePk 自我參照外鍵）：若留空，系統將依該部門之部門主管自動掛載於樹狀階層下；工項到期時透過 T-SQL Recursive CTE 向上遞迴解析該同仁的部門主管'>上層主管 (樹狀遞迴階層) <span class='sp-tip-icon'>ⓘ</span></label>
+                                <label data-tip='記載該員工的上一層主管（tbEmployee.managerEmployeePk 自我參照外鍵）：畫面僅呈現上一層主管；若所屬部門有多位主管，工項到期時該部門多位主管與人資主管皆會收到通知信' title='記載該員工的上一層主管（tbEmployee.managerEmployeePk 自我參照外鍵）：畫面僅呈現上一層主管；若所屬部門有多位主管，工項到期時該部門多位主管與人資主管皆會收到通知信'>上一層主管 (樹狀階層) <span class='sp-tip-icon'>ⓘ</span></label>
                                 <select name='managerEmployeePk' id='empManagerPk' style='font-weight:700;border-color:#2563eb;'>
                                     <option value=''>🌳 自動依所屬部門之部門主管掛載 (或頂層 Root 節點)</option>");
             foreach (DataRow mgrRow in empTable.Rows)
@@ -5835,7 +5841,7 @@ public class portalController : Controller
                             </div>
                         </div>
                         <div style='margin-top:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;'>
-                            <div style='font-size:12px;color:#1e3a8a;'>📩 <strong>到期通知信規則：</strong>透過 <code>managerEmployeePk</code> 樹狀遞迴階層與 <code>isDepartmentManager</code>，工項達迄時自動寄信給「<strong>該同仁的部門主管</strong>」以及「<strong>人資主管</strong>」。</div>
+                            <div style='font-size:12px;color:#1e3a8a;'>📩 <strong>到期通知信規則：</strong>同一個部門可有多位主管，若部門有多位主管則多位都通知（並通知人資主管），畫面僅呈現上一層主管。</div>
                             <button type='submit' class='btn btn-primary' id='empSubmitBtn' style='min-width:220px;'>💾 新增儲存員工與登入帳密</button>
                         </div>
                     </form>
@@ -5934,14 +5940,14 @@ public class portalController : Controller
             sb.Append($@"
             <div class='card' style='border:2px solid #86efac;background:linear-gradient(180deg,#f0fdf4 0%,#ffffff 100%);'>
                 <div class='card-title'>
-                    <span>🌳 組織與部門主管樹狀遞迴階層檢視（T-SQL Recursive CTE <code>managerEmployeePk</code> 自我參照階層 ＆ 到期通知信路由）</span>
+                    <span>🌳 組織與部門主管樹狀遞迴階層檢視（支援同部門多位主管 ＆ 到期通知信路由）</span>
                     <div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap;'>
                         <span class='badge badge-finalized'>👑 部門主管共 {deptMgrTotalCount} 位 (含人資主管)</span>
-                        <span class='badge badge-revealed'>📩 通知規則：同仁工項達迄時 ➔ 寄給「該同仁的部門主管」+「人資主管」</span>
+                        <span class='badge badge-revealed'>📩 通知規則：同仁工項達迄時 ➔ 若部門有多位主管，多位部門主管皆通知 + 人資主管</span>
                     </div>
                 </div>
                 <div style='font-size:13px;color:#334155;margin-bottom:12px;line-height:1.6;'>
-                    系統於 <code>storyPoint.tbEmployee</code> 以 <strong><code>isDepartmentManager</code> (是否為部門主管)</strong> 與 <strong><code>managerEmployeePk</code> (上層主管自我參照外鍵)</strong> 建立樹狀遞迴階層。當任何同仁負責之工項達到迄時，<code>storyPoint.spProcessExpiredWorkItem</code> 會透過遞迴 CTE (<code>empManagerHierarchyCte</code>) 向上查找<strong>該同仁的部門主管</strong>與<strong>人資主管</strong>並寄發通知信（點擊任一節點可直接載入上方表單編修）：
+                    系統於 <code>storyPoint.tbEmployee</code> 以 <strong><code>isDepartmentManager</code> (是否為部門主管，同一個部門可設定多位主管)</strong> 與 <strong><code>managerEmployeePk</code> (上一層主管自我參照外鍵)</strong> 建立樹狀遞迴階層。當任何同仁負責之工項達到迄時，<code>storyPoint.spProcessExpiredWorkItem</code> 會通知<strong>該同仁所屬部門之所有部門主管</strong>與<strong>人資主管</strong>（點擊任一節點可直接載入上方表單編修）：
                 </div>
                 <div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;'>");
 
@@ -5964,15 +5970,24 @@ public class portalController : Controller
                 string mRole = mgrRow["roleName"]?.ToString() ?? "participant";
                 bool mActive = Convert.ToBoolean(mgrRow["isActive"]);
                 string mParentPk = mgrRow.Table.Columns.Contains("managerEmployeePk") && mgrRow["managerEmployeePk"] != DBNull.Value ? mgrRow["managerEmployeePk"].ToString()! : "";
-                string mParentName = mgrRow.Table.Columns.Contains("managerEmployeeName") && mgrRow["managerEmployeeName"] != DBNull.Value ? (mgrRow["managerEmployeeName"]?.ToString() ?? "") : "";
+                string mParentName = (mgrRow.Table.Columns.Contains("managerEmployeePk") && mgrRow["managerEmployeePk"] != DBNull.Value && mgrRow.Table.Columns.Contains("managerEmployeeName") && mgrRow["managerEmployeeName"] != DBNull.Value)
+                    ? (mgrRow["managerEmployeeName"]?.ToString() ?? "")
+                    : "";
                 int mLvl = mgrRow.Table.Columns.Contains("hierarchyLevel") && mgrRow["hierarchyLevel"] != DBNull.Value ? Convert.ToInt32(mgrRow["hierarchyLevel"]) : 1;
+                string allDeptMgrNames = mgrRow.Table.Columns.Contains("departmentManagerName") && mgrRow["departmentManagerName"] != DBNull.Value
+                    ? (mgrRow["departmentManagerName"]?.ToString() ?? mName)
+                    : mName;
+                string allDeptMgrMails = mgrRow.Table.Columns.Contains("departmentManagerEmail") && mgrRow["departmentManagerEmail"] != DBNull.Value
+                    ? (mgrRow["departmentManagerEmail"]?.ToString() ?? mMail)
+                    : mMail;
                 string hrMgrNameForDept = mgrRow.Table.Columns.Contains("hrManagerName") ? (mgrRow["hrManagerName"]?.ToString() ?? "許立慧") : "許立慧";
                 string hrMgrMailForDept = mgrRow.Table.Columns.Contains("hrManagerEmail") ? (mgrRow["hrManagerEmail"]?.ToString() ?? "raya.hsu@mentortrust.com") : "raya.hsu@mentortrust.com";
 
                 var directSubordinates = treeOrderedRows
                     .Where(r => r.Table.Columns.Contains("managerEmployeePk") && r["managerEmployeePk"] != DBNull.Value
                              && Convert.ToInt32(r["managerEmployeePk"]) == mPk
-                             && !(r.Table.Columns.Contains("isDepartmentManager") && r["isDepartmentManager"] != DBNull.Value && Convert.ToBoolean(r["isDepartmentManager"])))
+                             && (!(r.Table.Columns.Contains("isDepartmentManager") && r["isDepartmentManager"] != DBNull.Value && Convert.ToBoolean(r["isDepartmentManager"]))
+                                 || Convert.ToInt32(r["departmentPk"]) == mDeptPk))
                     .ToList();
 
                 bool isHrDept = string.Equals(mDeptCode, "HR", StringComparison.OrdinalIgnoreCase);
@@ -5985,18 +6000,18 @@ public class portalController : Controller
                         <div style='background:{headerBg};padding:10px 12px;border-bottom:1px solid #e2e8f0;cursor:pointer;' onclick=""loadEmpToForm({mPk},'{escapeJsString(mCode)}','{escapeJsString(mName)}','{escapeJsString(mAcc)}','{escapeJsString(mMail)}','{escapeJsString(mTitle)}',{mDeptPk},'{escapeJsString(mRole)}','{(mActive ? "true" : "false")}','true','{mParentPk}')"">
                             <div style='display:flex;justify-content:space-between;align-items:center;gap:6px;'>
                                 <span style='font-size:11.5px;font-weight:800;color:#1e293b;'>{roleTag} ｜ {h(mDeptName)}</span>
-                                <span style='font-size:11px;color:#475569;'>{(string.IsNullOrEmpty(mParentName) ? "Root 頂層節點" : $"上層：{h(mParentName)}")}</span>
+                                <span style='font-size:11px;color:#475569;'>{(string.IsNullOrEmpty(mParentName) || mParentName == "頂層根節點(無上層)" ? "上一層主管：無 (頂層)" : $"上一層主管：{h(mParentName)}")}</span>
                             </div>
                             <div style='font-size:15px;font-weight:800;color:#0f172a;margin-top:3px;'>👑 {h(mName)} <span style='font-size:12px;font-weight:600;color:#475569;'>({h(mCode)} / {h(mAcc)})</span></div>
                             <div style='font-size:11.5px;color:#334155;margin-top:2px;'>📧 {h(mMail)} ｜ {h(mTitle)}</div>
                         </div>
                         <div style='padding:10px 12px;'>
                             <div style='font-size:11.5px;color:#1e40af;background:#f8fafc;border:1px solid #dbeafe;border-radius:6px;padding:6px 8px;margin-bottom:8px;'>
-                                📩 <strong>本部門同仁工項到期通知收件人：</strong><br/>
-                                1️⃣ 部門主管：<strong>{h(mName)}</strong> (<code>{h(mMail)}</code>)<br/>
+                                📩 <strong>本部門同仁工項到期通知收件人（多位主管皆通知）：</strong><br/>
+                                1️⃣ 部門主管：<strong>{h(allDeptMgrNames)}</strong> (<code>{h(allDeptMgrMails)}</code>)<br/>
                                 2️⃣ 人資主管：<strong>{h(hrMgrNameForDept)}</strong> (<code>{h(hrMgrMailForDept)}</code>)
                             </div>
-                            <div style='font-size:12px;font-weight:700;color:#475569;margin-bottom:6px;'>↳ 樹狀遞迴下屬同仁（共 {directSubordinates.Count} 人）：</div>
+                            <div style='font-size:12px;font-weight:700;color:#475569;margin-bottom:6px;'>↳ 直屬下層同仁（共 {directSubordinates.Count} 人）：</div>
                             <div style='display:flex;flex-wrap:wrap;gap:5px;'>");
                 foreach (DataRow subRow in directSubordinates)
                 {
@@ -6009,8 +6024,10 @@ public class portalController : Controller
                     int sDeptPk = Convert.ToInt32(subRow["departmentPk"]);
                     string sRole = subRow["roleName"]?.ToString() ?? "participant";
                     bool sActive = Convert.ToBoolean(subRow["isActive"]);
+                    bool sIsMgr = subRow.Table.Columns.Contains("isDepartmentManager") && subRow["isDepartmentManager"] != DBNull.Value && Convert.ToBoolean(subRow["isDepartmentManager"]);
                     int sLvl = subRow.Table.Columns.Contains("hierarchyLevel") && subRow["hierarchyLevel"] != DBNull.Value ? Convert.ToInt32(subRow["hierarchyLevel"]) : (mLvl + 1);
-                    sb.Append($@"<button type='button' onclick=""loadEmpToForm({sPk},'{escapeJsString(sCode)}','{escapeJsString(sName)}','{escapeJsString(sAcc)}','{escapeJsString(sMail)}','{escapeJsString(sTitle)}',{sDeptPk},'{escapeJsString(sRole)}','{(sActive ? "true" : "false")}','false','{mPk}')"" style='border:1px solid #cbd5e1;background:#f8fafc;color:#1e293b;border-radius:6px;padding:3px 8px;font-size:11.5px;cursor:pointer;font-weight:600;' title='[L{sLvl}] {h(sName)} ({h(sCode)} - {h(sTitle)}) ｜ 上層部門主管：{h(mName)} ｜ 點擊修改'>↳ L{sLvl} {h(sName)} <span style='color:#64748b;font-size:10.5px;'>({h(sCode)})</span></button>");
+                    string sIcon = sIsMgr ? "👑" : "↳";
+                    sb.Append($@"<button type='button' onclick=""loadEmpToForm({sPk},'{escapeJsString(sCode)}','{escapeJsString(sName)}','{escapeJsString(sAcc)}','{escapeJsString(sMail)}','{escapeJsString(sTitle)}',{sDeptPk},'{escapeJsString(sRole)}','{(sActive ? "true" : "false")}','{(sIsMgr ? "true" : "false")}','{mPk}')"" style='border:1px solid {(sIsMgr ? "#f59e0b" : "#cbd5e1")};background:{(sIsMgr ? "#fef3c7" : "#f8fafc")};color:#1e293b;border-radius:6px;padding:3px 8px;font-size:11.5px;cursor:pointer;font-weight:600;' title='[L{sLvl}] {h(sName)} ({h(sCode)} - {h(sTitle)}) ｜ 上一層主管：{h(mName)} ｜ 點擊修改'>{sIcon} L{sLvl} {h(sName)} <span style='color:#64748b;font-size:10.5px;'>({h(sCode)})</span></button>");
                 }
                 sb.Append(@"
                             </div>
@@ -6024,7 +6041,7 @@ public class portalController : Controller
 
             <div class='card'>
                 <div class='card-title'>
-                    <span>👥 員工列表、部門主管註記、樹狀遞迴階層、登入帳號與權限角色一覽表（支援增、刪、修、查與停用）</span>
+                    <span>👥 員工列表、部門主管註記、上一層主管、登入帳號與權限角色一覽表（支援增、刪、修、查與停用）</span>
                     <span id='empFilterCountLabel' style='font-size:13px;color:#2563eb;font-weight:700;'>共 " + empTable.Rows.Count + @" 位員工</span>
                 </div>
 
@@ -6074,7 +6091,7 @@ public class portalController : Controller
                 </div>
 
                 <table id='empDataTable'>
-                    <thead><tr><th>員工編號</th><th>員工姓名</th><th>登入帳號</th><th>所屬部門</th><th>是否為部門主管 / 職稱</th><th>上層主管與樹狀遞迴階層 (到期通知對象)</th><th>電子郵件</th><th>系統角色</th><th>帳號狀態</th><th>目前賦予 Story Point</th><th style='min-width:250px;'>管理操作 (修改 / 停用 / 刪除)</th></tr></thead><tbody>");
+                    <thead><tr><th>員工編號</th><th>員工姓名</th><th>登入帳號</th><th>所屬部門</th><th>是否為部門主管 / 職稱</th><th>上一層主管 / 到期通知對象</th><th>電子郵件</th><th>系統角色</th><th>帳號狀態</th><th>目前賦予 Story Point</th><th style='min-width:250px;'>管理操作 (修改 / 停用 / 刪除)</th></tr></thead><tbody>");
             foreach (DataRow eRow in empTable.Rows)
             {
                 int rowEmpPk = Convert.ToInt32(eRow["employeePk"]);
@@ -6088,12 +6105,9 @@ public class portalController : Controller
                 string mgrPkStr = eRow.Table.Columns.Contains("managerEmployeePk") && eRow["managerEmployeePk"] != DBNull.Value
                     ? eRow["managerEmployeePk"].ToString()!
                     : "";
-                string mgrNameStr = eRow.Table.Columns.Contains("managerEmployeeName") && eRow["managerEmployeeName"] != DBNull.Value
+                string mgrNameStr = (!string.IsNullOrEmpty(mgrPkStr) && eRow.Table.Columns.Contains("managerEmployeeName") && eRow["managerEmployeeName"] != DBNull.Value)
                     ? (eRow["managerEmployeeName"]?.ToString() ?? "")
                     : "";
-                int hLevel = eRow.Table.Columns.Contains("hierarchyLevel") && eRow["hierarchyLevel"] != DBNull.Value
-                    ? Convert.ToInt32(eRow["hierarchyLevel"])
-                    : 1;
                 string hPath = eRow.Table.Columns.Contains("hierarchyPath") && eRow["hierarchyPath"] != DBNull.Value
                     ? (eRow["hierarchyPath"]?.ToString() ?? "")
                     : (eRow["employeeName"]?.ToString() ?? "");
@@ -6111,13 +6125,16 @@ public class portalController : Controller
                         : "<span class='badge' style='background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;margin-right:4px;'>否 (一般同仁)</span>");
                 string titleCellHtml = $"{mgrBadgeHtml}<strong>{h(empTitleStr)}</strong>";
 
+                string parentMgrCellText = (!string.IsNullOrWhiteSpace(mgrNameStr) && mgrNameStr != "頂層根節點(無上層)")
+                    ? $"👤 上一層主管：<strong>{h(mgrNameStr)}</strong>"
+                    : "🌳 上一層主管：<strong>無 (頂層根節點)</strong>";
+
                 string treeHierarchyCellHtml = $@"
-                    <div style='font-size:12.5px;font-weight:700;color:#0f172a;'>
-                        <span class='badge' style='background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;margin-right:4px;'>L{hLevel}</span>
-                        {h(hPath)}
+                    <div style='font-size:12.5px;color:#0f172a;'>
+                        {parentMgrCellText}
                     </div>
                     <div style='font-size:11.5px;color:#475569;margin-top:3px;'>
-                        直屬上層：<strong>{(string.IsNullOrWhiteSpace(mgrNameStr) ? "頂層 Root (無上層)" : h(mgrNameStr))}</strong> ｜ 📩 通知：部門主管[<strong>{h(deptMgrName)}</strong>] + 人資主管[<strong>{h(hrMgrName)}</strong>]
+                        📩 到期通知：部門主管[<strong>{h(deptMgrName)}</strong>] + 人資主管[<strong>{h(hrMgrName)}</strong>]
                     </div>";
 
                 string rBadge = eRow["roleName"].ToString() == "admin"

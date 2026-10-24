@@ -260,27 +260,29 @@
 * **員工職級包含「部門經理」(`jobTitle`)**：
     1. 員工資料表 (`storyPoint.tbEmployee.jobTitle`)、預設種子資料 (`sql/seedData.sql`)、Web 員工管理表單 (`#pane-employees` 快速職級選單與 `datalist`)、員工清單職級篩選器 (`#filterEmpRank`) 及 PowerShell 員工管理介面 (`ps/ui/tabEmployee.ps1`) 均明確包含「**部門經理**」（以及「董事長兼部門經理」、「部門經理 / 資深架構師」、「部門經理 / 商業智慧資深顧問」、「部門經理 / 資料庫資深顧問」、「部門經理 / 人資」等職級），各部門主管帳號皆具備「部門經理」職級並顯示專屬徽章。
 
-### 2.16 員工資料記載「是否為部門主管 (`isDepartmentManager`)」與「樹狀遞迴階層 (`managerEmployeePk`)」，使到期通知信精準寄給該同仁的部門主管以及人資主管
+### 2.16 員工資料記載「是否為部門主管 (`isDepartmentManager`)」與「樹狀遞迴階層 (`managerEmployeePk`)」、支援同部門多位主管皆通知，且畫面僅呈現上一層主管
 * **員工資料表 (`storyPoint.tbEmployee`) 新增部門主管標記與樹狀遞迴階層欄位**：
-    1. **`isDepartmentManager` (`bit not null default(0)`)**：明確記載該名員工是否為部門主管（包含各部門主管與 HR 人資主管）。
-        * 預設種子資料 (`sql/seedData.sql`) 中，標記為 `isDepartmentManager = 1` 之 5 位部門主管為：
+    1. **`isDepartmentManager` (`bit not null default(0)`)**：明確記載該名員工是否為部門主管（包含各部門主管與 HR 人資主管），且**同一個部門可以有多位主管 (`isDepartmentManager = 1`)**。
+        * 預設種子資料 (`sql/seedData.sql`) 中，標記為 `isDepartmentManager = 1` 之部門主管為：
             * 管理部 (`MGMT`)：**胡百敬** (`081201`, `byron.hu`, `Byron.Hu@mentortrust.com`, 董事長兼部門經理)
             * HR 部門 (`HR`)：**許立慧** (`250201`, `raya`, `raya.hsu@mentortrust.com`, 部門經理 / 人資 — **人資主管**)
-            * DB/INFra 部門 (`DB_INFRA`)：**林英豪** (`120801`, `john.yh.lin`, `john.yh.lin@mentortrust.com`, 部門經理 / 資料庫資深顧問)
-            * BI 部門 (`BI`)：**黃雅玲** (`160601`, `catty.huang`, `Catty.Huang@mentortrust.com`, 部門經理 / 商業智慧資深顧問)
+            * DB/INFra 部門 (`DB_INFRA`)：**林英豪** (`120801`, `john.yh.lin`, `Eric.Lin@mentortrust.com`, 部門經理 / 資料庫資深顧問)
+            * BI 部門 (`BI`)：**蘇彥彰** (`180101`, `steven.su`, `Steven.Su@mentortrust.com`, 部門經理 / 商業智慧資深顧問)
             * 開發部門 (`DEV`)：**黃振祖** (`140901`, `jtrue.huang`, `Jtrue.Huang@mentortrust.com`, 部門經理 / 資深架構師)
-        * 其餘一般部門同仁及測試系統帳號（如 `admin`）之 `isDepartmentManager` 一律為 `0`。
-    2. **`managerEmployeePk` (`int null` 自我參照外鍵 `fkTbEmployeeManager references storyPoint.tbEmployee(pk)`)**：用**樹狀遞迴階層 (Recursive Tree Hierarchy)** 記載每位員工的上層主管：
+        * 管理者可隨時將同一部門內的多位同仁皆設為部門主管 (`isDepartmentManager = 1`)。
+    2. **`managerEmployeePk` (`int null` 自我參照外鍵 `fkTbEmployeeManager references storyPoint.tbEmployee(pk)`)**：用**樹狀遞迴階層 (Recursive Tree Hierarchy)** 記載每位員工的上一層主管：
         * **第 1 層 (L1 Root)**：`胡百敬` (`managerEmployeePk = null`, `isDepartmentManager = 1`)。
-        * **第 2 層 (L2)**：各部門主管（`許立慧`、`林英豪`、`黃雅玲`、`黃振祖`，`isDepartmentManager = 1`）以及管理部直屬同仁（`柯乃云`、`張月桂`、`林絹雅`、`李靜芳`，`isDepartmentManager = 0`），其 `managerEmployeePk` 指向 L1 `胡百敬.pk`。
-        * **第 3 層 (L3)**：HR、DB/INFra、BI、開發各部門之一般同仁（`isDepartmentManager = 0`），其 `managerEmployeePk` 指向各自所屬部門之部門主管 `pk`。
-* **T-SQL Recursive CTE 檢視表與預存程序**：
-    1. **`storyPoint.vwEmployeePointSummary`**：透過向下遞迴 CTE (`empHierarchyCte`) 與向上遞迴 CTE (`upwardManagerCte`) 計算並輸出每位員工之 `isDepartmentManager`、`managerEmployeePk`、`managerEmployeeName`、`departmentManagerEmployeePk`、`departmentManagerName`、`departmentManagerEmail`、`hrManagerEmployeePk`、`hrManagerName`、`hrManagerEmail`、`hierarchyLevel` (階層深度)、`hierarchyPath` (例如：`胡百敬 (管理) > 黃振祖 (開發) > 陳皓澤 (開發)`)、`hierarchyIndentName` 與 `hierarchySortKey`。
-    2. **`storyPoint.spUpsertEmployee`**：支援設定 `@isDepartmentManager` 與 `@managerEmployeePk`，內建遞迴 CTE 循環參照防呆檢核 (`cycleCheckCte`)，且當未顯式指定 `@managerEmployeePk` 時自動依部門主管樹狀階層掛載。
-    3. **`storyPoint.spProcessExpiredWorkItem` 到期通知信收件人精準解析**：
-        * 當工項達到迄時 (`endDate`) 自動轉態並扣除 Story Point 時，透過 **T-SQL Recursive CTE (`empManagerHierarchyCte`)** 從該工項負責同仁沿著 `managerEmployeePk` 樹狀階層向上遞迴查找第一位 `isDepartmentManager = 1` 之主管作為**「該同仁的部門主管」**，並查找 `HR` 部門中 `isDepartmentManager = 1` 之主管作為**「人資主管」**（`許立慧 raya.hsu@mentortrust.com`），使到期通知信精準寄給**該同仁的部門主管**以及**人資主管**。
-* **Web 介面與 PowerShell 完整支援**：
-    1. Web 員工管理頁面 (`/?tab=employees`) 提供「是否為部門主管 (`isDepartmentManager`)」與「上層主管 (`managerEmployeePk` 樹狀遞迴階層)」單行表單欄位、互動式「**🌳 組織與部門主管樹狀遞迴階層檢視**」視覺化面板、員工表格樹狀階層路徑與通知對象顯示，以及 CSV / Excel 批次匯入與 CSV / Excel / 互動 HTML 報表匯出支援。
+        * **第 2 層 (L2)**：各部門主管（`isDepartmentManager = 1`）以及管理部直屬同仁（`柯乃云`、`張月桂`），其 `managerEmployeePk` 指向 L1 `胡百敬.pk`。
+        * **第 3 層 (L3)**：HR、DB/INFra、BI、開發各部門之一般同仁（`isDepartmentManager = 0`），其 `managerEmployeePk` 指向所屬部門之上一層部門主管 `pk`。
+* **T-SQL Recursive CTE 檢視表與預存程序（若部門有多位主管，多位都通知）**：
+    1. **`storyPoint.vwEmployeePointSummary` 與 `storyPoint.vwDepartmentPointSummary`**：
+        * 透過遞迴 CTE 計算並輸出每位員工之 `isDepartmentManager`、`managerEmployeePk`、`managerEmployeeName`（上一層主管姓名）、`departmentManagerName`、`departmentManagerEmail`、`departmentManagerCount`、`hrManagerName`、`hrManagerEmail`。
+        * 當同一個部門有多位部門主管 (`isDepartmentManager = 1`) 時，`departmentManagerName` 與 `departmentManagerEmail` 自動彙整該部門所有啟用中之部門主管（例如 `林英豪、陳輝瑞`），`vwDepartmentPointSummary.managerName` 亦同步串接所有部門主管姓名。
+    2. **`storyPoint.spUpsertEmployee`**：支援同一個部門設定多位 `@isDepartmentManager = 1`，內建遞迴 CTE 循環參照防呆檢核 (`cycleCheckCte`)，並自動同步更新 `storyPoint.tbDepartment.managerName` 為該部門所有部門主管姓名清單。
+    3. **`storyPoint.spProcessExpiredWorkItem` 到期通知信收件人精準解析（多位部門主管皆通知）**：
+        * 當工項達到迄時 (`endDate`) 自動轉態並扣除 Story Point 時，透過 **T-SQL Recursive CTE (`empManagerHierarchyCte`)** 與同部門主管集合，將**該同仁所屬部門之所有部門主管 (`isDepartmentManager = 1`)**（若同部門有多位主管，則多位主管全部列入通知收件人）以及 **`HR` 部門之所有部門主管 (`isDepartmentManager = 1`，即人資主管)** 一併納入收件人清單寄發通知信。
+* **Web 介面與 PowerShell 完整支援（只要呈現上一層主管即可）**：
+    1. 在「📊 3-1. 員工與部門總 Story Point 統計 (`vwEmployeePointSummary`)」與「👥 4-1. 員工列表 (`#empDataTable`)」中，主管欄位**僅呈現該員工的「上一層主管 (`managerEmployeeName`)」即可**（不顯示從頂層 Root 串接至本人的冗長路徑），並在下方清楚列出到期通知對象（若部門有多位主管則完整顯示多位部門主管 + 人資主管）。
     2. PowerShell 模組 (`ps/manageEmployee.ps1` 與 `ps/ui/tabEmployee.ps1`) 同步支援 `-isDepartmentManager` 與 `-managerEmployeePk` 參數與介面控制項。
 
 ---

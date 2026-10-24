@@ -251,8 +251,13 @@ end
 go
 
 -- ============================================================================
--- 階段二：依外鍵相依反序執行 drop table if exists (符合可重複執行規範)
+-- 階段二至階段四：於單一交易批次中執行 drop table if exists、create table、
+--                 無損資料還原與檢視表重新綁定 (sp_refreshview)，避免並發查詢發生
+--                 Invalid object name 或 View binding errors
 -- ============================================================================
+set xact_abort on;
+begin transaction;
+
 drop table if exists storyPoint.tbPointHistory;
 drop table if exists storyPoint.tbVoteRecord;
 drop table if exists storyPoint.tbVotingRound;
@@ -266,7 +271,6 @@ drop table if exists storyPoint.tbCardDeck;
 drop table if exists storyPoint.tbEmployee;
 drop table if exists storyPoint.tbDepartment;
 drop table if exists storyPoint.tbLog;
-go
 
 -- ============================================================================
 -- 階段三：建立所有業務與系統資料表
@@ -287,10 +291,8 @@ create table storyPoint.tbLog (
     operatorAccount varchar(128) null,
     constraint pkTbLog primary key clustered (pk asc)
 );
-go
 
 create nonclustered index ixTbLogLogTime on storyPoint.tbLog (logTime desc, logLevel asc);
-go
 
 -- 2. 部門資料表 (storyPoint.tbDepartment)
 create table storyPoint.tbDepartment (
@@ -307,7 +309,6 @@ create table storyPoint.tbDepartment (
     constraint uqTbDepartmentCode unique nonclustered (departmentCode asc),
     constraint fkTbDepartmentParent foreign key (parentDepartmentPk) references storyPoint.tbDepartment (pk)
 );
-go
 
 -- 3. 員工與登入帳密資料表 (storyPoint.tbEmployee)
 --    包含 isDepartmentManager (是否為部門主管欄位) 與 managerEmployeePk (樹狀遞迴階層上層主管員工主鍵，自我關聯外鍵)
@@ -333,13 +334,10 @@ create table storyPoint.tbEmployee (
     constraint fkTbEmployeeDepartment foreign key (departmentPk) references storyPoint.tbDepartment (pk),
     constraint fkTbEmployeeManager foreign key (managerEmployeePk) references storyPoint.tbEmployee (pk)
 );
-go
 
 create nonclustered index ixTbEmployeeDepartment on storyPoint.tbEmployee (departmentPk asc, isDepartmentManager desc, isActive asc);
-go
 
 create nonclustered index ixTbEmployeeManagerHierarchy on storyPoint.tbEmployee (managerEmployeePk asc, isDepartmentManager desc, isActive asc);
-go
 
 -- 4. 撲克牌組設定資料表 (storyPoint.tbCardDeck)
 create table storyPoint.tbCardDeck (
@@ -355,7 +353,6 @@ create table storyPoint.tbCardDeck (
     constraint pkTbCardDeck primary key clustered (pk asc),
     constraint uqTbCardDeckCode unique nonclustered (deckCode asc)
 );
-go
 
 -- 4.5 工項類型設定資料表 (storyPoint.tbWorkItemKind)
 -- 支援增刪修工項類型（預設含：project 專案、maintenance 維運、consultingHour 顧問時數，並可自訂新增）
@@ -373,7 +370,6 @@ create table storyPoint.tbWorkItemKind (
     constraint pkTbWorkItemKind primary key clustered (pk asc),
     constraint uqTbWorkItemKindCode unique nonclustered (kindCode asc)
 );
-go
 
 -- 5. 工項代表類型資料表 (storyPoint.tbWorkItemType)
 -- 投票時可針對工項代表類型進行 Story Point 估算，建立實際工項時可選擇此類型自動帶入點數
@@ -395,7 +391,6 @@ create table storyPoint.tbWorkItemType (
     constraint uqTbWorkItemTypeCode unique nonclustered (typeCode asc),
     constraint fkTbWorkItemTypeCardDeck foreign key (defaultCardDeckPk) references storyPoint.tbCardDeck (pk)
 );
-go
 
 -- 6. 實際工項資料表 (storyPoint.tbWorkItem)
 -- workItemKind 對應 storyPoint.tbWorkItemKind.kindCode (預設含 project 專案 / maintenance 維運 / consultingHour 顧問時數，並支援自訂)
@@ -433,10 +428,8 @@ create table storyPoint.tbWorkItem (
     constraint fkTbWorkItemType foreign key (workItemTypePk) references storyPoint.tbWorkItemType (pk),
     constraint fkTbWorkItemCreatedBy foreign key (createdByEmployeePk) references storyPoint.tbEmployee (pk)
 );
-go
 
 create nonclustered index ixTbWorkItemTypeAndStatus on storyPoint.tbWorkItem (workItemTypePk asc, executionStatus asc, isActive asc);
-go
 
 -- 7. 員工工項賦予與點數分攤資料表 (storyPoint.tbWorkItemAssignment)
 create table storyPoint.tbWorkItemAssignment (
@@ -458,10 +451,8 @@ create table storyPoint.tbWorkItemAssignment (
     constraint fkTbAssignmentEmployee foreign key (employeePk) references storyPoint.tbEmployee (pk),
     constraint fkTbAssignmentAssignedBy foreign key (assignedByEmployeePk) references storyPoint.tbEmployee (pk)
 );
-go
 
 create nonclustered index ixTbWorkItemAssignmentEmployee on storyPoint.tbWorkItemAssignment (employeePk asc, workItemPk asc);
-go
 
 -- 8. 多人 Story Point 投票議程資料表 (storyPoint.tbVotingSession)
 -- targetKind: 'workItemType' (工項代表類型投票) 或 'workItem' (個別工項投票)
@@ -500,7 +491,6 @@ create table storyPoint.tbVotingSession (
     constraint fkTbVotingSessionCardDeck foreign key (cardDeckPk) references storyPoint.tbCardDeck (pk),
     constraint fkTbVotingSessionHost foreign key (hostEmployeePk) references storyPoint.tbEmployee (pk)
 );
-go
 
 -- 9. 投票議程授權參與員工資料表 (storyPoint.tbVotingSessionParticipant)
 create table storyPoint.tbVotingSessionParticipant (
@@ -514,7 +504,6 @@ create table storyPoint.tbVotingSessionParticipant (
     constraint fkTbSessionParticipantSession foreign key (votingSessionPk) references storyPoint.tbVotingSession (pk),
     constraint fkTbSessionParticipantEmployee foreign key (employeePk) references storyPoint.tbEmployee (pk)
 );
-go
 
 -- 10. 投票回合紀錄資料表 (storyPoint.tbVotingRound)
 create table storyPoint.tbVotingRound (
@@ -533,7 +522,6 @@ create table storyPoint.tbVotingRound (
     constraint uqTbVotingRoundSessionRound unique nonclustered (votingSessionPk asc, roundNumber asc),
     constraint fkTbVotingRoundSession foreign key (votingSessionPk) references storyPoint.tbVotingSession (pk)
 );
-go
 
 -- 11. 員工各回合出牌明細資料表 (storyPoint.tbVoteRecord)
 create table storyPoint.tbVoteRecord (
@@ -553,10 +541,8 @@ create table storyPoint.tbVoteRecord (
     constraint fkTbVoteRecordSession foreign key (votingSessionPk) references storyPoint.tbVotingSession (pk),
     constraint fkTbVoteRecordEmployee foreign key (employeePk) references storyPoint.tbEmployee (pk)
 );
-go
 
 create nonclustered index ixTbVoteRecordSession on storyPoint.tbVoteRecord (votingSessionPk asc, roundNumber asc, employeePk asc);
-go
 
 -- 12. Story Point 訂定與異動歷程資料表 (storyPoint.tbPointHistory)
 create table storyPoint.tbPointHistory (
@@ -577,7 +563,6 @@ create table storyPoint.tbPointHistory (
     constraint fkTbPointHistoryVotingSession foreign key (votingSessionPk) references storyPoint.tbVotingSession (pk),
     constraint fkTbPointHistoryChangedBy foreign key (changedByEmployeePk) references storyPoint.tbEmployee (pk)
 );
-go
 
 -- ============================================================================
 -- 階段四：若暫存保留表 (tbPreserve*) 存在資料，自動無損還原回新建資料表
@@ -824,7 +809,6 @@ begin
     from storyPoint.tbPreserveLog;
     set identity_insert storyPoint.tbLog off;
 end
-go
 
 drop table if exists storyPoint.tbPreservePointHistory;
 drop table if exists storyPoint.tbPreserveVoteRecord;
@@ -839,4 +823,15 @@ drop table if exists storyPoint.tbPreserveCardDeck;
 drop table if exists storyPoint.tbPreserveEmployee;
 drop table if exists storyPoint.tbPreserveDepartment;
 drop table if exists storyPoint.tbPreserveLog;
+
+if object_id('storyPoint.vwWorkItemDetail', 'v') is not null
+    exec sp_refreshview 'storyPoint.vwWorkItemDetail';
+if object_id('storyPoint.vwEmployeePointSummary', 'v') is not null
+    exec sp_refreshview 'storyPoint.vwEmployeePointSummary';
+if object_id('storyPoint.vwDepartmentPointSummary', 'v') is not null
+    exec sp_refreshview 'storyPoint.vwDepartmentPointSummary';
+if object_id('storyPoint.vwVotingSessionSummary', 'v') is not null
+    exec sp_refreshview 'storyPoint.vwVotingSessionSummary';
+
+commit transaction;
 go

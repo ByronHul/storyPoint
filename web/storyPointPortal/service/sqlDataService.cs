@@ -392,6 +392,25 @@ public class sqlDataService
                 if (attempt <= maxRetry)
                 {
                     _logger.LogWarning(ex, "執行預存程序 {Proc} 第 {Attempt} 次失敗，準備重試...", procedureName, attempt);
+                    if (ex is SqlException sqlBindEx && (sqlBindEx.Number == 4413 || sqlBindEx.Number == 208 || ex.Message.Contains("binding errors", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        try
+                        {
+                            await using var refreshConn = new SqlConnection(getConnectionString());
+                            await refreshConn.OpenAsync();
+                            await using var refreshCmd = refreshConn.CreateCommand();
+                            refreshCmd.CommandText = @"
+                                if object_id('storyPoint.vwWorkItemDetail', 'v') is not null exec sp_refreshview 'storyPoint.vwWorkItemDetail';
+                                if object_id('storyPoint.vwEmployeePointSummary', 'v') is not null exec sp_refreshview 'storyPoint.vwEmployeePointSummary';
+                                if object_id('storyPoint.vwDepartmentPointSummary', 'v') is not null exec sp_refreshview 'storyPoint.vwDepartmentPointSummary';
+                                if object_id('storyPoint.vwVotingSessionSummary', 'v') is not null exec sp_refreshview 'storyPoint.vwVotingSessionSummary';";
+                            await refreshCmd.ExecuteNonQueryAsync();
+                        }
+                        catch
+                        {
+                            // 忽略重新綁定例外，交由重試機制處理
+                        }
+                    }
                     await Task.Delay(delayMs);
                 }
                 else

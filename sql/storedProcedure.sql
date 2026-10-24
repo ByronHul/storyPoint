@@ -407,7 +407,7 @@ begin
             begin
                 set @resolvedManagerPk = @managerEmployeePk;
             end
-            else if @existingManagerPk is not null and @existingDeptPk = @effectiveDeptPk and @existingManagerPk <> @targetPk
+            else if @existingManagerPk is not null and @existingDeptPk = @effectiveDeptPk and @existingManagerPk <> @targetPk and @existingIsDeptMgr = @resolvedIsDeptMgr
             begin
                 set @resolvedManagerPk = @existingManagerPk;
             end
@@ -551,14 +551,9 @@ begin
             updatedAt = sysdatetime()
         where pk = @targetPk;
 
-        -- 若該員工被設定為部門主管 (isDepartmentManager = 1)，同步更新所屬部門之 managerName，並讓同部門尚未指定主管之一般同仁自動掛載於此部門主管下
+        -- 若該員工被設定為部門主管 (isDepartmentManager = 1)，讓同部門尚未指定上層主管之一般同仁自動掛載於此部門主管下
         if @resolvedIsDeptMgr = 1
         begin
-            update storyPoint.tbDepartment
-            set managerName = isnull(nullif(ltrim(rtrim(@employeeName)), ''), managerName),
-                updatedAt = sysdatetime()
-            where pk = @effectiveDeptPk;
-
             update storyPoint.tbEmployee
             set managerEmployeePk = @targetPk,
                 updatedAt = sysdatetime()
@@ -572,9 +567,48 @@ begin
                       from storyPoint.tbEmployee as curMgr
                       where curMgr.pk = storyPoint.tbEmployee.managerEmployeePk
                         and curMgr.departmentPk = @effectiveDeptPk
+                        and curMgr.isActive = 1
                   )
               );
         end
+        else
+        begin
+            -- 若該員工取消部門主管身分 (isDepartmentManager = 0)，且原本掛載於其下之同部門同仁需移轉至同部門其他有效部門主管
+            declare @otherDeptMgrPk int = null;
+            select top 1 @otherDeptMgrPk = e.pk
+            from storyPoint.tbEmployee as e
+            where e.departmentPk = @effectiveDeptPk
+              and e.isDepartmentManager = 1
+              and e.isActive = 1
+              and e.pk <> @targetPk
+            order by e.pk asc;
+
+            if @otherDeptMgrPk is not null
+            begin
+                update storyPoint.tbEmployee
+                set managerEmployeePk = @otherDeptMgrPk,
+                    updatedAt = sysdatetime()
+                where departmentPk = @effectiveDeptPk
+                  and managerEmployeePk = @targetPk
+                  and pk <> @otherDeptMgrPk;
+            end
+        end
+
+        -- 同步更新部門之 managerName（支援同一個部門有多位部門主管，以「、」串接所有啟用中之部門主管姓名）
+        update d
+        set d.managerName = isnull(mgrAgg.managerNameCsv, d.managerName),
+            d.updatedAt = sysdatetime()
+        from storyPoint.tbDepartment as d
+        outer apply (
+            select
+                string_agg(e.employeeName, N'、') within group (order by e.pk asc) as managerNameCsv
+            from storyPoint.tbEmployee as e
+            where e.departmentPk = d.pk
+              and e.isDepartmentManager = 1
+              and e.isActive = 1
+        ) as mgrAgg
+        where d.pk = @effectiveDeptPk
+           or mgrAgg.managerNameCsv is not null;
 
         set @durationMs = datediff(millisecond, @startTime, sysdatetime());
         exec storyPoint.spWriteLog
@@ -605,6 +639,7 @@ begin
             v.departmentManagerEmployeePk,
             v.departmentManagerName,
             v.departmentManagerEmail,
+            v.departmentManagerCount,
             v.hrManagerName,
             v.hrManagerEmail,
             v.hierarchyLevel,
@@ -3310,6 +3345,8 @@ begin
             d.parentDepartmentPk,
             d.parentDepartmentName,
             d.managerName,
+            d.managerEmailCsv,
+            d.departmentManagerCount,
             d.departmentNote,
             d.isActive,
             d.totalEmployeeCount,
@@ -3350,6 +3387,7 @@ begin
             e.departmentManagerEmployeePk,
             e.departmentManagerName,
             e.departmentManagerEmail,
+            e.departmentManagerCount,
             e.hrManagerEmployeePk,
             e.hrManagerName,
             e.hrManagerEmail,
@@ -4070,7 +4108,8 @@ begin
         left join @expiredItem as ex
             on v.pk = ex.workItemPk
         outer apply (
-            -- 針對該工項每位負責同仁，由樹狀遞迴階層向上定位「該同仁的部門主管 (isDepartmentManager = 1)」
+            -- 針對該工項每位負責同仁，由樹狀遞迴階層向上定位並納入同部門所有「部門主管 (isDepartmentManager = 1)」
+            -- 若同一個部門有多位主管，則多位部門主管全部列入通知收件人
             select
                 string_agg(m.emailAddress, ',') within group (order by m.employeePk asc) as managerEmailCsv,
                 string_agg(concat(m.employeeName, N'(', m.departmentName, N' ', m.jobTitle, N')'), N'、') within group (order by m.employeePk asc) as managerNameCsv
@@ -4083,28 +4122,20 @@ begin
                     resolvedMgr.departmentName
                 from storyPoint.tbWorkItemAssignment as wia
                 cross apply (
-                    select top 1
+                    select distinct
                         cand.employeePk,
                         cand.emailAddress,
                         cand.employeeName,
                         cand.jobTitle,
                         cand.departmentName
                     from (
-                        -- 優先由樹狀遞迴階層 (empManagerHierarchyCte) 向上尋找標記為部門主管 (isDepartmentManager = 1) 之主管
+                        -- 1. 由樹狀遞迴階層 (empManagerHierarchyCte) 向上尋找同部門標記為部門主管 (isDepartmentManager = 1) 之主管；若該部門無主管則向上取上層部門主管
                         select
                             h.currentEmpPk as employeePk,
                             h.currentEmpEmail as emailAddress,
                             h.currentEmpName as employeeName,
                             h.currentEmpJobTitle as jobTitle,
-                            d.departmentName,
-                            case
-                                when h.startIsDeptMgr = 0 and h.hopDistance >= 1 and h.currentIsDeptMgr = 1 and h.currentDeptPk = h.startDepartmentPk then 1
-                                when h.startIsDeptMgr = 0 and h.hopDistance >= 1 and h.currentIsDeptMgr = 1 then 2
-                                when h.startIsDeptMgr = 1 and h.hopDistance = 0 then 3
-                                when h.hopDistance = 1 and h.currentIsDeptMgr = 1 then 4
-                                else 9
-                            end as priorityOrder,
-                            h.hopDistance as sortHop
+                            d.departmentName
                         from empManagerHierarchyCte as h
                         inner join storyPoint.tbDepartment as d
                             on h.currentDeptPk = d.pk
@@ -4112,19 +4143,28 @@ begin
                           and h.currentIsActive = 1
                           and isnull(h.currentEmpEmail, '') <> ''
                           and h.currentIsDeptMgr = 1
+                          and (
+                              h.currentDeptPk = h.startDepartmentPk
+                              or not exists (
+                                  select 1
+                                  from storyPoint.tbEmployee as anySameDeptMgr
+                                  where anySameDeptMgr.departmentPk = h.startDepartmentPk
+                                    and anySameDeptMgr.isDepartmentManager = 1
+                                    and anySameDeptMgr.isActive = 1
+                                    and isnull(ltrim(rtrim(anySameDeptMgr.emailAddress)), '') <> ''
+                              )
+                          )
                           and (h.hopDistance >= 1 or h.startIsDeptMgr = 1)
 
                         union all
 
-                        -- 備援：若該同仁尚未設定 managerEmployeePk，則取該同仁所屬部門中 isDepartmentManager = 1 之部門主管
+                        -- 2. 若該同仁所屬部門有多位主管 (isDepartmentManager = 1)，將該部門所有啟用中之部門主管一併納入通知
                         select
                             deptMgr.pk as employeePk,
                             ltrim(rtrim(deptMgr.emailAddress)) as emailAddress,
                             deptMgr.employeeName,
                             deptMgr.jobTitle,
-                            dept.departmentName,
-                            5 as priorityOrder,
-                            99 as sortHop
+                            dept.departmentName
                         from storyPoint.tbEmployee as assignEmp
                         inner join storyPoint.tbEmployee as deptMgr
                             on assignEmp.departmentPk = deptMgr.departmentPk
@@ -4135,7 +4175,6 @@ begin
                           and deptMgr.isDepartmentManager = 1
                           and isnull(ltrim(rtrim(deptMgr.emailAddress)), '') <> ''
                     ) as cand
-                    order by cand.priorityOrder asc, cand.sortHop asc, cand.employeePk asc
                 ) as resolvedMgr
                 where wia.workItemPk = v.pk
 

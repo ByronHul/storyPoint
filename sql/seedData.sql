@@ -185,10 +185,12 @@ declare @eRole varchar(32);
 
 while @idx <= @maxRow
 begin
+    declare @empAlreadyExists bit = 0;
     select
         @eCode = s.employeeCode,
         @eName = s.employeeName,
         @eAcc = s.loginAccount,
+        @empAlreadyExists = case when exists (select 1 from storyPoint.tbEmployee where loginAccount = s.loginAccount or employeeCode = s.employeeCode) then 1 else 0 end,
         @eHash = case when exists (select 1 from storyPoint.tbEmployee where loginAccount = s.loginAccount or employeeCode = s.employeeCode) then '' else s.passwordHash end,
         @eMail = s.emailAddress,
         @eTitle = s.jobTitle,
@@ -197,6 +199,8 @@ begin
         @eRole = s.roleName
     from @mentorEmployeeSeed as s
     where s.rowNum = @idx;
+
+    declare @passIsMgr bit = case when @empAlreadyExists = 1 and @eIsMgr = 0 then null else @eIsMgr end;
 
     exec storyPoint.spUpsertEmployee
         @employeePk = null,
@@ -207,7 +211,7 @@ begin
         @emailAddress = @eMail,
         @jobTitle = @eTitle,
         @departmentPk = @eDept,
-        @isDepartmentManager = @eIsMgr,
+        @isDepartmentManager = @passIsMgr,
         @managerEmployeePk = null,
         @roleName = @eRole,
         @isActive = 1,

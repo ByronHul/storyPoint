@@ -258,11 +258,12 @@ select
     isnull(directMgr.employeeName, N'頂層根節點(無上層)') as managerEmployeeName,
     isnull(directMgr.emailAddress, '') as managerEmailAddress,
     resolvedDeptMgr.deptMgrPk as departmentManagerEmployeePk,
-    isnull(resolvedDeptMgr.deptMgrName, isnull(d.managerName, N'未設定')) as departmentManagerName,
-    isnull(resolvedDeptMgr.deptMgrEmail, '') as departmentManagerEmail,
+    isnull(resolvedDeptMgr.deptMgrNameCsv, isnull(d.managerName, N'未設定')) as departmentManagerName,
+    isnull(resolvedDeptMgr.deptMgrEmailCsv, '') as departmentManagerEmail,
+    isnull(resolvedDeptMgr.deptMgrCount, 0) as departmentManagerCount,
     hrMgr.hrMgrPk as hrManagerEmployeePk,
-    isnull(hrMgr.hrMgrName, N'許立慧') as hrManagerName,
-    isnull(hrMgr.hrMgrEmail, '') as hrManagerEmail,
+    isnull(hrMgr.hrMgrNameCsv, N'許立慧') as hrManagerName,
+    isnull(hrMgr.hrMgrEmailCsv, '') as hrManagerEmail,
     isnull(treeNode.hierarchyLevel, 1) as hierarchyLevel,
     isnull(treeNode.hierarchyPath, e.employeeName) as hierarchyPath,
     concat(
@@ -292,60 +293,86 @@ left join storyPoint.tbEmployee as directMgr
 left join empHierarchyCte as treeNode
     on treeNode.employeePk = e.pk
 outer apply (
-    -- 透過向上樹狀遞迴優先尋找該同仁的部門主管 (若本人即為該部門主管則取本人或上層部門主管；若一般同仁則沿樹狀向上取最近一位 isDepartmentManager = 1 之主管)
-    select top 1
-        cand.deptMgrPk,
-        cand.deptMgrName,
-        cand.deptMgrEmail
+    -- 透過向上樹狀遞迴與同部門主管集合解析該同仁的部門主管（支援同一個部門有多位主管：同部門多層級樹狀主管與同部門多位並列主管）
+    select
+        min(case when dm.rn = 1 then dm.deptMgrPk end) as deptMgrPk,
+        string_agg(dm.deptMgrName, N'、') within group (order by dm.deptMgrPk asc) as deptMgrNameCsv,
+        string_agg(dm.deptMgrEmail, ',') within group (order by dm.deptMgrPk asc) as deptMgrEmailCsv,
+        count(dm.deptMgrPk) as deptMgrCount
     from (
         select
-            u.currentEmpPk as deptMgrPk,
-            u.currentEmpName as deptMgrName,
-            u.currentEmpEmail as deptMgrEmail,
-            case
-                when e.isDepartmentManager = 0 and u.hopDistance >= 1 and u.currentIsDeptMgr = 1 and u.currentDeptPk = e.departmentPk then 1
-                when e.isDepartmentManager = 0 and u.hopDistance >= 1 and u.currentIsDeptMgr = 1 then 2
-                when e.isDepartmentManager = 1 and u.hopDistance = 0 then 3
-                when u.hopDistance = 1 then 4
-                else 9
-            end as matchPriority,
-            u.hopDistance as sortDist
-        from upwardManagerCte as u
-        where u.startEmployeePk = e.pk
-          and u.currentIsActive = 1
-          and (u.hopDistance >= 1 or e.isDepartmentManager = 1)
+            dedup.deptMgrPk,
+            dedup.deptMgrName,
+            dedup.deptMgrEmail,
+            dedup.bestPriority,
+            dedup.bestDist,
+            row_number() over (order by dedup.bestPriority asc, dedup.bestDist asc, dedup.deptMgrPk asc) as rn
+        from (
+            select
+                cand.deptMgrPk,
+                max(cand.deptMgrName) as deptMgrName,
+                max(cand.deptMgrEmail) as deptMgrEmail,
+                min(cand.matchPriority) as bestPriority,
+                min(cand.sortDist) as bestDist
+            from (
+                -- 1. 沿樹狀遞迴向上尋找同部門且 isDepartmentManager = 1 之各層部門主管
+                select
+                    u.currentEmpPk as deptMgrPk,
+                    u.currentEmpName as deptMgrName,
+                    ltrim(rtrim(u.currentEmpEmail)) as deptMgrEmail,
+                    case
+                        when e.isDepartmentManager = 0 and u.hopDistance >= 1 and u.currentIsDeptMgr = 1 and u.currentDeptPk = e.departmentPk then 1
+                        when e.isDepartmentManager = 1 and u.hopDistance = 0 and u.currentIsDeptMgr = 1 then 2
+                        when e.isDepartmentManager = 1 and u.hopDistance >= 1 and u.currentIsDeptMgr = 1 and u.currentDeptPk = e.departmentPk then 3
+                        else 4
+                    end as matchPriority,
+                    u.hopDistance as sortDist
+                from upwardManagerCte as u
+                where u.startEmployeePk = e.pk
+                  and u.currentIsActive = 1
+                  and u.currentIsDeptMgr = 1
+                  and (
+                      u.currentDeptPk = e.departmentPk
+                      or not exists (
+                          select 1
+                          from storyPoint.tbEmployee as anySameDeptMgr
+                          where anySameDeptMgr.departmentPk = e.departmentPk
+                            and anySameDeptMgr.isDepartmentManager = 1
+                            and anySameDeptMgr.isActive = 1
+                      )
+                  )
+                  and (u.hopDistance >= 1 or e.isDepartmentManager = 1)
 
-        union all
+                union all
 
-        -- 備援：若該同仁未設定 managerEmployeePk，則取同部門設定為 isDepartmentManager = 1 之部門主管
-        select
-            sameDeptMgr.pk as deptMgrPk,
-            sameDeptMgr.employeeName as deptMgrName,
-            sameDeptMgr.emailAddress as deptMgrEmail,
-            5 as matchPriority,
-            99 as sortDist
-        from storyPoint.tbEmployee as sameDeptMgr
-        where sameDeptMgr.departmentPk = e.departmentPk
-          and sameDeptMgr.isDepartmentManager = 1
-          and sameDeptMgr.isActive = 1
-    ) as cand
-    order by cand.matchPriority asc, cand.sortDist asc, cand.deptMgrPk asc
+                -- 2. 同一個部門可以有多位主管：納入同部門所有啟用中且設定為 isDepartmentManager = 1 之部門主管
+                select
+                    sameDeptMgr.pk as deptMgrPk,
+                    sameDeptMgr.employeeName as deptMgrName,
+                    ltrim(rtrim(sameDeptMgr.emailAddress)) as deptMgrEmail,
+                    5 as matchPriority,
+                    99 as sortDist
+                from storyPoint.tbEmployee as sameDeptMgr
+                where sameDeptMgr.departmentPk = e.departmentPk
+                  and sameDeptMgr.isDepartmentManager = 1
+                  and sameDeptMgr.isActive = 1
+            ) as cand
+            group by cand.deptMgrPk
+        ) as dedup
+    ) as dm
 ) as resolvedDeptMgr
 outer apply (
-    -- 解析人資主管 (HR 部門且 isDepartmentManager = 1 之主管)
-    select top 1
-        he.pk as hrMgrPk,
-        he.employeeName as hrMgrName,
-        he.emailAddress as hrMgrEmail
+    -- 解析人資主管 (HR 部門且 isDepartmentManager = 1 之所有主管，支援多位人資主管)
+    select
+        min(he.pk) as hrMgrPk,
+        string_agg(he.employeeName, N'、') within group (order by he.pk asc) as hrMgrNameCsv,
+        string_agg(ltrim(rtrim(he.emailAddress)), ',') within group (order by he.pk asc) as hrMgrEmailCsv
     from storyPoint.tbEmployee as he
     inner join storyPoint.tbDepartment as hd
         on he.departmentPk = hd.pk
     where he.isActive = 1
       and (hd.departmentCode = 'HR' or hd.departmentName = N'HR' or he.jobTitle like N'%人資%' or he.jobTitle like N'%HR%')
       and he.isDepartmentManager = 1
-    order by
-        case when hd.departmentCode = 'HR' then 0 else 1 end asc,
-        he.pk asc
 ) as hrMgr
 outer apply (
     select count(sub.pk) as directSubordinateCount
@@ -404,6 +431,8 @@ select
     d.parentDepartmentPk,
     isnull(parentDept.departmentName, N'頂層部門') as parentDepartmentName,
     isnull(deptMgrEmp.managerNameCsv, isnull(d.managerName, N'未指派')) as managerName,
+    isnull(deptMgrEmp.managerEmailCsv, '') as managerEmailCsv,
+    isnull(deptMgrEmp.managerCount, 0) as departmentManagerCount,
     d.departmentNote,
     d.isActive,
     isnull(empStat.totalEmployeeCount, 0) as totalEmployeeCount,
@@ -426,7 +455,9 @@ left join storyPoint.tbDepartment as parentDept
     on d.parentDepartmentPk = parentDept.pk
 outer apply (
     select
-        string_agg(e.employeeName, N'、') within group (order by e.pk asc) as managerNameCsv
+        string_agg(e.employeeName, N'、') within group (order by e.pk asc) as managerNameCsv,
+        string_agg(ltrim(rtrim(e.emailAddress)), ',') within group (order by e.pk asc) as managerEmailCsv,
+        count(e.pk) as managerCount
     from storyPoint.tbEmployee as e
     where e.departmentPk = d.pk
       and e.isDepartmentManager = 1
