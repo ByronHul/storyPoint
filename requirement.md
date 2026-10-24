@@ -240,14 +240,16 @@
             2. 獨立盲投網頁 (`/voting/session?sessionPk=X`) 之綠色牌桌定案區塊、主持人/檢視者控制台及各回合歷程與定案紀錄表。
             3. 回合與範圍參與設定頁籤 (`#pane-roundSetup`) 之議程總覽表及查詢訂出 Story Point 過程頁籤 (`/?tab=history`)。
 
-### 2.15 工項類型（專案 / 維運 / 顧問時數及自訂類型）完整增刪修 (CRUD)、起訖時間設定、到期自動轉態扣減 Story Point 與 Email 寄信通知部門管理層與 HR，以及職級含部門經理規範
+### 2.15 工項類型（專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品及自訂類型）完整增刪修 (CRUD)、起訖時間設定、到期自動轉態扣減 Story Point 與 Email 寄信通知部門管理層與 HR，以及職級含部門經理規範
 * **工項類型 (`storyPoint.tbWorkItemKind`)、工項代表類型 (`storyPoint.tbWorkItemType`) 與實際工項 (`storyPoint.tbWorkItem`) 完整增、刪、修 (CRUD)**：
     1. **工項類型主檔 (`storyPoint.tbWorkItemKind`) 增、刪、修**：
-        * 系統建立獨立資料表 `storyPoint.tbWorkItemKind`，預設內建三種核心工項類型：**`project`（🚀 專案）**、**`maintenance`（🛠️ 維運）**、**`consultingHour`（⏱️ 顧問時數）**，並支援管理員自由**新增 (`➕ 新增`)**、**修改 (`✏️ 修改`)** 與**刪除 (`🗑️ 刪除`)** 任何工項類型（包含類型代碼 `kindCode`、繁體中文名稱 `kindName`、圖示 `iconEmoji`、標籤配色 `badgeColor`、排序 `sortOrder` 與說明 `description`）。
+        * 系統建立獨立資料表 `storyPoint.tbWorkItemKind`，預設內建五種核心工項類型：**`project`（🏗️ 專案，排序 10）**、**`maintenance`（🛠️ 維運，排序 20）**、**`consultingHour`（⏳ 顧問時數，排序 30）**、**`training`（🎓 教育訓練，排序 40）**、**`productDevelopment`（🚀 開發產品，排序 50）**，並支援管理員自由**新增 (`➕ 新增`)**、**修改 (`✏️ 修改`)** 與**刪除 (`🗑️ 刪除`)** 任何工項類型（包含類型代碼 `kindCode`、繁體中文名稱 `kindName`、圖示 `badgeIcon`、標籤配色 `badgeColor`、排序 `sortOrder` 與說明 `description`）。
         * 透過預存程序 `storyPoint.spUpsertWorkItemKind` 與 `storyPoint.spDeleteWorkItemKind`、Web 介面 (`/?tab=workitems` 及 `/?tab=types` 之「🗂️ 工項類型增、刪、修管理」專區，對應路由 `POST /workitem/kind/save` 與 `POST /workitem/kind/delete`) 以及 PowerShell (`ps/manageWorkItem.ps1` 之 `listWorkItemKind` / `upsertWorkItemKind` / `deleteWorkItemKind` 與 `ps/ui/tabWorkItem.ps1`) 提供完整增刪修功能；刪除任一工項類型時，原本歸屬該類型之工項與代表類型會自動安全轉移至預設或替代類型，確保資料完整性。
     2. **工項代表類型 (`storyPoint.tbWorkItemType`) 與實際工項 (`storyPoint.tbWorkItem`) 增、刪、修**：
         * 除新增與修改外，亦透過 `storyPoint.spDeleteWorkItemType` (`POST /workitem/type/delete`) 與 `storyPoint.spDeleteWorkItem` (`POST /workitem/delete`) 於 Web 介面及 PowerShell 提供代表類型與實際工項之完整刪除功能，並於 `storyPoint.tbPointHistory` 留存完整稽核紀錄。
-    3. **起訖時間 (`startDate` ~ `endDate`)**：每一筆工項皆具備明確的「開始時間（起時 `startDate`）」與「結束時間（迄時 `endDate`）」，並於 Web 介面 (`/?tab=workitems`)、批次匯入/匯出 (CSV / Excel / 互動 HTML) 與 PowerShell (`ps/manageWorkItem.ps1` / `ps/ui/tabWorkItem.ps1`) 提供完整設定與查詢。
+    3. **起訖時間 (`startDate` ~ `endDate`) 與「起訖時間快速設定」**：
+        * 每一筆工項皆具備明確的「開始時間（起時 `startDate`）」與「結束時間（迄時 `endDate`）」，並於 Web 介面 (`/?tab=workitems`)、批次匯入/匯出 (CSV / Excel / 互動 HTML) 與 PowerShell (`ps/manageWorkItem.ps1` / `ps/ui/tabWorkItem.ps1`) 提供完整設定與查詢。
+        * **起訖時間快速設定 (`#wiDurationQty` + `#wiDurationUnit`)**：改為提供「**數量**（手動輸入 `<input type='number'>`，預設值為 `1`）」與「**單位**（下拉 `<select>` options：**`天`**、**`周`**、**`月`**、**`季`**、**`年`**）」，當變更數量、單位或開始時間（起時）時，系統自動依據起時加計對應之天/周/月/季/年計算並帶入結束時間（迄時）。
 * **達到迄時自動轉換工項狀態、扣減 Story Point 並透過 Email 寄信給部門管理層與 HR**：
     1. **自動偵測與轉換狀態 (`storyPoint.spProcessExpiredWorkItem`)**：
         * 當系統時間達到或超過工項的迄時 (`endDate <= dateadd(hour, 8, sysutcdatetime())`) 且尚未處理 (`isExpiredProcessed = 0`) 時，系統（透過 `workItemExpiryBackgroundService` 背景定時排程、頁面載入/工項儲存自動觸發、或手動點擊 `POST /workitem/checkExpired`）自動將該工項之 `executionStatus` 轉換為 `'done'`（顯示為「已完成 (已到期扣點)」）。
@@ -284,6 +286,31 @@
 * **Web 介面與 PowerShell 完整支援（只要呈現上一層主管即可）**：
     1. 在「📊 3-1. 員工與部門總 Story Point 統計 (`vwEmployeePointSummary`)」與「👥 4-1. 員工列表 (`#empDataTable`)」中，主管欄位**僅呈現該員工的「上一層主管 (`managerEmployeeName`)」即可**（不顯示從頂層 Root 串接至本人的冗長路徑），並在下方清楚列出到期通知對象（若部門有多位主管則完整顯示多位部門主管 + 人資主管）。
     2. PowerShell 模組 (`ps/manageEmployee.ps1` 與 `ps/ui/tabEmployee.ps1`) 同步支援 `-isDepartmentManager` 與 `-managerEmployeePk` 參數與介面控制項。
+
+### 2.17 表格操作最佳化：全系統表格即時篩選，且表格內紀錄的操作全面改以「滑鼠快捷選單 (Context Menu)」提供編輯、刪除等選項（免水平捲動到最右邊）
+* **全系統表格提供多維度與欄位級即時篩選**：
+    1. **通用表格工具列即時篩選 (`.sp-table-toolbar-filter`)**：
+        * 系統中所有包含 `<thead>` 與 `<tbody>` 的 `<table>` 皆於表頭上方工具列內建：
+            * `🏷️ 欄位選擇下拉選單`（可選「全部欄位」或指定單一表頭欄位）。
+            * `🎯 欄位既有值快速下拉選單`（當選擇指定欄位時，自動列出該欄不重複之欄位值供一鍵選取過濾）。
+            * `🔍 關鍵字快速篩選輸入框`（即時過濾符合關鍵字之資料列）。
+            * `📊 顯示筆數統計徽章`（即時顯示 `顯示 X / Y 筆`）與 `✖ 清除篩選` 按鈕。
+    2. **重點業務表格專屬多維度組合篩選列**：
+        * **工項清單 (`#workItemDataTable` — 各工項的類型、起訖時間、Story Point 與到期自動扣點寄信一覽表)**：提供「🔍 關鍵字快速篩選」、「🏷️ 工項類型篩選（專案/維運/顧問時數/自訂類型）」、「📐 所屬代表類型篩選」、「⚡ 執行與到期狀態篩選（待處理/進行中/已完成/已達迄時自動扣點/有效計點中）」、「👤 負責員工 / 部門篩選」及「🔄 清除全部篩選條件」。
+        * **工項代表類型一覽表 (`#workItemTypeDataTable`)**：提供「🔍 關鍵字快速篩選」、「🏷️ 預設工項類型篩選」、「📊 估算狀態篩選（已核定 / 待投票定案）」。
+        * **員工與組織管理一覽表 (`#empDataTable`)** 與 **系統 Log 稽核表 (`#sysLogDataTable`)**：與通用表格工具列篩選無縫雙向整合。
+* **表格內紀錄的操作全面改以「滑鼠快捷選單 (`#spRowContextMenu`)」提供，不用捲到最右邊**：
+    1. **移除表格最右側操作欄**：移除工項表 (`#workItemDataTable`)、工項類型表 (`.wik-data-table`)、工項代表類型表 (`#workItemTypeDataTable`)、員工管理表 (`#empDataTable`) 與盲投議程總覽表 (`#roundSetupSessionTable`) 最右側的「增刪修操作 / 管理操作」欄位，彻底消除水平捲動到最右邊才能點擊修改或刪除的不便。
+    2. **滑鼠右鍵快捷選單 + 首欄「⚡ 操作 ▾」按鈕雙觸發**：
+        * 使用者可直接在**表格任一列任意位置按下滑鼠右鍵 (`contextmenu`)**，或點擊**第一欄（最左側）的「`⚡ 操作 ▾`」快捷按鈕**，立即在滑鼠游標旁彈出浮動快捷選單 (`#spRowContextMenu`)。
+        * **依表格類型自動提供專屬操作選項**：
+            * **工項紀錄 (`workitem`)**：`✏️ 編輯 / 修改此工項設定`、`👥 修改此工項之賦予員工與分攤配額`、`🃏 針對此工項發起多人盲投估算`、`⚡ 設為已到期並帶入表單（測試自動扣點寄信）`、`🗑️ 刪除此工項紀錄`。
+            * **工項類型紀錄 (`workitemKind`)**：`✏️ 編輯 / 修改此工項類型`、`🔍 篩選套用此類型的所有工項`、`🗑️ 刪除此工項類型`。
+            * **工項代表類型紀錄 (`workitemType`)**：`✏️ 編輯 / 修改此工項代表類型`、`🃏 針對此代表類型發起多人盲投估算`、`🔍 檢視套用此代表類型的所有工項`、`🗑️ 刪除此工項代表類型`。
+            * **員工紀錄 (`employee`)**：`✏️ 修改員工資料、部門主管註記與登入密碼`、`📋 篩選檢視此員工負責的所有工項`、`🚫 停用 / ✅ 啟用此員工帳號`、`🗑️ 永久刪除此員工帳號`。
+            * **盲投議程紀錄 (`session`)**：`🚀 開啟此盲投 Session 獨立網頁`。
+            * **所有表格共通快捷項目**：`🔍 以此儲存格值篩選【欄位名稱】`、`🔄 清除本表格所有篩選條件並重設排序`、`📋 複製本列紀錄文字至剪貼簿`。
+    3. **PowerShell GUI (`ps/common.ps1` 與 `ps/ui/*.ps1`) 同步支援**：所有 `DataGridView` 皆掛載右鍵 `ContextMenuStrip` 快捷選單，支援右鍵載入表單編輯、右鍵刪除、以此儲存格值篩選表格、清除篩選與複製整列紀錄。
 
 ---
 

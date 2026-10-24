@@ -609,10 +609,15 @@ function invokeParameterizedSql {
     凡是 UI 中的表格 (DataGridView) 表頭皆提供：
     1. 左鍵點擊表頭：自動切換升冪 (▲) / 降冪 (▼) 排序 (Automatic SortMode)
     2. 右鍵點擊表頭：鎖定 (Freeze) 或解除鎖定該欄位 (將該欄位與左側欄位設為 Frozen 並於表頭標示 🔒)
+    3. 右鍵點擊資料列儲存格：彈出「滑鼠快捷選單 (ContextMenuStrip)」，提供「✏️ 編輯 / 載入此筆紀錄」、「🗑️ 刪除此筆紀錄」、「🔍 以此儲存格值篩選表格」、「🔄 清除表格篩選」、「📋 複製本列紀錄」，免水平捲動到最右邊
 .PARAMETER grid
     目標 System.Windows.Forms.DataGridView 控制項
 .PARAMETER statusLabel
     狀態列標籤控制項 (選填)
+.PARAMETER onEditRow
+    滑鼠右鍵快捷選單點擊「✏️ 編輯 / 載入此筆紀錄」時執行的回呼 ScriptBlock (選填，傳入參數為選取的 DataRow)
+.PARAMETER onDeleteRow
+    滑鼠右鍵快捷選單點擊「🗑️ 刪除此筆紀錄」時執行的回呼 ScriptBlock (選填，傳入參數為選取的 DataRow)
 #>
 function enableGridHeaderSortAndLock {
     [cmdletbinding()]
@@ -620,7 +625,11 @@ function enableGridHeaderSortAndLock {
         [parameter(mandatory = $true)]
         $grid,
         [parameter(mandatory = $false)]
-        $statusLabel = $null
+        $statusLabel = $null,
+        [parameter(mandatory = $false)]
+        [scriptblock]$onEditRow = $null,
+        [parameter(mandatory = $false)]
+        [scriptblock]$onDeleteRow = $null
     )
     process {
         if ($null -eq $grid) {
@@ -665,6 +674,91 @@ function enableGridHeaderSortAndLock {
                 }
             }
         })
+
+        # 建立資料列滑鼠右鍵快捷選單 (ContextMenuStrip)
+        $ctxMenu = new-object system.windows.forms.contextmenustrip
+        $miEdit = $ctxMenu.items.add('✏️ 編輯 / 載入此筆紀錄至表單')
+        $miDelete = $ctxMenu.items.add('🗑️ 刪除此筆紀錄')
+        $null = $ctxMenu.items.add((new-object system.windows.forms.toolstripseparator))
+        $miFilterCell = $ctxMenu.items.add('🔍 以此儲存格值篩選本表格')
+        $miClearFilter = $ctxMenu.items.add('🔄 清除本表格所有篩選條件')
+        $null = $ctxMenu.items.add((new-object system.windows.forms.toolstripseparator))
+        $miCopyRow = $ctxMenu.items.add('📋 複製本列紀錄至剪貼簿')
+
+        $miEdit.visible = ($null -ne $onEditRow)
+        $miDelete.visible = ($null -ne $onDeleteRow)
+
+        $ctxState = @{
+            currentRowItem = $null
+            currentColName = ''
+            currentCellVal = ''
+        }
+
+        $miEdit.add_click({
+            if ($null -ne $onEditRow -and $null -ne $ctxState.currentRowItem) {
+                & $onEditRow $ctxState.currentRowItem
+            }
+        }.GetNewClosure())
+
+        $miDelete.add_click({
+            if ($null -ne $onDeleteRow -and $null -ne $ctxState.currentRowItem) {
+                & $onDeleteRow $ctxState.currentRowItem
+            }
+        }.GetNewClosure())
+
+        $miFilterCell.add_click({
+            $dt = $grid.datasource
+            if ($dt -is [system.data.datatable] -and -not [string]::isnullorempty($ctxState.currentColName)) {
+                $escapedVal = ($ctxState.currentCellVal -replace "'", "''")
+                $dt.defaultview.rowfilter = "convert([$($ctxState.currentColName)], 'System.String') like '%$escapedVal%'"
+                if ($null -ne $statusLabel) {
+                    $statusLabel.text = "🔍 已依欄位【$($ctxState.currentColName)】包含「$($ctxState.currentCellVal)」篩選表格（共 $($dt.defaultview.count) 筆）"
+                }
+            }
+        }.GetNewClosure())
+
+        $miClearFilter.add_click({
+            $dt = $grid.datasource
+            if ($dt -is [system.data.datatable]) {
+                $dt.defaultview.rowfilter = ''
+                if ($null -ne $statusLabel) {
+                    $statusLabel.text = "🔄 已清除表格所有篩選條件（共 $($dt.rows.count) 筆）"
+                }
+            }
+        }.GetNewClosure())
+
+        $miCopyRow.add_click({
+            if ($null -ne $ctxState.currentRowItem) {
+                $vals = @()
+                foreach ($col in $ctxState.currentRowItem.table.columns) {
+                    $vals += [string]$ctxState.currentRowItem[$col.columnname]
+                }
+                [system.windows.forms.clipboard]::settext(($vals -join "`t"))
+                if ($null -ne $statusLabel) {
+                    $statusLabel.text = '📋 已將本列紀錄複製至剪貼簿'
+                }
+            }
+        }.GetNewClosure())
+
+        $grid.add_cellmousedown({
+            param($sender, $e)
+            if ($e.button -eq [system.windows.forms.mousebuttons]::right -and $e.rowindex -ge 0 -and $e.columnindex -ge 0) {
+                $sender.clearselection()
+                $sender.rows[$e.rowindex].selected = $true
+                $sender.currentcell = $sender.rows[$e.rowindex].cells[$e.columnindex]
+                $bound = $sender.rows[$e.rowindex].databounditem
+                if ($null -ne $bound -and $null -ne $bound.row) {
+                    $ctxState.currentRowItem = $bound.row
+                    $ctxState.currentColName = $sender.columns[$e.columnindex].dataPropertyName
+                    if ([string]::isnullorempty($ctxState.currentColName)) {
+                        $ctxState.currentColName = $sender.columns[$e.columnindex].name
+                    }
+                    $ctxState.currentCellVal = [string]$sender.rows[$e.rowindex].cells[$e.columnindex].value
+                    $miFilterCell.text = "🔍 以此儲存格值篩選【$($ctxState.currentColName) = $($ctxState.currentCellVal)】"
+                    $ctxMenu.show([system.windows.forms.cursor]::position)
+                }
+            }
+        }.GetNewClosure())
     }
 }
 

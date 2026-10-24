@@ -8,7 +8,7 @@
     3. 管理者修改「員工賦予的工項 (tbWorkItemAssignment)」(設定負責員工與點數分攤比例)
 .PARAMETER actionType
     執行動作：
-    - 'listWorkItemKind'   : 查詢工項類型設定 (專案/維運/顧問時數/自訂類型)
+    - 'listWorkItemKind'   : 查詢工項類型設定 (專案/維運/顧問時數/教育訓練/開發產品/自訂類型)
     - 'upsertWorkItemKind' : 新增或修改工項類型
     - 'deleteWorkItemKind' : 刪除工項類型
     - 'listWorkItemType'   : 查詢工項代表類型與標準 Story Point

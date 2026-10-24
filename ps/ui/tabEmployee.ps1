@@ -175,13 +175,47 @@ process {
     $gridEmp.readonly = $true
     $gridEmp.allowusertoaddrows = $false
     $gridEmp.autosizecolumnsmode = 'Fill'
-    enableGridHeaderSortAndLock -grid $gridEmp -statusLabel $statusLabel
 
     $loadEmpData = {
         $dt = & $empScript -actionType 'listEmployee'
         $gridEmp.datasource = $dt
         if ($null -ne $statusLabel) {
-            $statusLabel.text = "已載入 $($dt.rows.count) 位員工（含部門主管標記與樹狀遞迴階層）與個人 Story Point 負載"
+            $statusLabel.text = "已載入 $($dt.rows.count) 位員工（可於表格按滑鼠右鍵開啟快捷選單執行編輯、刪除或篩選）"
+        }
+    }
+
+    $populateEmpFormFromRow = {
+        param($rowItem)
+        if ($null -ne $rowItem) {
+            $txtTargetPk.text = [string]$rowItem.employeePk
+            $txtCode.text = [string]$rowItem.employeeCode
+            $txtName.text = [string]$rowItem.employeeName
+            $txtAcc.text = [string]$rowItem.loginAccount
+            $txtDept.text = [string]$rowItem.departmentPk
+            $cmbTitle.text = [string]$rowItem.jobTitle
+            $chkIsDeptMgr.checked = [bool]$rowItem.isDepartmentManager
+            $txtMgrPk.text = if ($null -ne $rowItem.managerEmployeePk -and $rowItem.managerEmployeePk -ne [dbnull]::value) { [string]$rowItem.managerEmployeePk } else { '0' }
+            $txtPwd.text = ''
+            if ([string]$rowItem.roleName -eq 'admin') {
+                $cmbRole.selectedindex = 1
+            }
+            else {
+                $cmbRole.selectedindex = 0
+            }
+            if ($null -ne $statusLabel) {
+                $statusLabel.text = "✏️ 已載入員工【$($rowItem.employeeCode) - $($rowItem.employeeName) ($($rowItem.loginAccount))】至上方表單"
+            }
+        }
+    }
+
+    enableGridHeaderSortAndLock -grid $gridEmp -statusLabel $statusLabel -onEditRow $populateEmpFormFromRow -onDeleteRow {
+        param($rowItem)
+        if ($null -ne $rowItem) {
+            $ans = [system.windows.forms.messagebox]::show("確定要刪除員工帳號「$($rowItem.employeeCode) - $($rowItem.employeeName)」嗎？", '確認刪除員工', [system.windows.forms.messageboxbuttons]::yesno, [system.windows.forms.messageboxicon]::warning)
+            if ($ans -eq [system.windows.forms.dialogresult]::yes) {
+                $null = & $empScript -actionType 'deleteEmployee' -employeePk ([int]$rowItem.employeePk)
+                & $loadEmpData
+            }
         }
     }
 

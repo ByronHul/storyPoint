@@ -1187,10 +1187,14 @@ begin
             set @cleanKind = case
                 when @cleanInputKind in (N'maintenance', N'維運') then 'maintenance'
                 when @cleanInputKind in (N'consultingHour', N'顧問時數') then 'consultingHour'
+                when @cleanInputKind in (N'training', N'教育訓練') then 'training'
+                when @cleanInputKind in (N'productDevelopment', N'productDev', N'開發產品', N'產品開發') then 'productDevelopment'
                 when @cleanInputKind in (N'project', N'專案') then 'project'
                 when @cleanInputKind <> N'' then cast(@cleanInputKind as varchar(64))
                 when @categoryName like N'%維運%' then 'maintenance'
                 when @categoryName like N'%顧問%' or @categoryName like N'%時數%' then 'consultingHour'
+                when @categoryName like N'%教育%' or @categoryName like N'%訓練%' then 'training'
+                when @categoryName like N'%產品%' then 'productDevelopment'
                 else 'project'
             end;
         end
@@ -1354,6 +1358,8 @@ begin
                 case
                     when wit.defaultWorkItemKind = 'maintenance' then N'維運'
                     when wit.defaultWorkItemKind = 'consultingHour' then N'顧問時數'
+                    when wit.defaultWorkItemKind = 'training' then N'教育訓練'
+                    when wit.defaultWorkItemKind = 'productDevelopment' then N'開發產品'
                     when wit.defaultWorkItemKind = 'project' then N'專案'
                     else cast(wit.defaultWorkItemKind as nvarchar(128))
                 end
@@ -1495,6 +1501,8 @@ begin
                 when @cleanInputKind in (N'project', N'專案') then 'project'
                 when @cleanInputKind in (N'maintenance', N'維運') then 'maintenance'
                 when @cleanInputKind in (N'consultingHour', N'顧問時數') then 'consultingHour'
+                when @cleanInputKind in (N'training', N'教育訓練') then 'training'
+                when @cleanInputKind in (N'productDevelopment', N'productDev', N'開發產品', N'產品開發') then 'productDevelopment'
                 when @cleanInputKind <> N'' then cast(@cleanInputKind as varchar(64))
                 when @workItemTypePk is not null then @typeDefaultKind
                 else 'project'
@@ -3434,6 +3442,8 @@ begin
                 case
                     when wit.defaultWorkItemKind = 'maintenance' then N'維運'
                     when wit.defaultWorkItemKind = 'consultingHour' then N'顧問時數'
+                    when wit.defaultWorkItemKind = 'training' then N'教育訓練'
+                    when wit.defaultWorkItemKind = 'productDevelopment' then N'開發產品'
                     when wit.defaultWorkItemKind = 'project' then N'專案'
                     else cast(wit.defaultWorkItemKind as nvarchar(128))
                 end
@@ -3443,6 +3453,8 @@ begin
                 case
                     when wit.defaultWorkItemKind = 'maintenance' then N'🛠️'
                     when wit.defaultWorkItemKind = 'consultingHour' then N'⏳'
+                    when wit.defaultWorkItemKind = 'training' then N'🎓'
+                    when wit.defaultWorkItemKind = 'productDevelopment' then N'🚀'
                     else N'🏗️'
                 end
             ) as defaultWorkItemKindIcon,
@@ -3451,6 +3463,8 @@ begin
                 case
                     when wit.defaultWorkItemKind = 'maintenance' then 'amber'
                     when wit.defaultWorkItemKind = 'consultingHour' then 'purple'
+                    when wit.defaultWorkItemKind = 'training' then 'green'
+                    when wit.defaultWorkItemKind = 'productDevelopment' then 'red'
                     else 'blue'
                 end
             ) as defaultWorkItemKindColor,
@@ -3917,6 +3931,8 @@ begin
                 case
                     when wi.workItemKind = 'maintenance' then N'維運'
                     when wi.workItemKind = 'consultingHour' then N'顧問時數'
+                    when wi.workItemKind = 'training' then N'教育訓練'
+                    when wi.workItemKind = 'productDevelopment' then N'開發產品'
                     when wi.workItemKind = 'project' then N'專案'
                     else cast(wi.workItemKind as nvarchar(128))
                 end
@@ -4396,7 +4412,10 @@ begin
     declare @targetPk int = isnull(@workItemKindPk, 0);
     declare @cleanCode varchar(64) = ltrim(rtrim(isnull(@kindCode, '')));
     declare @cleanName nvarchar(128) = ltrim(rtrim(isnull(@kindName, N'')));
-    declare @cleanIcon nvarchar(32) = isnull(nullif(ltrim(rtrim(@badgeIcon)), N''), N'📌');
+    declare @cleanIcon nvarchar(32) = case
+        when @badgeIcon is null or datalength(ltrim(rtrim(@badgeIcon))) = 0 then N'📌'
+        else ltrim(rtrim(@badgeIcon))
+    end;
     declare @cleanColor varchar(32) = case
         when @badgeColor in ('blue', 'amber', 'purple', 'green', 'red') then @badgeColor
         else 'blue'

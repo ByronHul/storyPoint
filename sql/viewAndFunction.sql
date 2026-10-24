@@ -56,6 +56,8 @@ select
         case
             when wi.workItemKind = 'maintenance' then N'維運'
             when wi.workItemKind = 'consultingHour' then N'顧問時數'
+            when wi.workItemKind = 'training' then N'教育訓練'
+            when wi.workItemKind = 'productDevelopment' then N'開發產品'
             when wi.workItemKind = 'project' then N'專案'
             else cast(wi.workItemKind as nvarchar(128))
         end
@@ -65,6 +67,8 @@ select
         case
             when wi.workItemKind = 'maintenance' then N'🛠️'
             when wi.workItemKind = 'consultingHour' then N'⏳'
+            when wi.workItemKind = 'training' then N'🎓'
+            when wi.workItemKind = 'productDevelopment' then N'🚀'
             else N'🏗️'
         end
     ) as workItemKindIcon,
@@ -73,6 +77,8 @@ select
         case
             when wi.workItemKind = 'maintenance' then 'amber'
             when wi.workItemKind = 'consultingHour' then 'purple'
+            when wi.workItemKind = 'training' then 'green'
+            when wi.workItemKind = 'productDevelopment' then 'red'
             else 'blue'
         end
     ) as workItemKindColor,

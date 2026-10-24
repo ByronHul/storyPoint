@@ -2080,12 +2080,14 @@ public class portalController : Controller
     [Authorize]
     public IActionResult downloadWorkItemImportTemplate([FromQuery] string format = "csv")
     {
-        string[] headers = { "工項代碼", "工項標題", "工項說明", "代表類型代碼或名稱", "StoryPoint", "所屬Sprint", "執行狀態", "負責員工編號或帳號", "分攤比例", "工項類型(專案/維運/顧問時數)", "開始時間(起時)", "結束時間(迄時)" };
+        string[] headers = { "工項代碼", "工項標題", "工項說明", "代表類型代碼或名稱", "StoryPoint", "所屬Sprint", "執行狀態", "負責員工編號或帳號", "分攤比例", "工項類型(專案/維運/顧問時數/教育訓練/開發產品)", "開始時間(起時)", "結束時間(迄時)" };
         var rows = new List<string[]>
         {
             new[] { "WI-2026-101", "實作部門月度報表批次匯出 API", "支援 CSV、Excel 與互動式 HTML 報表下載", "TYPE_API_CRUD", "5", "2026-Q4 Sprint 2", "inProgress", "EMP003", "100", "專案", "2026-10-01 09:00", "2026-11-15 18:00" },
             new[] { "WI-2026-102", "核心資料庫例行維運與備份監控", "整合資料庫健康巡檢與異常告警", "TYPE_DB_TUNING", "3", "2026-Q4 Sprint 2", "inProgress", "EMP002", "100", "維運", "2026-10-01 09:00", "2026-12-31 18:00" },
-            new[] { "WI-2026-103", "企業客戶技術架構顧問時數支援", "提供高併發架構與效能調校顧問服務", "TYPE_SECURITY_AUTH", "8", "2026-Q4 Sprint 2", "todo", "EMP004", "100", "顧問時數", "2026-10-15 09:00", "2026-11-30 18:00" }
+            new[] { "WI-2026-103", "企業客戶技術架構顧問時數支援", "提供高併發架構與效能調校顧問服務", "TYPE_SECURITY_AUTH", "8", "2026-Q4 Sprint 2", "todo", "EMP004", "100", "顧問時數", "2026-10-15 09:00", "2026-11-30 18:00" },
+            new[] { "WI-2026-104", "內部技術傳承與新人教育訓練課程", "規劃並講授資料庫架構與安全實務訓練", "TYPE_TRAINING", "3", "2026-Q4 Sprint 2", "todo", "EMP005", "100", "教育訓練", "2026-10-20 09:00", "2026-11-20 18:00" },
+            new[] { "WI-2026-105", "自有產品核心模組研發與版本迭代", "開發產品自動化檢測引擎與儀表板", "TYPE_PRODUCT_DEV", "8", "2026-Q4 Sprint 2", "inProgress", "EMP006", "100", "開發產品", "2026-10-01 09:00", "2026-12-15 18:00" }
         };
 
         if (string.Equals(format, "excel", StringComparison.OrdinalIgnoreCase) ||
@@ -2204,6 +2206,14 @@ public class portalController : Controller
                 else if (kindToken.Equals("consultingHour", StringComparison.OrdinalIgnoreCase) || kindToken.Contains("顧問"))
                 {
                     cleanKind = "consultingHour";
+                }
+                else if (kindToken.Equals("training", StringComparison.OrdinalIgnoreCase) || kindToken.Contains("教育") || kindToken.Contains("訓練"))
+                {
+                    cleanKind = "training";
+                }
+                else if (kindToken.Equals("productDevelopment", StringComparison.OrdinalIgnoreCase) || kindToken.Equals("productDev", StringComparison.OrdinalIgnoreCase) || kindToken.Contains("開發產品") || kindToken.Contains("產品開發"))
+                {
+                    cleanKind = "productDevelopment";
                 }
                 else if (kindToken.Equals("project", StringComparison.OrdinalIgnoreCase) || kindToken.Contains("專案"))
                 {
@@ -3775,12 +3785,17 @@ public class portalController : Controller
         tr.syslog-row-warn td {{ background:#fffbeb; }}
         tr.syslog-row-err:hover td {{ background:#ffe4e6; }}
         tr.syslog-row-warn:hover td {{ background:#fef3c7; }}
-        /* 通用表格表頭排序 (Sorting) 與鎖定 (Locking / Pinning / Sticky Header) 樣式 */
+        /* 通用表格表頭排序 (Sorting)、鎖定 (Locking / Pinning / Sticky Header)、篩選 (Filtering) 與滑鼠快捷選單 (Context Menu) 樣式 */
         .sp-table-wrapper {{ width:100%; margin-top:4px; }}
-        .sp-table-toolbar {{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; padding:6px 12px; background:#f1f5f9; border:1px solid #cbd5e1; border-bottom:none; border-radius:8px 8px 0 0; font-size:12px; color:#334155; }}
+        .sp-table-toolbar {{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; padding:8px 12px; background:#f1f5f9; border:1px solid #cbd5e1; border-bottom:none; border-radius:8px 8px 0 0; font-size:12px; color:#334155; }}
         .sp-table-toolbar-status {{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-weight:600; }}
+        .sp-table-toolbar-filter {{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; flex:1; min-width:280px; justify-content:flex-end; }}
+        .sp-tbl-filter-input {{ width:185px !important; padding:4px 9px !important; font-size:12px !important; border-radius:6px !important; border:1px solid #93c5fd !important; background:#ffffff !important; color:#0f172a !important; }}
+        .sp-tbl-filter-input:focus {{ outline:2px solid #2563eb; border-color:#2563eb !important; }}
+        .sp-tbl-filter-select {{ width:auto !important; max-width:165px; padding:4px 8px !important; font-size:12px !important; border-radius:6px !important; border:1px solid #cbd5e1 !important; background:#ffffff !important; color:#1e293b !important; font-weight:600; }}
+        .sp-tbl-count-badge {{ display:inline-flex; align-items:center; padding:3px 8px; border-radius:999px; background:#dbeafe; color:#1e40af; font-size:11.5px; font-weight:800; white-space:nowrap; border:1px solid #93c5fd; }}
         .sp-table-toolbar-actions {{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }}
-        .sp-toolbar-btn {{ display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:6px; border:1px solid #cbd5e1; background:#ffffff; color:#334155; font-size:11.5px; font-weight:700; cursor:pointer; transition:all .15s; }}
+        .sp-toolbar-btn {{ display:inline-flex; align-items:center; gap:4px; padding:4px 9px; border-radius:6px; border:1px solid #cbd5e1; background:#ffffff; color:#334155; font-size:11.5px; font-weight:700; cursor:pointer; transition:all .15s; white-space:nowrap; }}
         .sp-toolbar-btn:hover {{ background:#eff6ff; border-color:#93c5fd; color:#1d4ed8; }}
         .sp-toolbar-btn.active {{ background:#dbeafe; border-color:#3b82f6; color:#1e3a8a; }}
         .sp-table-scroll-container {{ width:100%; overflow-x:auto; max-height:70vh; overflow-y:auto; border:1px solid #cbd5e1; border-radius:0 0 8px 8px; position:relative; background:#ffffff; }}
@@ -3798,6 +3813,32 @@ public class portalController : Controller
         .sp-th-lock-btn {{ display:inline-flex; align-items:center; justify-content:center; width:24px; height:22px; border-radius:5px; border:1px solid #cbd5e1; background:#ffffff; color:#64748b; font-size:11px; cursor:pointer; padding:0; transition:all .15s; flex-shrink:0; }}
         .sp-th-lock-btn:hover {{ border-color:#2563eb; color:#2563eb; background:#eff6ff; }}
         .sp-th-lock-btn.active {{ background:#1e40af; color:#ffffff; border-color:#1e3a8a; box-shadow:0 1px 3px rgba(30,64,175,0.3); }}
+        /* 表格資料列滑鼠快捷選單 (Row Context Menu) 與左側快速觸發鈕樣式 */
+        tbody tr.sp-context-row {{ cursor:context-menu; transition:background .12s; }}
+        tbody tr.sp-context-row:hover td {{ background:#f0f7ff; }}
+        tbody tr.sp-context-active-row td {{ background:#dbeafe !important; }}
+        .sp-row-quick-btn {{ display:inline-flex; align-items:center; gap:3px; padding:2px 7px; margin-left:6px; border-radius:6px; border:1px solid #93c5fd; background:#eff6ff; color:#1d4ed8; font-size:11px; font-weight:700; cursor:pointer; transition:all .15s; vertical-align:middle; line-height:1.3; }}
+        .sp-row-quick-btn:hover {{ background:#2563eb; color:#ffffff; border-color:#1d4ed8; box-shadow:0 2px 6px rgba(37,99,235,0.28); }}
+        .sp-context-menu {{ position:fixed; z-index:100000; min-width:255px; max-width:340px; background:#ffffff; border:1px solid #93c5fd; border-radius:12px; box-shadow:0 18px 38px rgba(15,23,42,0.26), 0 4px 12px rgba(37,99,235,0.12); padding:6px; display:none; user-select:none; animation:spCtxFadeIn .12s ease-out; }}
+        .sp-context-menu.open {{ display:block; }}
+        @keyframes spCtxFadeIn {{ from {{ opacity:0; transform:scale(0.96) translateY(-4px); }} to {{ opacity:1; transform:scale(1) translateY(0); }} }}
+        .sp-ctx-header {{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 10px; margin-bottom:4px; background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%); color:#ffffff; border-radius:8px; font-size:12px; font-weight:700; }}
+        .sp-ctx-header-title {{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:265px; }}
+        .sp-ctx-close {{ background:transparent; border:none; color:#cbd5e1; font-size:13px; cursor:pointer; padding:0 4px; line-height:1; border-radius:4px; }}
+        .sp-ctx-close:hover {{ color:#ffffff; background:rgba(255,255,255,0.15); }}
+        .sp-ctx-item {{ width:100%; display:flex; align-items:center; gap:9px; padding:8px 11px; border:none; background:transparent; color:#1e293b; font-size:13px; font-weight:600; font-family:inherit; text-align:left; border-radius:7px; cursor:pointer; transition:background .12s, color .12s; }}
+        .sp-ctx-item:hover {{ background:#eff6ff; color:#1d4ed8; }}
+        .sp-ctx-item.danger {{ color:#dc2626; }}
+        .sp-ctx-item.danger:hover {{ background:#fef2f2; color:#991b1b; }}
+        .sp-ctx-item.disabled {{ opacity:0.45; cursor:not-allowed; }}
+        .sp-ctx-item-icon {{ width:18px; text-align:center; font-size:14px; flex-shrink:0; }}
+        .sp-ctx-item-text {{ flex:1; line-height:1.35; }}
+        .sp-ctx-item-sub {{ font-size:11px; color:#64748b; font-weight:500; display:block; }}
+        .sp-ctx-divider {{ height:1px; background:#e2e8f0; margin:5px 4px; }}
+        .sp-form-flash {{ animation:spFormPulse 1.3s ease; }}
+        @keyframes spFormPulse {{ 0% {{ box-shadow:0 0 0 0 rgba(37,99,235,0.55); border-color:#2563eb; }} 50% {{ box-shadow:0 0 0 6px rgba(37,99,235,0.22); border-color:#1d4ed8; }} 100% {{ box-shadow:0 1px 3px rgba(0,0,0,0.04); }} }}
+        .sp-toast-notice {{ position:fixed; bottom:24px; right:24px; z-index:100001; background:#0f172a; color:#ffffff; border-left:4px solid #3b82f6; padding:11px 16px; border-radius:10px; font-size:13px; font-weight:700; box-shadow:0 12px 28px rgba(15,23,42,0.3); opacity:0; transform:translateY(12px); transition:all .2s ease; pointer-events:none; }}
+        .sp-toast-notice.show {{ opacity:1; transform:translateY(0); }}
         input[type=text], input[type=number], input[type=password], input[type=date], input[type=datetime-local], select, textarea {{ width:100%; padding:8px 11px; border:1px solid #cbd5e1; border-radius:7px; font-size:13.5px; font-family:inherit; }}
         .form-row {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:12px; align-items:end; }}
         .form-row > div {{ min-width:0; }}
@@ -4764,11 +4805,14 @@ public class portalController : Controller
             </div>");
         }
 
-        // 下方列出各議程目前已生效的回合設定總覽表
+        // 下方列出各議程目前已生效的回合設定總覽表（支援表格篩選與滑鼠右鍵快捷選單操作，無須捲動至最右邊）
         sb.Append(@"
             <div style='margin-top:18px;border-top:1px solid #e2e8f0;padding-top:14px;'>
-                <div style='font-weight:700;font-size:15px;margin-bottom:10px;color:#0f172a;'>📋 各投票議程的回合設定總覽（投什麼 ／ 誰可參與 ／ 點數上下限 ／ 共識與計時規則）</div>
-                <table>
+                <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
+                    <div style='font-weight:700;font-size:15px;color:#0f172a;'>📋 各投票議程的回合設定總覽（投什麼 ／ 誰可參與 ／ 點數上下限 ／ 共識與計時規則）</div>
+                    <span class='badge badge-revealed'>🖱️ 於任一列按「滑鼠右鍵」或點擊左側「⚡ 操作 ▾」即可開啟快捷選單（進入盲投網頁、載入編輯設定等）</span>
+                </div>
+                <table id='roundSetupSessionTable'>
                     <thead>
                         <tr>
                             <th>議程代碼與標題</th>
@@ -4778,13 +4822,14 @@ public class portalController : Controller
                             <th>誰可以參與</th>
                             <th>共識計算規則與分歧門檻</th>
                             <th>自動翻牌 / 計時 / 理由規範</th>
-                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody>");
         foreach (DataRow sRow in sessionTable.Rows)
         {
             int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
+            string sCodeStr = sRow["sessionCode"]?.ToString() ?? "";
+            string sTitleStr = sRow["sessionTitle"]?.ToString() ?? "";
             string sStatus = sRow["sessionStatus"].ToString() ?? "";
             string badgeCls = sStatus == "voting" ? "badge-voting" : (sStatus == "revealed" ? "badge-revealed" : "badge-finalized");
             decimal minPt = sRow.Table.Columns.Contains("minStoryPoint") && sRow["minStoryPoint"] != DBNull.Value ? Convert.ToDecimal(sRow["minStoryPoint"]) : 0m;
@@ -4801,10 +4846,13 @@ public class portalController : Controller
                 : "";
 
             sb.Append($@"
-                        <tr>
+                        <tr class='sp-context-row' data-row-kind='session' data-row-title='{h(sCodeStr)} - {h(sTitleStr)}' data-session-pk='{sPk}' data-session-code='{h(sCodeStr)}' data-session-title='{h(sTitleStr)}' data-session-status='{h(sStatus)}' title='💡 按滑鼠右鍵或點擊「⚡ 操作 ▾」開啟快捷選單'>
                             <td>
-                                <strong>{h(sRow["sessionCode"])}</strong><br/>
-                                <span style='font-size:12.5px;color:#334155;'>{h(sRow["sessionTitle"])}</span>
+                                <div style='display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;'>
+                                    <strong>{h(sCodeStr)}</strong>
+                                    <button type='button' class='sp-row-quick-btn' onclick='openRowContextMenuFromBtn(event, this)' title='點擊開啟快捷選單（亦可於本列任一處按滑鼠右鍵）'>⚡ 操作 ▾</button>
+                                </div>
+                                <span style='font-size:12.5px;color:#334155;'>{h(sTitleStr)}</span>
                                 {(!string.IsNullOrWhiteSpace(rowDecisionNote) ? $"<br/><span style='font-size:12px;color:#15803d;font-weight:700;'>🏆 定案決議說明：{h(rowDecisionNote)}</span>" : "")}
                             </td>
                             <td>
@@ -4821,12 +4869,6 @@ public class portalController : Controller
                             <td>
                                 自動翻牌：{(autoRev ? "✅ 是" : "手動")} ｜ 計時：{(tSec > 0 ? $"{tSec}秒" : "不限")}<br/>
                                 <span style='font-size:11.5px;color:#64748b;'>出牌理由：{h(cPolText)}</span>
-                            </td>
-                            <td>
-                                <div style='display:flex;gap:6px;flex-wrap:wrap;'>
-                                    <a href='/voting/session?sessionPk={sPk}' target='_blank' rel='noopener' onclick='return openIndependentVotingSession(event, {sPk})' class='btn btn-primary' style='padding:4px 8px;font-size:12px;'>🚀 進入獨立盲投網頁</a>
-                                    {(isAdmin && sStatus != "finalized" ? $"<button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:12px;' onclick='openRoundSetupForSession({sPk})'>✏️ 載入設定</button>" : "")}
-                                </div>
                             </td>
                         </tr>");
         }
@@ -4957,6 +4999,8 @@ public class portalController : Controller
             kindOptionsBuilder.Append("<option value='project'>🏗️ 專案 (project)</option>");
             kindOptionsBuilder.Append("<option value='maintenance'>🛠️ 維運 (maintenance)</option>");
             kindOptionsBuilder.Append("<option value='consultingHour'>⏳ 顧問時數 (consultingHour)</option>");
+            kindOptionsBuilder.Append("<option value='training'>🎓 教育訓練 (training)</option>");
+            kindOptionsBuilder.Append("<option value='productDevelopment'>🚀 開發產品 (productDevelopment)</option>");
         }
         string dynamicKindOptionsHtml = kindOptionsBuilder.ToString();
 
@@ -4966,7 +5010,7 @@ public class portalController : Controller
             sb.Append($@"
             <div class='card' style='border:1.5px solid #bfdbfe;background:linear-gradient(180deg,#f8fafc 0%,#ffffff 100%);margin-bottom:18px;'>
                 <div class='card-title'>
-                    <span>🗂️ 工項類型增、刪、修管理（預設含：專案 / 維運 / 顧問時數，支援自由新增、修改與刪除工項類型）</span>
+                    <span>🗂️ 工項類型增、刪、修管理（預設含：專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品，支援自由新增、修改與刪除工項類型）</span>
                     <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick=""resetWorkItemKindForm('{tabSuffix}')"">🔄 清空切換為新增工項類型</button>
                 </div>
                 <form method='post' action='/workitem/kind/save' style='margin-bottom:14px;'>
@@ -4974,11 +5018,11 @@ public class portalController : Controller
                     <input type='hidden' name='returnTab' value='{tabSuffix}' />
                     <div class='form-row' style='align-items:end;'>
                         <div>
-                            <label data-tip='設定工項類型唯一識別代碼（例如：project、maintenance、consultingHour 或自訂 supportCase）' title='設定工項類型唯一識別代碼（例如：project、maintenance、consultingHour 或自訂 supportCase）'>類型代碼 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='設定工項類型唯一識別代碼（例如：project、maintenance、consultingHour、training、productDevelopment 或自訂 supportCase）' title='設定工項類型唯一識別代碼（例如：project、maintenance、consultingHour、training、productDevelopment 或自訂 supportCase）'>類型代碼 <span class='sp-tip-icon'>ⓘ</span></label>
                             <input type='text' name='kindCode' id='wikCode_{tabSuffix}' placeholder='例如：supportCase' required />
                         </div>
                         <div>
-                            <label data-tip='設定工項類型中文顯示名稱（例如：專案、維運、顧問時數、駐點支援）' title='設定工項類型中文顯示名稱（例如：專案、維運、顧問時數、駐點支援）'>工項類型名稱 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='設定工項類型中文顯示名稱（例如：專案、維運、顧問時數、教育訓練、開發產品、駐點支援）' title='設定工項類型中文顯示名稱（例如：專案、維運、顧問時數、教育訓練、開發產品、駐點支援）'>工項類型名稱 <span class='sp-tip-icon'>ⓘ</span></label>
                             <input type='text' name='kindName' id='wikName_{tabSuffix}' placeholder='例如：駐點技術支援' required />
                         </div>
                         <div>
@@ -4991,13 +5035,13 @@ public class portalController : Controller
                                 <option value='blue'>🔵 藍色 (Blue - 專案)</option>
                                 <option value='amber'>🟡 琥珀橘 (Amber - 維運)</option>
                                 <option value='purple'>🟣 紫色 (Purple - 顧問時數)</option>
-                                <option value='green'>🟢 綠色 (Green - 創新/研發)</option>
-                                <option value='red'>🔴 紅色 (Red - 緊急搶修)</option>
+                                <option value='green'>🟢 綠色 (Green - 教育訓練)</option>
+                                <option value='red'>🔴 紅色 (Red - 開發產品)</option>
                             </select>
                         </div>
                         <div>
                             <label data-tip='設定下拉選單與列表的顯示排序數字（越小越前面）' title='設定下拉選單與列表的顯示排序數字（越小越前面）'>排序 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='number' name='sortOrder' id='wikSort_{tabSuffix}' value='40' required />
+                            <input type='number' name='sortOrder' id='wikSort_{tabSuffix}' value='60' required />
                         </div>
                     </div>
                     <div class='form-row' style='align-items:end;margin-bottom:0;'>
@@ -5010,16 +5054,15 @@ public class portalController : Controller
                         </div>
                     </div>
                 </form>
-                <table>
+                <table class='wik-data-table'>
                     <thead>
                         <tr>
-                            <th>排序</th>
+                            <th>排序與快捷選單</th>
                             <th>類型代碼</th>
                             <th>工項類型名稱与標籤預覽</th>
                             <th>類型說明</th>
                             <th>套用中實際工項數</th>
                             <th>套用中代表類型數</th>
-                            <th>增刪修操作</th>
                         </tr>
                     </thead>
                     <tbody>");
@@ -5045,24 +5088,18 @@ public class portalController : Controller
                 };
 
                 sb.Append($@"
-                        <tr>
-                            <td>{kSort}</td>
+                        <tr class='sp-context-row' data-row-kind='workitemKind' data-kind-pk='{kPk}' data-kind-code='{h(kCode)}' data-kind-name='{h(kName)}' data-kind-icon='{h(kIcon)}' data-kind-color='{h(kColor)}' data-kind-sort='{kSort}' data-kind-desc='{h(kDesc)}' data-tab-suffix='{h(tabSuffix)}'>
+                            <td data-sort-value='{kSort}'>
+                                <div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>
+                                    <strong>{kSort}</strong>
+                                    <button type='button' class='sp-row-quick-btn' onclick='openRowContextMenuFromBtn(event, this)' title='點擊或於本列任一處按滑鼠右鍵開啟紀錄操作快捷選單（修改 / 刪除，免捲到最右邊）'>⚡ 操作 ▾</button>
+                                </div>
+                            </td>
                             <td><code>{h(kCode)}</code></td>
                             <td><span class='badge' style='{badgeStyle}'>{h(kIcon)} {h(kName)}</span></td>
                             <td style='font-size:12.5px;color:#334155;'>{h(kDesc)}</td>
                             <td><strong>{linkedWiCnt}</strong> 件工項</td>
                             <td><strong>{linkedTypeCnt}</strong> 個代表類型</td>
-                            <td style='white-space:nowrap;'>
-                                <div style='display:flex;gap:6px;align-items:center;'>
-                                    <button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:12px;' onclick=""loadWorkItemKindToForm({kPk},'{escapeJsString(kCode)}','{escapeJsString(kName)}','{escapeJsString(kIcon)}','{escapeJsString(kColor)}',{kSort},'{escapeJsString(kDesc)}','{tabSuffix}')"">✏️ 修改</button>
-                                    <form method='post' action='/workitem/kind/delete' style='margin:0;' onsubmit=""return confirm('確定要刪除工項類型「{escapeJsString(kCode)} - {escapeJsString(kName)}」嗎？（若有工項使用此類型將自動移轉至備援類型）');"">
-                                        <input type='hidden' name='workItemKindPk' value='{kPk}' />
-                                        <input type='hidden' name='kindCode' value='{h(kCode)}' />
-                                        <input type='hidden' name='returnTab' value='{tabSuffix}' />
-                                        <button type='submit' class='btn btn-danger' style='padding:4px 8px;font-size:12px;'>🗑️ 刪除</button>
-                                    </form>
-                                </div>
-                            </td>
                         </tr>");
             }
             sb.Append(@"
@@ -5074,16 +5111,16 @@ public class portalController : Controller
         if (isAdmin)
         {
             string defaultStartIso = DateTime.Now.ToString("yyyy-MM-ddTHH:mm");
-            string defaultEndIso = DateTime.Now.AddDays(14).ToString("yyyy-MM-ddTHH:mm");
+            string defaultEndIso = DateTime.Now.AddDays(1).ToString("yyyy-MM-ddTHH:mm");
             string nextWiCode = "WI-2026-" + (itemTable.Rows.Count + 1).ToString("D3");
 
             sb.Append($@"
             <div class='card' style='border:2px solid #93c5fd;background:linear-gradient(135deg,#eff6ff 0%,#ffffff 100%);margin-bottom:18px;'>
                 <div style='display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;'>
                     <div style='flex:1;min-width:280px;'>
-                        <div style='font-size:15px;font-weight:800;color:#1e3a8a;margin-bottom:4px;'>⏰ 工項類型（專案 / 維運 / 顧問時數 / 自訂類型）與起訖時間到期自動轉態、扣減 Story Point 及 Email 寄信通知機制</div>
+                        <div style='font-size:15px;font-weight:800;color:#1e3a8a;margin-bottom:4px;'>⏰ 工項類型（專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品 / 自訂類型）與起訖時間到期自動轉態、扣減 Story Point 及 Email 寄信通知機制</div>
                         <div style='font-size:13px;color:#334155;line-height:1.55;'>
-                            每一項工項皆支援設定類型（預設含 <strong>🏗️ 專案</strong>、<strong>🛠️ 維運</strong>、<strong>⏳ 顧問時數</strong>，且工項類型支援<strong>增、刪、修</strong>）與<strong>起訖時間 (起時 ~ 迄時)</strong>。當工項達到<strong>迄時 (endDate)</strong> 時，系統背景排程與即時檢核會自動將該工項狀態轉換為「<strong>已完成 (已到期扣點)</strong>」、自動扣掉該工項與負責員工/部門身上的 <strong>Story Point</strong>，並透過 <strong>Email 寄信通知所屬部門管理層（部門經理）與 HR</strong>。
+                            每一項工項皆支援設定類型（預設含 <strong>🏗️ 專案</strong>、<strong>🛠️ 維運</strong>、<strong>⏳ 顧問時數</strong>、<strong>🎓 教育訓練</strong>、<strong>🚀 開發產品</strong>，且工項類型支援<strong>增、刪、修</strong>）與<strong>起訖時間 (起時 ~ 迄時)</strong>。當工項達到<strong>迄時 (endDate)</strong> 時，系統背景排程與即時檢核會自動將該工項狀態轉換為「<strong>已完成 (已到期扣點)</strong>」、自動扣掉該工項與負責員工/部門身上的 <strong>Story Point</strong>，並透過 <strong>Email 寄信通知所屬部門管理層（部門經理）與 HR</strong>。
                         </div>
                     </div>
                     <form method='post' action='/workitem/checkExpired' style='margin:0;'>
@@ -5122,18 +5159,29 @@ public class portalController : Controller
                         <div class='form-row'>
                             <div>
                                 <label data-tip='設定工項開始時間（起時 startDate）' title='設定工項開始時間（起時 startDate）'>開始時間 (起時) <span class='sp-tip-icon'>ⓘ</span></label>
-                                <input type='datetime-local' name='startDate' id='wiStartDate' value='{defaultStartIso}' required />
+                                <input type='datetime-local' name='startDate' id='wiStartDate' value='{defaultStartIso}' onchange='applyWorkItemDurationPreset()' required />
                             </div>
                             <div>
                                 <label data-tip='設定工項結束時間（迄時 endDate）：當達到迄時，系統自動轉換該工項狀態為已完成、扣掉該 Story Point，並寄信給部門管理層與 HR' title='設定工項結束時間（迄時 endDate）：當達到迄時，系統自動轉換該工項狀態為已完成、扣掉該 Story Point，並寄信給部門管理層與 HR'>結束時間 (迄時 - 到期自動扣點寄信) <span class='sp-tip-icon'>ⓘ</span></label>
                                 <input type='datetime-local' name='endDate' id='wiEndDate' value='{defaultEndIso}' required style='border-color:#dc2626;font-weight:700;' />
                             </div>
                             <div>
-                                <label data-tip='快速設定工項起訖時間範圍，或設為已達迄時以立即測試自動轉態、扣點與寄信給部門管理層及 HR' title='快速設定工項起訖時間範圍，或設為已達迄時以立即測試自動轉態、扣點與寄信給部門管理層及 HR'>起訖時間快速設定 <span class='sp-tip-icon'>ⓘ</span></label>
-                                <div style='display:flex;gap:4px;flex-wrap:wrap;'>
-                                    <button type='button' class='btn btn-outline' style='padding:6px 8px;font-size:11.5px;flex:1;' onclick=""setWorkItemDatePreset(7)"">+7天</button>
-                                    <button type='button' class='btn btn-outline' style='padding:6px 8px;font-size:11.5px;flex:1;' onclick=""setWorkItemDatePreset(30)"">+30天</button>
-                                    <button type='button' class='btn btn-warning' style='padding:6px 8px;font-size:11.5px;flex:1.4;' onclick=""setWorkItemDatePreset(-1)"" title='將迄時設為已到期，儲存後立即驗證自動轉換狀態、扣減 Story Point 與寄信通知部門管理層及 HR'>⚡ 設為已到期(測試扣點寄信)</button>
+                                <label data-tip='快速設定工項起訖時間範圍：手動輸入數量（預設 1）並選擇單位（天、周、月、季、年），自動依據起時計算迄時' title='快速設定工項起訖時間範圍：手動輸入數量（預設 1）並選擇單位（天、周、月、季、年），自動依據起時計算迄時'>起訖時間快速設定 <span class='sp-tip-icon'>ⓘ</span></label>
+                                <div style='display:grid;grid-template-columns:1fr 1.15fr;gap:6px;align-items:center;'>
+                                    <div style='display:flex;align-items:center;gap:4px;'>
+                                        <span style='font-size:12px;color:#475569;white-space:nowrap;font-weight:700;'>數量</span>
+                                        <input type='number' id='wiDurationQty' name='durationQuantity' value='1' min='1' step='1' placeholder='1' oninput='applyWorkItemDurationPreset()' onchange='applyWorkItemDurationPreset()' title='手動輸入數量（預設 1）' style='text-align:center;font-weight:700;padding:8px 6px;' />
+                                    </div>
+                                    <div style='display:flex;align-items:center;gap:4px;'>
+                                        <span style='font-size:12px;color:#475569;white-space:nowrap;font-weight:700;'>單位</span>
+                                        <select id='wiDurationUnit' name='durationUnit' onchange='applyWorkItemDurationPreset()' title='選擇單位：天、周、月、季、年' style='font-weight:700;color:#1e40af;background:#eff6ff;border-color:#93c5fd;padding:8px 8px;'>
+                                            <option value='day' selected>天</option>
+                                            <option value='week'>周</option>
+                                            <option value='month'>月</option>
+                                            <option value='quarter'>季</option>
+                                            <option value='year'>年</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -5196,13 +5244,13 @@ public class portalController : Controller
                     </form>
                 </div>
 
-                <div class='card'>
+                <div class='card' id='assignWorkItemCard'>
                     <div class='card-title'><span>🔄 管理者修改員工賦予的工項與點數分攤配額</span></div>
                     <form method='post' action='/workitem/assign'>
                         <div class='form-row'>
                             <div style='grid-column: span 2;'>
                                 <label data-tip='選擇要新增、調整或移除負責員工配額的目標工項' title='選擇要新增、調整或移除負責員工配額的目標工項'>選擇目標工項 <span class='sp-tip-icon'>ⓘ</span></label>
-                                <select name='workItemPk' required>");
+                                <select name='workItemPk' id='assignWorkItemSelect' required>");
             if (itemTable.Rows.Count == 0)
             {
                 sb.Append("<option value=''>-- 目前尚無工項，請先於左側建立或匯入工項 --</option>");
@@ -5219,7 +5267,7 @@ public class portalController : Controller
                         <div class='form-row'>
                             <div style='grid-column: span 2;'>
                                 <label data-tip='選擇要被賦予此工項或調整點數分攤配額的員工' title='選擇要被賦予此工項或調整點數分攤配額的員工'>賦予給哪位員工 <span class='sp-tip-icon'>ⓘ</span></label>
-                                <select name='employeePk' required>");
+                                <select name='employeePk' id='assignEmployeeSelect' required>");
             foreach (DataRow eRow in empTable.Rows)
             {
                 sb.Append($"<option value='{eRow["employeePk"]}'>{h(eRow["employeeCode"])} - {h(eRow["employeeName"])} （部門：{h(eRow["departmentName"])}｜職級：{h(eRow["jobTitle"])}｜目前身上 {eRow["totalAllocatedStoryPoint"]} pt）</option>");
@@ -5292,16 +5340,86 @@ public class portalController : Controller
         <div class='card'>
             <div class='card-title'>
                 <span>📋 {(isAdmin ? "各工項的類型（專案/維運/顧問時數/自訂類型）、起訖時間、Story Point 與到期自動扣點寄信一覽表" : "我的工項與個人獲得分數一覽表（僅顯示賦予給我本人的工項與分數，不顯示其他人）")}</span>
-                <div style='display:flex;gap:8px;flex-wrap:wrap;'>
+                <div style='display:flex;gap:8px;flex-wrap:wrap;align-items:center;'>
+                    <span class='badge badge-user' id='wiFilterCountLabel'>共 {itemTable.Rows.Count} 筆工項</span>
                     <a href='/export/report?type=workitem&format=csv' class='btn btn-outline' style='padding:6px 12px;font-size:12.5px;'>📥 匯出 CSV</a>
                     <a href='/export/report?type=workitem&format=excel' class='btn btn-outline' style='padding:6px 12px;font-size:12.5px;'>📊 匯出 Excel (.xlsx)</a>
                     <a href='/export/report?type=workitem&format=html' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;'>🌐 匯出互動 HTML (排序・篩選・群組彙總)</a>
                 </div>
             </div>
-            <table>
+
+            <!-- 工項清單多維度即時篩選列 + 滑鼠快捷選單操作說明 -->
+            <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
+                <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
+                    <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
+                        💡 <strong>操作提示：</strong>於表格內任一列<strong>按滑鼠右鍵</strong>（或點擊首欄「<strong>⚡ 操作 ▾</strong>」按鈕）即可直接跳出快捷選單執行<strong>編輯、修改指派員工、發起盲投、刪除、以此欄值篩選</strong>等操作，免水平捲動到最右邊！
+                    </div>
+                    <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick='resetWorkItemFilter()'>🔄 清除全部篩選條件</button>
+                </div>
+                <div class='form-row' style='margin-bottom:0;align-items:end;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));'>
+                    <div>
+                        <label data-tip='輸入工項代碼、標題、說明、Sprint、代表類型、負責員工或部門關鍵字即時篩選表格' title='輸入工項代碼、標題、說明、Sprint、代表類型、負責員工或部門關鍵字即時篩選表格'>🔍 關鍵字快速篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <input type='text' id='filterWiKeyword' oninput='filterWorkItemTable()' placeholder='輸入代碼 / 標題 / 員工 / 部門 / 說明...' />
+                    </div>
+                    <div>
+                        <label data-tip='依工項類型（專案 / 維運 / 顧問時數 / 自訂類型）過濾工項列表' title='依工項類型（專案 / 維運 / 顧問時數 / 自訂類型）過濾工項列表'>🏷️ 工項類型篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <select id='filterWiKind' onchange='filterWorkItemTable()'>
+                            <option value=''>全部工項類型</option>");
+        foreach (DataRow kRow in kindTable.Rows)
+        {
+            string kCode = kRow["kindCode"]?.ToString() ?? "";
+            string kName = kRow["kindName"]?.ToString() ?? "";
+            string kIcon = kRow.Table.Columns.Contains("badgeIcon") && kRow["badgeIcon"] != DBNull.Value ? (kRow["badgeIcon"]?.ToString() ?? "📌") : "📌";
+            sb.Append($"<option value='{h(kCode)}'>{h(kIcon)} {h(kName)} ({h(kCode)})</option>");
+        }
+        sb.Append(@"
+                        </select>
+                    </div>
+                    <div>
+                        <label data-tip='依所屬工項代表類型過濾工項列表' title='依所屬工項代表類型過濾工項列表'>📐 所屬代表類型篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <select id='filterWiType' onchange='filterWorkItemTable()'>
+                            <option value=''>全部代表類型</option>");
+        foreach (DataRow tRow in typeTable.Rows)
+        {
+            sb.Append($"<option value='{h(tRow["typeName"])}'>{h(tRow["typeCode"])} - {h(tRow["typeName"])}</option>");
+        }
+        sb.Append(@"
+                        </select>
+                    </div>
+                    <div>
+                        <label data-tip='依工項執行狀態或是否已達迄時自動扣點過濾工項列表' title='依工項執行狀態或是否已達迄時自動扣點過濾工項列表'>⚡ 執行與到期狀態篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <select id='filterWiStatus' onchange='filterWorkItemTable()'>
+                            <option value=''>全部狀態</option>
+                            <option value='todo'>📝 待處理 (To Do)</option>
+                            <option value='inProgress'>🚀 進行中 (In Progress)</option>
+                            <option value='done'>✅ 已完成 (Done)</option>
+                            <option value='expired'>⏰ 已達迄時自動扣點寄信</option>
+                            <option value='activePt'>💎 有效計點中 (尚未到期扣點)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label data-tip='依負責員工姓名或所屬部門過濾工項列表' title='依負責員工姓名或所屬部門過濾工項列表'>👤 負責員工 / 部門篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <select id='filterWiAssignee' onchange='filterWorkItemTable()'>
+                            <option value=''>全部負責員工與部門</option>
+                            <option value='尚未指派'>⚪ 尚未指派員工</option>");
+        foreach (DataRow dRow in deptTable.Rows)
+        {
+            sb.Append($"<option value='{h(dRow["departmentName"])}'>🏢 部門：{h(dRow["departmentName"])}</option>");
+        }
+        foreach (DataRow eRow in empTable.Rows)
+        {
+            sb.Append($"<option value='{h(eRow["employeeName"])}'>👤 {h(eRow["employeeCode"])} - {h(eRow["employeeName"])} ({h(eRow["departmentName"])})</option>");
+        }
+        sb.Append($@"
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <table id='workItemDataTable'>
                 <thead>
                     <tr>
-                        <th>工項代碼</th>
+                        <th>工項代碼與快捷選單</th>
                         <th>工項類型</th>
                         <th>工項標題</th>
                         <th>起訖時間 (起時 ~ 迄時)</th>
@@ -5309,12 +5427,14 @@ public class portalController : Controller
                         <th>工項 Story Point</th>
                         <th>點數來源與到期扣點紀錄</th>
                         <th>執行狀態與到期寄信通知</th>
-                        <th>{(isAdmin ? "賦予員工與部門配額明細" : "我的分攤比例與個人獲得分數")}</th>");
-        if (isAdmin) sb.Append("<th>增刪修操作</th>");
-        sb.Append("</tr></thead><tbody>");
+                        <th>{(isAdmin ? "賦予員工與部門配額明細" : "我的分攤比例與個人獲得分數")}</th>
+                    </tr>
+                </thead>
+                <tbody>");
 
         foreach (DataRow wRow in itemTable.Rows)
         {
+            int wiPkVal = Convert.ToInt32(wRow["workItemPk"]);
             bool isManual = Convert.ToBoolean(wRow["isManualAdjusted"]);
             bool isExpiredProc = wRow.Table.Columns.Contains("isExpiredProcessed") && wRow["isExpiredProcessed"] != DBNull.Value && Convert.ToBoolean(wRow["isExpiredProcessed"]);
             bool notifSent = wRow.Table.Columns.Contains("expiryNotificationSent") && wRow["expiryNotificationSent"] != DBNull.Value && Convert.ToBoolean(wRow["expiryNotificationSent"]);
@@ -5322,6 +5442,7 @@ public class portalController : Controller
             decimal curPt = wRow["storyPoint"] != DBNull.Value ? Convert.ToDecimal(wRow["storyPoint"]) : 0m;
             decimal origPt = wRow.Table.Columns.Contains("originalStoryPoint") && wRow["originalStoryPoint"] != DBNull.Value ? Convert.ToDecimal(wRow["originalStoryPoint"]) : curPt;
             decimal dedPt = wRow.Table.Columns.Contains("deductedStoryPoint") && wRow["deductedStoryPoint"] != DBNull.Value ? Convert.ToDecimal(wRow["deductedStoryPoint"]) : 0m;
+            decimal editPt = isExpiredProc ? origPt : curPt;
 
             string wKind = wRow.Table.Columns.Contains("workItemKind") ? (wRow["workItemKind"]?.ToString() ?? "project") : "project";
             string wKindText = wRow.Table.Columns.Contains("workItemKindText") ? (wRow["workItemKindText"]?.ToString() ?? "專案") : "專案";
@@ -5367,37 +5488,51 @@ public class portalController : Controller
                       : "<div style='font-size:11px;color:#d97706;margin-top:4px;'>📧 待寄發到期通知信</div>")
                 : $"<div><span class='badge badge-user'>{h(wRow["executionStatusText"])}</span></div><div style='font-size:11px;color:#64748b;margin-top:3px;'>⏳ 達迄時將自動轉態扣點並寄信</div>";
 
-            sb.Append($@"<tr>
-                <td><strong>{h(wRow["itemCode"])}</strong><div style='font-size:11px;color:#64748b;'>{h(wRow["sprintName"])}</div></td>
+            string wCodeStr = wRow["itemCode"]?.ToString() ?? "";
+            string wTitleStr = wRow["itemTitle"]?.ToString() ?? "";
+            string wTypePkStr = wRow["workItemTypePk"] != DBNull.Value ? wRow["workItemTypePk"].ToString()! : "0";
+            string wTypeNameStr = wRow["typeName"]?.ToString() ?? "";
+            string wStatusStr = wRow["executionStatus"]?.ToString() ?? "todo";
+            string wReasonStr = wRow["adjustmentReason"]?.ToString() ?? "";
+            string wAssigneeStr = wRow["assigneeSummary"]?.ToString() ?? "";
+            string wiSearchBlob = $"{wCodeStr} {wTitleStr} {wRow["itemDescription"]} {wRow["sprintName"]} {wKind} {wKindText} {wRow["typeCode"]} {wTypeNameStr} {wAssigneeStr} {wReasonStr} {notifRecipients}".ToLowerInvariant();
+
+            sb.Append($@"<tr class='wi-row sp-context-row'
+                data-row-kind='workitem'
+                data-search='{h(wiSearchBlob)}'
+                data-wi-pk='{wiPkVal}'
+                data-wi-code='{h(wCodeStr)}'
+                data-wi-title='{h(wTitleStr)}'
+                data-wi-type-pk='{h(wTypePkStr)}'
+                data-wi-type-name='{h(wTypeNameStr)}'
+                data-wi-pt='{editPt.ToString(CultureInfo.InvariantCulture)}'
+                data-wi-status='{h(wStatusStr)}'
+                data-wi-reason='{h(wReasonStr)}'
+                data-wi-kind='{h(wKind)}'
+                data-wi-kind-text='{h(wKindText)}'
+                data-wi-start='{h(startIsoJs)}'
+                data-wi-end='{h(endIsoJs)}'
+                data-wi-expired='{(isExpiredProc ? "1" : "0")}'
+                data-wi-assignee='{h(wAssigneeStr)}'>
+                <td data-sort-value='{h(wCodeStr)}'>
+                    <div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>
+                        <strong>{h(wCodeStr)}</strong>
+                        <button type='button' class='sp-row-quick-btn' onclick='openRowContextMenuFromBtn(event, this)' title='點擊或於本列任一處按滑鼠右鍵開啟工項快捷操作選單（編輯、修改負責員工、發起盲投、刪除...免捲到最右邊）'>⚡ 操作 ▾</button>
+                    </div>
+                    <div style='font-size:11px;color:#64748b;margin-top:2px;'>{h(wRow["sprintName"])}</div>
+                </td>
                 <td style='white-space:nowrap;'>{kindBadge}</td>
-                <td><strong>{h(wRow["itemTitle"])}</strong><div style='font-size:12px;color:#64748b;'>{h(wRow["itemDescription"])}</div></td>
+                <td><strong>{h(wTitleStr)}</strong><div style='font-size:12px;color:#64748b;'>{h(wRow["itemDescription"])}</div></td>
                 <td style='white-space:nowrap;font-size:12px;'>
                     <div>🟢 起：{h(startDisplay)}</div>
                     <div style='color:{(isExpiredProc ? "#dc2626;font-weight:700" : "#1e293b")};'>🔴 迄：{h(endDisplay)}</div>
                 </td>
-                <td>{h(wRow["typeCode"])}<br/><strong>{h(wRow["typeName"])}</strong></td>
+                <td>{h(wRow["typeCode"])}<br/><strong>{h(wTypeNameStr)}</strong></td>
                 <td data-sort-value='{curPt}'>{pointCellHtml}</td>
                 <td>{srcBadge}</td>
                 <td>{statusAndMailHtml}</td>
-                <td><strong>{h(wRow["assigneeSummary"])}</strong></td>");
-            if (isAdmin)
-            {
-                decimal editPt = isExpiredProc ? origPt : curPt;
-                string wCodeStr = wRow["itemCode"]?.ToString() ?? "";
-                string wTitleStr = wRow["itemTitle"]?.ToString() ?? "";
-                sb.Append($@"
-                <td style='white-space:nowrap;'>
-                    <div style='display:flex;gap:6px;align-items:center;'>
-                        <button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:12px;' onclick=""loadWorkItemToForm({wRow["workItemPk"]},'{escapeJsString(wCodeStr)}','{escapeJsString(wTitleStr)}',{(wRow["workItemTypePk"] != DBNull.Value ? wRow["workItemTypePk"] : 0)},{editPt.ToString(CultureInfo.InvariantCulture)},'{escapeJsString(wRow["executionStatus"]?.ToString())}','{escapeJsString(wRow["adjustmentReason"]?.ToString())}','{escapeJsString(wKind)}','{h(startIsoJs)}','{h(endIsoJs)}')"">✏️ 修改</button>
-                        <form method='post' action='/workitem/delete' style='margin:0;' onsubmit=""return confirm('確定要刪除工項「{escapeJsString(wCodeStr)} - {escapeJsString(wTitleStr)}」嗎？');"">
-                            <input type='hidden' name='workItemPk' value='{wRow["workItemPk"]}' />
-                            <input type='hidden' name='itemCode' value='{h(wCodeStr)}' />
-                            <button type='submit' class='btn btn-danger' style='padding:4px 8px;font-size:12px;'>🗑️ 刪除</button>
-                        </form>
-                    </div>
-                </td>");
-            }
-            sb.Append("</tr>");
+                <td><strong>{h(wAssigneeStr)}</strong></td>
+            </tr>");
         }
         sb.Append("</tbody></table></div></div>"); // end Tab 3
 
@@ -5458,46 +5593,91 @@ public class portalController : Controller
             </div>");
         }
 
-        sb.Append(@"
+        sb.Append($@"
         <div class='card'>
-            <div class='card-title'><span>🏷️ 工項代表類型與標準 Story Point 一覽表</span></div>
-            <table>
-                <thead><tr><th>類型代碼</th><th>代表類型名稱</th><th>預設工項類型</th><th>分類</th><th>複雜度與驗收說明</th><th>標準 Story Point</th><th>估算狀態</th><th>套用工項數</th>");
-        if (isAdmin) sb.Append("<th>增刪修操作</th>");
-        sb.Append("</tr></thead><tbody>");
+            <div class='card-title'>
+                <span>🏷️ 工項代表類型與標準 Story Point 一覽表</span>
+                <span class='badge badge-user' id='typeFilterCountLabel'>共 {typeTable.Rows.Count} 筆代表類型</span>
+            </div>
+            <!-- 工項代表類型即時篩選列 -->
+            <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
+                <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
+                    <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
+                        💡 <strong>操作提示：</strong>於代表類型列<strong>按滑鼠右鍵</strong>（或點擊首欄「<strong>⚡ 操作 ▾</strong>」）即可開啟快捷選單執行編輯、發起盲投或刪除，無須水平捲動！
+                    </div>
+                    <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick='resetWorkItemTypeFilter()'>🔄 清除全部篩選條件</button>
+                </div>
+                <div class='form-row' style='margin-bottom:0;align-items:end;'>
+                    <div>
+                        <label data-tip='輸入代表類型代碼、名稱、分類或複雜度說明關鍵字即時篩選表格' title='輸入代表類型代碼、名稱、分類或複雜度說明關鍵字即時篩選表格'>🔍 關鍵字快速篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <input type='text' id='filterTypeKeyword' oninput='filterWorkItemTypeTable()' placeholder='輸入類型代碼 / 名稱 / 分類 / 說明...' />
+                    </div>
+                    <div>
+                        <label data-tip='依預設工項類型過濾代表類型列表' title='依預設工項類型過濾代表類型列表'>🏷️ 預設工項類型篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <select id='filterTypeKind' onchange='filterWorkItemTypeTable()'>
+                            <option value=''>全部預設工項類型</option>");
+        foreach (DataRow kRow in kindTable.Rows)
+        {
+            string kCode = kRow["kindCode"]?.ToString() ?? "";
+            string kName = kRow["kindName"]?.ToString() ?? "";
+            string kIcon = kRow.Table.Columns.Contains("badgeIcon") && kRow["badgeIcon"] != DBNull.Value ? (kRow["badgeIcon"]?.ToString() ?? "📌") : "📌";
+            sb.Append($"<option value='{h(kCode)}'>{h(kIcon)} {h(kName)}</option>");
+        }
+        sb.Append(@"
+                        </select>
+                    </div>
+                    <div>
+                        <label data-tip='依是否已完成標準點數核定過濾代表類型列表' title='依是否已完成標準點數核定過濾代表類型列表'>📊 估算狀態篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <select id='filterTypeStatus' onchange='filterWorkItemTypeTable()'>
+                            <option value=''>全部估算狀態</option>
+                            <option value='finalized'>✅ 已核定標準 Story Point</option>
+                            <option value='pending'>⏳ 待投票定案</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <table id='workItemTypeDataTable'>
+                <thead><tr><th>類型代碼與快捷選單</th><th>代表類型名稱</th><th>預設工項類型</th><th>分類</th><th>複雜度與驗收說明</th><th>標準 Story Point</th><th>估算狀態</th><th>套用工項數</th></tr></thead><tbody>");
         foreach (DataRow tRow in typeTable.Rows)
         {
-            string stdPt = tRow["standardStoryPoint"] != DBNull.Value ? $"<strong style='font-size:16px;color:#2563eb;'>{tRow["standardStoryPoint"]} pt</strong>" : "<span style='color:#d97706;'>待投票定案</span>";
+            int tPkVal = Convert.ToInt32(tRow["workItemTypePk"]);
+            bool hasStdPt = tRow["standardStoryPoint"] != DBNull.Value;
+            string ptJs = hasStdPt ? tRow["standardStoryPoint"].ToString()! : "";
+            string stdPt = hasStdPt ? $"<strong style='font-size:16px;color:#2563eb;'>{tRow["standardStoryPoint"]} pt</strong>" : "<span style='color:#d97706;'>待投票定案</span>";
             string dKind = tRow.Table.Columns.Contains("defaultWorkItemKind") ? (tRow["defaultWorkItemKind"]?.ToString() ?? "project") : "project";
             string dKindText = tRow.Table.Columns.Contains("defaultWorkItemKindText") ? (tRow["defaultWorkItemKindText"]?.ToString() ?? "專案") : "專案";
             string dKindIcon = tRow.Table.Columns.Contains("defaultWorkItemKindIcon") && tRow["defaultWorkItemKindIcon"] != DBNull.Value ? (tRow["defaultWorkItemKindIcon"]?.ToString() ?? "🏗️") : "🏗️";
-            sb.Append($@"<tr>
-                <td><strong>{h(tRow["typeCode"])}</strong></td>
-                <td><strong>{h(tRow["typeName"])}</strong></td>
-                <td><span class='badge badge-user'>{h(dKindIcon)} {h(dKindText)}</span></td>
-                <td>{h(tRow["categoryName"])}</td>
-                <td>{h(tRow["description"])}</td>
-                <td>{stdPt}</td>
-                <td><span class='badge badge-finalized'>{h(tRow["estimationStatusText"])}</span></td>
-                <td>{tRow["linkedWorkItemCount"]} 個工項</td>");
-            if (isAdmin)
-            {
-                string ptJs = tRow["standardStoryPoint"] != DBNull.Value ? tRow["standardStoryPoint"].ToString()! : "";
-                string tCodeStr = tRow["typeCode"]?.ToString() ?? "";
-                string tNameStr = tRow["typeName"]?.ToString() ?? "";
-                sb.Append($@"
-                <td style='white-space:nowrap;'>
-                    <div style='display:flex;gap:6px;align-items:center;'>
-                        <button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:12px;' onclick=""loadTypeToForm({tRow["workItemTypePk"]},'{escapeJsString(tCodeStr)}','{escapeJsString(tNameStr)}','{escapeJsString(tRow["categoryName"]?.ToString())}','{escapeJsString(tRow["description"]?.ToString())}','{ptJs}','{escapeJsString(dKind)}')"">✏️ 修改</button>
-                        <form method='post' action='/workitem/type/delete' style='margin:0;' onsubmit=""return confirm('確定要刪除工項代表類型「{escapeJsString(tCodeStr)} - {escapeJsString(tNameStr)}」嗎？');"">
-                            <input type='hidden' name='workItemTypePk' value='{tRow["workItemTypePk"]}' />
-                            <input type='hidden' name='typeCode' value='{h(tCodeStr)}' />
-                            <button type='submit' class='btn btn-danger' style='padding:4px 8px;font-size:12px;'>🗑️ 刪除</button>
-                        </form>
+            string tCodeStr = tRow["typeCode"]?.ToString() ?? "";
+            string tNameStr = tRow["typeName"]?.ToString() ?? "";
+            string tCatStr = tRow["categoryName"]?.ToString() ?? "";
+            string tDescStr = tRow["description"]?.ToString() ?? "";
+            string tSearchBlob = $"{tCodeStr} {tNameStr} {dKind} {dKindText} {tCatStr} {tDescStr} {ptJs}".ToLowerInvariant();
+
+            sb.Append($@"<tr class='type-row sp-context-row'
+                data-row-kind='workitemType'
+                data-search='{h(tSearchBlob)}'
+                data-type-pk='{tPkVal}'
+                data-type-code='{h(tCodeStr)}'
+                data-type-name='{h(tNameStr)}'
+                data-type-cat='{h(tCatStr)}'
+                data-type-desc='{h(tDescStr)}'
+                data-type-pt='{h(ptJs)}'
+                data-type-kind='{h(dKind)}'
+                data-type-status='{(hasStdPt ? "finalized" : "pending")}'>
+                <td data-sort-value='{h(tCodeStr)}'>
+                    <div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>
+                        <strong>{h(tCodeStr)}</strong>
+                        <button type='button' class='sp-row-quick-btn' onclick='openRowContextMenuFromBtn(event, this)' title='點擊或於本列任一處按滑鼠右鍵開啟代表類型快捷操作選單（編輯、發起盲投、刪除...免捲到最右邊）'>⚡ 操作 ▾</button>
                     </div>
-                </td>");
-            }
-            sb.Append("</tr>");
+                </td>
+                <td><strong>{h(tNameStr)}</strong></td>
+                <td><span class='badge badge-user'>{h(dKindIcon)} {h(dKindText)}</span></td>
+                <td>{h(tCatStr)}</td>
+                <td>{h(tDescStr)}</td>
+                <td data-sort-value='{(hasStdPt ? ptJs : "-1")}'>{stdPt}</td>
+                <td><span class='badge badge-finalized'>{h(tRow["estimationStatusText"])}</span></td>
+                <td>{tRow["linkedWorkItemCount"]} 個工項</td>
+            </tr>");
         }
         sb.Append("</tbody></table></div></div>"); // end Tab 4
 
@@ -5993,6 +6173,12 @@ public class portalController : Controller
 
                 <!-- 員工帳號多維度查詢與篩選列 -->
                 <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
+                    <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
+                        <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
+                            💡 <strong>操作提示：</strong>於員工列表任一列<strong>按滑鼠右鍵</strong>（或點擊首欄「<strong>⚡ 操作 ▾</strong>」）即可跳出快捷選單執行<strong>修改資料/密碼、啟用/停用、刪除、檢視指派工項</strong>，不用捲到最右邊！
+                        </div>
+                        <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick='resetEmployeeFilter()'>🔄 清除全部篩選條件</button>
+                    </div>
                     <div class='form-row' style='margin-bottom:0;align-items:end;'>
                         <div>
                             <label data-tip='輸入員工編號、姓名、登入帳號、電子郵件、上層主管或職級關鍵字，即時篩選下方員工列表' title='輸入員工編號、姓名、登入帳號、電子郵件、上層主管或職級關鍵字，即時篩選下方員工列表'>🔍 關鍵字搜尋 <span class='sp-tip-icon'>ⓘ</span></label>
@@ -6037,7 +6223,7 @@ public class portalController : Controller
                 </div>
 
                 <table id='empDataTable'>
-                    <thead><tr><th>員工編號</th><th>員工姓名</th><th>登入帳號</th><th>所屬部門</th><th>是否為部門主管 / 職稱</th><th>上一層主管 / 到期通知對象</th><th>電子郵件</th><th>系統角色</th><th>帳號狀態</th><th>目前賦予 Story Point</th><th style='min-width:250px;'>管理操作 (修改 / 停用 / 刪除)</th></tr></thead><tbody>");
+                    <thead><tr><th>員工編號與快捷選單</th><th>員工姓名</th><th>登入帳號</th><th>所屬部門</th><th>是否為部門主管 / 職稱</th><th>上一層主管 / 到期通知對象</th><th>電子郵件</th><th>系統角色</th><th>帳號狀態</th><th>目前賦予 Story Point</th></tr></thead><tbody>");
             foreach (DataRow eRow in empTable.Rows)
             {
                 int rowEmpPk = Convert.ToInt32(eRow["employeePk"]);
@@ -6091,44 +6277,49 @@ public class portalController : Controller
                     : "<span class='badge' style='background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;'>🚫 已停用</span>";
                 string rowStyle = empActive ? "" : "opacity:0.68;background:#fef2f2;";
                 string searchBlob = $"{eRow["employeeCode"]} {eRow["employeeName"]} {eRow["loginAccount"]} {eRow["emailAddress"]} {empTitleStr} {hPath} {deptMgrName} {hrMgrName}".ToLowerInvariant();
+                bool isSelf = (rowEmpPk == curEmpPk);
+                string empCodeStr = eRow["employeeCode"]?.ToString() ?? "";
+                string empNameStr = eRow["employeeName"]?.ToString() ?? "";
+                string empAccStr = eRow["loginAccount"]?.ToString() ?? "";
+                string empMailStr = eRow["emailAddress"]?.ToString() ?? "";
+                string empRoleStr = eRow["roleName"]?.ToString() ?? "participant";
 
-                sb.Append($@"<tr class='emp-row' style='{rowStyle}' data-search='{h(searchBlob)}' data-dept='{h(eRow["departmentName"])}' data-rank='{(isDeptMgrRow ? "部門經理" : "一般職級")}' data-role='{h(eRow["roleName"])}' data-active='{(empActive ? "1" : "0")}'>
-                    <td><strong>{h(eRow["employeeCode"])}</strong></td>
-                    <td><strong>{h(eRow["employeeName"])}</strong></td>
-                    <td><code>{h(eRow["loginAccount"])}</code></td>
+                sb.Append($@"<tr class='emp-row sp-context-row'
+                    style='{rowStyle}'
+                    data-row-kind='employee'
+                    data-search='{h(searchBlob)}'
+                    data-dept='{h(eRow["departmentName"])}'
+                    data-rank='{(isDeptMgrRow ? "部門經理" : "一般職級")}'
+                    data-role='{h(empRoleStr)}'
+                    data-active='{(empActive ? "1" : "0")}'
+                    data-emp-pk='{rowEmpPk}'
+                    data-emp-code='{h(empCodeStr)}'
+                    data-emp-name='{h(empNameStr)}'
+                    data-emp-acc='{h(empAccStr)}'
+                    data-emp-mail='{h(empMailStr)}'
+                    data-emp-title='{h(empTitleStr)}'
+                    data-emp-dept-pk='{eRow["departmentPk"]}'
+                    data-emp-role='{h(empRoleStr)}'
+                    data-emp-active='{(empActive ? "true" : "false")}'
+                    data-emp-ismgr='{(isDeptMgrRow ? "true" : "false")}'
+                    data-emp-mgrpk='{h(mgrPkStr)}'
+                    data-emp-self='{(isSelf ? "1" : "0")}'>
+                    <td data-sort-value='{h(empCodeStr)}'>
+                        <div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>
+                            <strong>{h(empCodeStr)}</strong>
+                            <button type='button' class='sp-row-quick-btn' onclick='openRowContextMenuFromBtn(event, this)' title='點擊或於本列任一處按滑鼠右鍵開啟員工快捷操作選單（修改資料、啟用/停用、刪除、檢視指派工項，免捲到最右邊）'>⚡ 操作 ▾</button>
+                        </div>
+                    </td>
+                    <td><strong>{h(empNameStr)}</strong></td>
+                    <td><code>{h(empAccStr)}</code></td>
                     <td>{h(eRow["departmentName"])}</td>
                     <td>{titleCellHtml}</td>
                     <td>{treeHierarchyCellHtml}</td>
-                    <td>{h(eRow["emailAddress"])}</td>
+                    <td>{h(empMailStr)}</td>
                     <td>{rBadge}</td>
                     <td>{statusBadge}</td>
-                    <td><strong style='color:#2563eb;'>{eRow["totalAllocatedStoryPoint"]} pt</strong> ({eRow["assignedItemCount"]} 件)</td>");
-
-                bool isSelf = (rowEmpPk == curEmpPk);
-                string toggleBtn = empActive
-                    ? $@"<form method='post' action='/employee/setActive' style='display:inline;margin:0;'>
-                            <input type='hidden' name='employeePk' value='{rowEmpPk}' />
-                            <input type='hidden' name='isActive' value='false' />
-                            <button type='submit' class='btn btn-warning' style='padding:4px 8px;font-size:12px;' {(isSelf ? "disabled title='不可停用當前登入本人'" : "")}>🚫 停用</button>
-                         </form>"
-                    : $@"<form method='post' action='/employee/setActive' style='display:inline;margin:0;'>
-                            <input type='hidden' name='employeePk' value='{rowEmpPk}' />
-                            <input type='hidden' name='isActive' value='true' />
-                            <button type='submit' class='btn btn-success' style='padding:4px 8px;font-size:12px;'>✅ 啟用</button>
-                         </form>";
-
-                string deleteBtn = $@"<form method='post' action='/employee/delete' style='display:inline;margin:0;' onsubmit=""return confirm('確定要永久刪除員工帳號【{h(eRow["employeeCode"])} - {h(eRow["employeeName"])} ({h(eRow["loginAccount"])})】嗎？');"">
-                            <input type='hidden' name='employeePk' value='{rowEmpPk}' />
-                            <button type='submit' class='btn btn-danger' style='padding:4px 8px;font-size:12px;' {(isSelf ? "disabled title='不可刪除當前登入本人'" : "")}>🗑️ 刪除</button>
-                         </form>";
-
-                sb.Append($@"<td>
-                    <div style='display:flex;gap:6px;flex-wrap:wrap;align-items:center;'>
-                        <button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:12px;' onclick=""loadEmpToForm({rowEmpPk},'{escapeJsString(eRow["employeeCode"]?.ToString())}','{escapeJsString(eRow["employeeName"]?.ToString())}','{escapeJsString(eRow["loginAccount"]?.ToString())}','{escapeJsString(eRow["emailAddress"]?.ToString())}','{escapeJsString(empTitleStr)}',{eRow["departmentPk"]},'{escapeJsString(eRow["roleName"]?.ToString())}','{(empActive ? "true" : "false")}','{(isDeptMgrRow ? "true" : "false")}','{mgrPkStr}')"" >✏️ 修改</button>
-                        {toggleBtn}
-                        {deleteBtn}
-                    </div>
-                </td></tr>");
+                    <td data-sort-value='{eRow["totalAllocatedStoryPoint"]}'><strong style='color:#2563eb;'>{eRow["totalAllocatedStoryPoint"]} pt</strong> ({eRow["assignedItemCount"]} 件)</td>
+                </tr>");
             }
             sb.Append("</tbody></table></div>");
         }
@@ -7042,9 +7233,12 @@ public class portalController : Controller
             }, true);
         }
 
+        const isCurrentUserAdmin = " + (isAdmin ? "true" : "false") + @";
+
         document.addEventListener('DOMContentLoaded', function () {
             initFloatingTooltips();
             initAllSortableLockableTables();
+            initTableRowContextMenu();
             if (document.getElementById('setupSessionTitle') && !document.getElementById('setupSessionTitle').value) {
                 autoFillSetupTitle();
             }
@@ -7073,11 +7267,11 @@ public class portalController : Controller
         });
 
         // =====================================================================
-        // 全域 Table Header 排序 (Sorting) 與鎖定 (欄位鎖定 + 表頭列 Sticky 鎖定) 引擎
-        // 凡是頁面上的 <table> 只要包含 <thead>，皆自動賦予每個表頭 <th>：
+        // 全域 Table Header 排序 (Sorting)、欄位鎖定 (Locking) 與即時表格篩選 (Filtering) 引擎
+        // 凡是頁面上的 <table> 只要包含 <thead>，皆自動賦予：
         //   1. 點擊表頭文字切換 ▲升冪 / ▼降冪 / ⇅預設 排序（支援鎖定欄位優先排序與 Shift 多欄排序）
         //   2. 點擊表頭右側 📌/🔒 按鈕鎖定(凍結)或解鎖該欄位（水平捲動時固定於左側 + 鎖定排序優先權）
-        //   3. 表格上方工具列支援切換「🔒 表頭列鎖定 (Sticky Header)」與「🔄 重設排序與解鎖」
+        //   3. 表格上方工具列支援「🔍 關鍵字快速篩選」、「🏷️ 指定欄位篩選 + 欄位值下拉選單」、「📊 筆數統計徽章」、「🔒 表頭列鎖定 (Sticky Header)」與「🔄 重設排序/篩選/解鎖」
         // =====================================================================
         const spTableStateMap = new WeakMap();
 
@@ -7085,7 +7279,21 @@ public class portalController : Controller
             if (!cell) return '';
             const attrVal = cell.getAttribute('data-sort-value');
             if (attrVal !== null && attrVal !== undefined && attrVal !== '') return attrVal.trim();
-            return (cell.innerText || cell.textContent || '').replace(/\s+/g, ' ').trim();
+            return (cell.innerText || cell.textContent || '').replace(/⚡\s*操作\s*▾/g, '').replace(/\s+/g, ' ').trim();
+        }
+
+        function extractCellFilterDisplayText(cell) {
+            if (!cell) return '';
+            return (cell.innerText || cell.textContent || '').replace(/⚡\s*操作\s*▾/g, '').replace(/\s+/g, ' ').trim();
+        }
+
+        function syncRowDisplayState(tr) {
+            if (!tr) return false;
+            const customHidden = tr.getAttribute('data-custom-hidden') === '1';
+            const toolbarHidden = tr.getAttribute('data-sp-toolbar-hidden') === '1';
+            const shouldHide = customHidden || toolbarHidden;
+            tr.style.display = shouldHide ? 'none' : '';
+            return !shouldHide;
         }
 
         function parseSmartSortToken(rawText) {
@@ -7156,6 +7364,8 @@ public class portalController : Controller
                     tr.setAttribute('data-sp-orig-idx', String(rIdx));
                 });
 
+                const colNames = thList.map(th => (th.innerText || th.textContent || '').replace(/\s+/g, ' ').trim());
+
                 // 建立外層包裝與表頭狀態工具列 (.sp-table-wrapper > .sp-table-toolbar + .sp-table-scroll-container)
                 const wrapper = document.createElement('div');
                 wrapper.className = 'sp-table-wrapper';
@@ -7165,7 +7375,54 @@ public class portalController : Controller
 
                 const statusSpan = document.createElement('div');
                 statusSpan.className = 'sp-table-toolbar-status';
-                statusSpan.innerHTML = '<span>⇅ 點擊任一表頭欄位可排序</span><span>｜</span><span>📌 點擊表頭圖釘可鎖定(凍結)欄位</span>';
+                statusSpan.innerHTML = '<span>⇅ 點擊表頭排序</span><span>｜</span><span>📌 圖釘鎖定欄位</span><span>｜</span><span>🖱️ 右鍵或點「⚡ 操作 ▾」開啟快捷選單</span>';
+
+                // 建立即時篩選控制區 (.sp-table-toolbar-filter)
+                const filterDiv = document.createElement('div');
+                filterDiv.className = 'sp-table-toolbar-filter';
+
+                const colSelect = document.createElement('select');
+                colSelect.className = 'sp-tbl-filter-select';
+                colSelect.title = '選擇要篩選的指定欄位（預設為全部欄位）';
+                const allColOpt = document.createElement('option');
+                allColOpt.value = '-1';
+                allColOpt.textContent = '🏷️ 全部欄位篩選';
+                colSelect.appendChild(allColOpt);
+                colNames.forEach((cName, cIdx) => {
+                    const opt = document.createElement('option');
+                    opt.value = String(cIdx);
+                    opt.textContent = '欄位：' + cName;
+                    colSelect.appendChild(opt);
+                });
+
+                const valSelect = document.createElement('select');
+                valSelect.className = 'sp-tbl-filter-select';
+                valSelect.title = '快速選擇該欄位的既有值進行過濾';
+                valSelect.style.display = 'none';
+
+                const filterInput = document.createElement('input');
+                filterInput.type = 'text';
+                filterInput.className = 'sp-tbl-filter-input';
+                filterInput.placeholder = '🔍 輸入關鍵字即時篩選本表格...';
+                filterInput.title = '輸入任意文字即時過濾此表格紀錄（亦可於儲存格按右鍵直接以此值篩選）';
+
+                const clearFilterBtn = document.createElement('button');
+                clearFilterBtn.type = 'button';
+                clearFilterBtn.className = 'sp-toolbar-btn';
+                clearFilterBtn.innerHTML = '✖ 清除篩選';
+                clearFilterBtn.title = '清除此表格工具列的篩選條件';
+                clearFilterBtn.style.display = 'none';
+
+                const countBadge = document.createElement('span');
+                countBadge.className = 'sp-tbl-count-badge';
+                const totalRowsInit = tbody.querySelectorAll('tr').length;
+                countBadge.textContent = '顯示 ' + totalRowsInit + ' / ' + totalRowsInit + ' 筆';
+
+                filterDiv.appendChild(colSelect);
+                filterDiv.appendChild(valSelect);
+                filterDiv.appendChild(filterInput);
+                filterDiv.appendChild(clearFilterBtn);
+                filterDiv.appendChild(countBadge);
 
                 const actionsDiv = document.createElement('div');
                 actionsDiv.className = 'sp-table-toolbar-actions';
@@ -7173,18 +7430,19 @@ public class portalController : Controller
                 const stickyBtn = document.createElement('button');
                 stickyBtn.type = 'button';
                 stickyBtn.className = 'sp-toolbar-btn active';
-                stickyBtn.innerHTML = '🔒 表頭列已鎖定 (Sticky)';
+                stickyBtn.innerHTML = '🔒 表頭已鎖定';
                 stickyBtn.title = '切換垂直捲動時是否固定鎖定頂部表頭列';
 
                 const resetBtn = document.createElement('button');
                 resetBtn.type = 'button';
                 resetBtn.className = 'sp-toolbar-btn';
-                resetBtn.innerHTML = '🔄 重設排序與解鎖';
-                resetBtn.title = '恢復預設資料列順序並解除所有鎖定欄位';
+                resetBtn.innerHTML = '🔄 重設表格';
+                resetBtn.title = '恢復預設資料列順序、清除篩選並解除所有鎖定欄位';
 
                 actionsDiv.appendChild(stickyBtn);
                 actionsDiv.appendChild(resetBtn);
                 toolbar.appendChild(statusSpan);
+                toolbar.appendChild(filterDiv);
                 toolbar.appendChild(actionsDiv);
 
                 const scrollContainer = document.createElement('div');
@@ -7196,7 +7454,6 @@ public class portalController : Controller
                 wrapper.appendChild(scrollContainer);
                 scrollContainer.appendChild(table);
 
-                const colNames = thList.map(th => (th.innerText || th.textContent || '').replace(/\s+/g, ' ').trim());
                 const state = {
                     table,
                     tbody,
@@ -7208,7 +7465,12 @@ public class portalController : Controller
                     lockedCols: new Set(),
                     statusSpan,
                     stickyBtn,
-                    resetBtn
+                    resetBtn,
+                    colSelect,
+                    valSelect,
+                    filterInput,
+                    clearFilterBtn,
+                    countBadge
                 };
                 spTableStateMap.set(table, state);
 
@@ -7253,18 +7515,127 @@ public class portalController : Controller
                     th.appendChild(box);
                 });
 
+                colSelect.addEventListener('change', function () {
+                    populateToolbarColumnDistinctValues(state);
+                    applyToolbarTableFilter(state);
+                });
+
+                valSelect.addEventListener('change', function () {
+                    filterInput.value = valSelect.value || '';
+                    applyToolbarTableFilter(state);
+                });
+
+                filterInput.addEventListener('input', function () {
+                    applyToolbarTableFilter(state);
+                });
+
+                clearFilterBtn.addEventListener('click', function () {
+                    colSelect.value = '-1';
+                    valSelect.style.display = 'none';
+                    valSelect.innerHTML = '';
+                    filterInput.value = '';
+                    applyToolbarTableFilter(state);
+                });
+
                 stickyBtn.addEventListener('click', function () {
                     const enabled = table.classList.toggle('sp-sticky-header-enabled');
                     stickyBtn.classList.toggle('active', enabled);
-                    stickyBtn.innerHTML = enabled ? '🔒 表頭列已鎖定 (Sticky)' : '🔓 表頭列未鎖定';
+                    stickyBtn.innerHTML = enabled ? '🔒 表頭已鎖定' : '🔓 表頭未鎖定';
                 });
 
                 resetBtn.addEventListener('click', function () {
                     state.sortList = [];
                     state.lockedCols.clear();
+                    colSelect.value = '-1';
+                    valSelect.style.display = 'none';
+                    valSelect.innerHTML = '';
+                    filterInput.value = '';
+                    applyToolbarTableFilter(state);
                     applyTableSortAndLockState(state);
                 });
             });
+        }
+
+        function populateToolbarColumnDistinctValues(state) {
+            const { tbody, colSelect, valSelect } = state;
+            const colIdx = parseInt(colSelect.value || '-1', 10);
+            valSelect.innerHTML = '';
+            if (colIdx < 0) {
+                valSelect.style.display = 'none';
+                return;
+            }
+            const distinctSet = new Set();
+            Array.from(tbody.querySelectorAll('tr')).forEach(tr => {
+                const cell = tr.children[colIdx];
+                if (!cell) return;
+                const txt = extractCellFilterDisplayText(cell);
+                if (txt && txt.length <= 65) {
+                    distinctSet.add(txt);
+                }
+            });
+            const vals = Array.from(distinctSet).sort((a, b) => a.localeCompare(b, 'zh-Hant', { numeric: true }));
+            if (vals.length === 0) {
+                valSelect.style.display = 'none';
+                return;
+            }
+            const defOpt = document.createElement('option');
+            defOpt.value = '';
+            defOpt.textContent = '-- 選擇欄位值 (' + vals.length + ' 種) --';
+            valSelect.appendChild(defOpt);
+            vals.slice(0, 60).forEach(v => {
+                const o = document.createElement('option');
+                o.value = v;
+                o.textContent = v;
+                valSelect.appendChild(o);
+            });
+            valSelect.style.display = '';
+        }
+
+        function applyToolbarTableFilter(state) {
+            if (!state) return;
+            const { tbody, colSelect, filterInput, clearFilterBtn, countBadge } = state;
+            const colIdx = parseInt(colSelect.value || '-1', 10);
+            const kw = (filterInput.value || '').trim().toLowerCase();
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            let visibleCount = 0;
+
+            rows.forEach(tr => {
+                let match = true;
+                if (kw) {
+                    if (colIdx >= 0 && tr.children[colIdx]) {
+                        const cellTxt = extractCellFilterDisplayText(tr.children[colIdx]).toLowerCase();
+                        match = cellTxt.indexOf(kw) !== -1;
+                    } else {
+                        const rowTxt = (tr.innerText || tr.textContent || '').replace(/⚡\s*操作\s*▾/g, '').toLowerCase();
+                        const dataSearch = (tr.getAttribute('data-search') || '').toLowerCase();
+                        match = rowTxt.indexOf(kw) !== -1 || dataSearch.indexOf(kw) !== -1;
+                    }
+                }
+                tr.setAttribute('data-sp-toolbar-hidden', match ? '0' : '1');
+                if (syncRowDisplayState(tr)) {
+                    visibleCount++;
+                }
+            });
+
+            if (clearFilterBtn) {
+                clearFilterBtn.style.display = (kw || colIdx >= 0) ? '' : 'none';
+            }
+            if (countBadge) {
+                countBadge.textContent = '顯示 ' + visibleCount + ' / ' + rows.length + ' 筆';
+            }
+        }
+
+        function refreshToolbarCountBadgeForTable(tableId) {
+            const tbl = document.getElementById(tableId);
+            if (!tbl) return;
+            const st = spTableStateMap.get(tbl);
+            if (!st || !st.countBadge) return;
+            const rows = Array.from(st.tbody.querySelectorAll('tr'));
+            let vis = 0;
+            rows.forEach(r => {
+                if (r.style.display !== 'none') vis++;
+            });
+            st.countBadge.textContent = '顯示 ' + vis + ' / ' + rows.length + ' 筆';
         }
 
         function handleTableHeaderSortClick(state, colIdx, isShiftKey) {
@@ -7364,12 +7735,12 @@ public class portalController : Controller
             // 4. 更新工具列狀態文字
             const sortText = sortList.length > 0
                 ? '📊 排序中：' + sortList.map(s => colNames[s.colIndex] + (s.asc ? '(▲升冪)' : '(▼降冪)')).join(' ➔ ')
-                : '⇅ 點擊任一表頭欄位可排序';
+                : '⇅ 點擊表頭排序';
             const lockedArr = Array.from(lockedCols).sort((a, b) => a - b).map(i => colNames[i]);
             const lockText = lockedArr.length > 0
-                ? '<span style=""color:#1e40af;font-weight:700;"">🔒 已鎖定欄位：' + lockedArr.join('、') + '</span>'
-                : '📌 點擊表頭圖釘可鎖定(凍結)欄位';
-            statusSpan.innerHTML = `<span>${sortText}</span><span>｜</span><span>${lockText}</span>`;
+                ? '<span style=""color:#1e40af;font-weight:700;"">🔒 已鎖定：' + lockedArr.join('、') + '</span>'
+                : '📌 圖釘鎖定欄位';
+            statusSpan.innerHTML = `<span>${sortText}</span><span>｜</span><span>${lockText}</span><span>｜</span><span>🖱️ 右鍵或點「⚡ 操作 ▾」開啟快捷選單</span>`;
         }
 
         function updateSingleTableStickyOffsets(state) {
@@ -7419,6 +7790,561 @@ public class portalController : Controller
 
         window.addEventListener('resize', refreshAllTableStickyOffsets);
 
+        // =====================================================================
+        // 全域表格紀錄「滑鼠快捷選單 (Context Menu)」引擎
+        // 支援：
+        //   1. 在任何表格資料列 (tbody tr) 按下滑鼠右鍵 (contextmenu)，或點擊第一欄的「⚡ 操作 ▾」按鈕
+        //   2. 自動判斷該列資料類型 (workitem / workitemKind / workitemType / employee / session / 通用表格列)
+        //   3. 提供「✏️ 編輯 / 修改」、「👥 修改指派員工與配額」、「🃏 發起多人盲投」、「🚫 停用 / ✅ 啟用」、「🗑️ 刪除」、「🔍 以此儲存格值篩選」、「📋 複製本列紀錄」等操作，完全免捲動到表格最右邊！
+        // =====================================================================
+        let spContextMenuEl = null;
+        let spActiveContextRow = null;
+
+        function showToastNotice(msg) {
+            let toast = document.getElementById('spToastNotice');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'spToastNotice';
+                toast.className = 'sp-toast-notice';
+                document.body.appendChild(toast);
+            }
+            toast.textContent = msg;
+            toast.classList.add('show');
+            clearTimeout(toast._hideTimer);
+            toast._hideTimer = setTimeout(function () {
+                toast.classList.remove('show');
+            }, 2600);
+        }
+
+        function submitDynamicPostAction(actionUrl, fieldsObj, confirmMsg) {
+            if (confirmMsg && !window.confirm(confirmMsg)) {
+                return;
+            }
+            const form = document.createElement('form');
+            form.method = 'post';
+            form.action = actionUrl;
+            form.style.display = 'none';
+            Object.keys(fieldsObj || {}).forEach(k => {
+                const inp = document.createElement('input');
+                inp.type = 'hidden';
+                inp.name = k;
+                inp.value = String(fieldsObj[k] ?? '');
+                form.appendChild(inp);
+            });
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        function closeRowContextMenu() {
+            if (spContextMenuEl) {
+                spContextMenuEl.classList.remove('visible');
+            }
+            if (spActiveContextRow) {
+                spActiveContextRow.classList.remove('sp-context-active-row');
+                spActiveContextRow = null;
+            }
+        }
+
+        function openRowContextMenuFromBtn(evt, btnEl) {
+            if (evt) {
+                evt.preventDefault();
+                evt.stopPropagation();
+            }
+            const tr = btnEl ? btnEl.closest('tr') : null;
+            if (!tr) return;
+            const td = btnEl.closest('td');
+            const rect = btnEl.getBoundingClientRect();
+            openRowContextMenuForRow(tr, td, rect.left, rect.bottom + 4);
+        }
+
+        function initTableRowContextMenu() {
+            if (!spContextMenuEl) {
+                spContextMenuEl = document.createElement('div');
+                spContextMenuEl.id = 'spRowContextMenu';
+                spContextMenuEl.className = 'sp-context-menu';
+                document.body.appendChild(spContextMenuEl);
+            }
+
+            // 在任何表格資料列按滑鼠右鍵即彈出快捷選單
+            document.addEventListener('contextmenu', function (evt) {
+                const target = evt.target;
+                if (!target || !target.closest) return;
+                // 若在輸入框、下拉選單或文字區按右鍵則保留瀏覽器原生選單
+                if (target.closest('input, textarea, select')) return;
+                const tr = target.closest('table tbody tr');
+                if (!tr) return;
+                evt.preventDefault();
+                const td = target.closest('td');
+                openRowContextMenuForRow(tr, td, evt.clientX, evt.clientY);
+            });
+
+            document.addEventListener('click', function (evt) {
+                if (spContextMenuEl && spContextMenuEl.classList.contains('visible')) {
+                    if (evt.target && evt.target.closest && evt.target.closest('#spRowContextMenu')) {
+                        return;
+                    }
+                    closeRowContextMenu();
+                }
+            });
+
+            document.addEventListener('keydown', function (evt) {
+                if (evt.key === 'Escape') {
+                    closeRowContextMenu();
+                }
+            });
+
+            window.addEventListener('scroll', function () {
+                if (spContextMenuEl && spContextMenuEl.classList.contains('visible')) {
+                    closeRowContextMenu();
+                }
+            }, true);
+        }
+
+        function createCtxMenuItem(icon, label, subText, cssClass, onClickFn, disabled) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'sp-ctx-item' + (cssClass ? ' ' + cssClass : '');
+            if (disabled) {
+                btn.disabled = true;
+            }
+            const leftSpan = document.createElement('span');
+            leftSpan.innerHTML = `<span class='sp-ctx-icon'>${icon}</span><span>${label}</span>`;
+            btn.appendChild(leftSpan);
+            if (subText) {
+                const subSpan = document.createElement('span');
+                subSpan.style.fontSize = '11px';
+                subSpan.style.color = '#64748b';
+                subSpan.style.marginLeft = 'auto';
+                subSpan.textContent = subText;
+                btn.appendChild(subSpan);
+            }
+            btn.addEventListener('click', function (evt) {
+                evt.stopPropagation();
+                if (disabled) return;
+                closeRowContextMenu();
+                onClickFn();
+            });
+            return btn;
+        }
+
+        function createCtxDivider() {
+            const div = document.createElement('div');
+            div.className = 'sp-ctx-divider';
+            return div;
+        }
+
+        function openRowContextMenuForRow(tr, clickedTd, clientX, clientY) {
+            if (!spContextMenuEl || !tr) return;
+            if (spActiveContextRow) {
+                spActiveContextRow.classList.remove('sp-context-active-row');
+            }
+            spActiveContextRow = tr;
+            tr.classList.add('sp-context-active-row');
+
+            spContextMenuEl.innerHTML = '';
+            const rowKind = tr.getAttribute('data-row-kind') || 'generic';
+            const table = tr.closest('table');
+            const state = table ? spTableStateMap.get(table) : null;
+
+            // 標題區
+            const headerDiv = document.createElement('div');
+            headerDiv.className = 'sp-ctx-header';
+            let headerTitle = '📋 表格紀錄快捷選單';
+
+            if (rowKind === 'workitem') {
+                const wiPk = tr.getAttribute('data-wi-pk') || '';
+                const wiCode = tr.getAttribute('data-wi-code') || '';
+                const wiTitle = tr.getAttribute('data-wi-title') || '';
+                const wiTypePk = tr.getAttribute('data-wi-type-pk') || '0';
+                const wiPt = tr.getAttribute('data-wi-pt') || '';
+                const wiStatus = tr.getAttribute('data-wi-status') || 'todo';
+                const wiReason = tr.getAttribute('data-wi-reason') || '';
+                const wiKind = tr.getAttribute('data-wi-kind') || 'project';
+                const wiKindText = tr.getAttribute('data-wi-kind-text') || '';
+                const wiStart = tr.getAttribute('data-wi-start') || '';
+                const wiEnd = tr.getAttribute('data-wi-end') || '';
+
+                headerTitle = `📋 工項快捷操作：${wiCode} - ${wiTitle}`;
+                headerDiv.innerHTML = `<span>${headerTitle}</span><span class='badge badge-user' style='font-size:11px;'>${wiKindText}｜${wiPt} pt</span>`;
+                spContextMenuEl.appendChild(headerDiv);
+
+                if (isCurrentUserAdmin) {
+                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '編輯 / 修改此工項設定', '帶入表單', 'primary-action', function () {
+                        loadWorkItemToForm(wiPk, wiCode, wiTitle, wiTypePk, wiPt, wiStatus, wiReason, wiKind, wiStart, wiEnd);
+                        showToastNotice('✏️ 已將工項「' + wiCode + '」帶入上方編修表單');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('👥', '修改此工項之賦予員工與分攤配額', '指派面板', '', function () {
+                        const sel = document.getElementById('assignWorkItemSelect');
+                        if (sel) {
+                            sel.value = String(wiPk);
+                            const card = document.getElementById('assignWorkItemCard') || sel.closest('.card');
+                            if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            sel.focus();
+                            showToastNotice('👥 已選擇工項「' + wiCode + '」，請設定負責員工與分攤比例');
+                        }
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('🃏', '針對此工項發起「多人盲投估算」', '回合設定', '', function () {
+                        switchTab('roundsetup');
+                        const tType = document.getElementById('setupTargetType');
+                        if (tType) {
+                            tType.value = 'workItem';
+                            toggleSetupTargetPicker();
+                            const wiPicker = document.querySelector('#setupWorkItemPicker select[name=""workItemPk""]');
+                            if (wiPicker) {
+                                wiPicker.value = String(wiPk);
+                                autoFillSetupTitle();
+                            }
+                        }
+                        window.scrollTo({ top: 140, behavior: 'smooth' });
+                        showToastNotice('🃏 已切換至盲投設定並帶入工項「' + wiCode + '」');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('⚡', '設為已到期並帶入表單（測試自動扣點寄信）', '到期測試', '', function () {
+                        loadWorkItemToForm(wiPk, wiCode, wiTitle, wiTypePk, wiPt, wiStatus, wiReason, wiKind, wiStart, wiEnd);
+                        setWorkItemDatePreset(-1);
+                        showToastNotice('⏰ 已將工項「' + wiCode + '」迄時設為已到期，點擊儲存即可測試自動扣點寄信');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxDivider());
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', '刪除此工項紀錄 (' + wiCode + ')', '永久刪除', 'danger', function () {
+                        submitDynamicPostAction('/workitem/delete', {
+                            workItemPk: wiPk,
+                            itemCode: wiCode
+                        }, '確定要刪除工項「' + wiCode + ' - ' + wiTitle + '」嗎？');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxDivider());
+                }
+            } else if (rowKind === 'workitemKind') {
+                const kPk = tr.getAttribute('data-kind-pk') || '';
+                const kCode = tr.getAttribute('data-kind-code') || '';
+                const kName = tr.getAttribute('data-kind-name') || '';
+                const kIcon = tr.getAttribute('data-kind-icon') || '📌';
+                const kColor = tr.getAttribute('data-kind-color') || 'blue';
+                const kSort = tr.getAttribute('data-kind-sort') || '40';
+                const kDesc = tr.getAttribute('data-kind-desc') || '';
+                const tabSuffix = tr.getAttribute('data-tab-suffix') || 'workitems';
+
+                headerTitle = `🗂️ 工項類型快捷操作：${kIcon} ${kName} (${kCode})`;
+                headerDiv.innerHTML = `<span>${headerTitle}</span>`;
+                spContextMenuEl.appendChild(headerDiv);
+
+                if (isCurrentUserAdmin) {
+                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '編輯 / 修改此工項類型', '帶入表單', 'primary-action', function () {
+                        loadWorkItemKindToForm(kPk, kCode, kName, kIcon, kColor, kSort, kDesc, tabSuffix);
+                        showToastNotice('✏️ 已將工項類型「' + kName + '」帶入上方編修表單');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('🔍', '篩選套用此類型 (' + kName + ') 的所有工項', '工項篩選', '', function () {
+                        switchTab('workitems');
+                        const fKind = document.getElementById('filterWiKind');
+                        if (fKind) {
+                            fKind.value = kCode;
+                            filterWorkItemTable();
+                            document.getElementById('workItemDataTable')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxDivider());
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', '刪除此工項類型 (' + kCode + ')', '移轉備援', 'danger', function () {
+                        submitDynamicPostAction('/workitem/kind/delete', {
+                            workItemKindPk: kPk,
+                            kindCode: kCode,
+                            returnTab: tabSuffix
+                        }, '確定要刪除工項類型「' + kCode + ' - ' + kName + '」嗎？（若有工項使用此類型將自動移轉至備援類型）');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxDivider());
+                }
+            } else if (rowKind === 'workitemType') {
+                const tPk = tr.getAttribute('data-type-pk') || '';
+                const tCode = tr.getAttribute('data-type-code') || '';
+                const tName = tr.getAttribute('data-type-name') || '';
+                const tCat = tr.getAttribute('data-type-cat') || '';
+                const tDesc = tr.getAttribute('data-type-desc') || '';
+                const tPt = tr.getAttribute('data-type-pt') || '';
+                const tKind = tr.getAttribute('data-type-kind') || 'project';
+
+                headerTitle = `🏷️ 代表類型快捷操作：${tCode} - ${tName}`;
+                headerDiv.innerHTML = `<span>${headerTitle}</span><span class='badge badge-user' style='font-size:11px;'>${tPt ? tPt + ' pt' : '待估算'}</span>`;
+                spContextMenuEl.appendChild(headerDiv);
+
+                if (isCurrentUserAdmin) {
+                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '編輯 / 修改此工項代表類型', '帶入表單', 'primary-action', function () {
+                        loadTypeToForm(tPk, tCode, tName, tCat, tDesc, tPt, tKind);
+                        showToastNotice('✏️ 已將代表類型「' + tCode + '」帶入上方編修表單');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('🃏', '針對此代表類型發起「多人盲投估算」', '回合設定', '', function () {
+                        switchTab('roundsetup');
+                        const tType = document.getElementById('setupTargetType');
+                        if (tType) {
+                            tType.value = 'workItemType';
+                            toggleSetupTargetPicker();
+                            const typePicker = document.querySelector('#setupTypePicker select[name=""workItemTypePk""]');
+                            if (typePicker) {
+                                typePicker.value = String(tPk);
+                                autoFillSetupTitle();
+                            }
+                        }
+                        window.scrollTo({ top: 140, behavior: 'smooth' });
+                        showToastNotice('🃏 已切換至盲投設定並帶入代表類型「' + tName + '」');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('🔍', '檢視套用此代表類型的所有工項', '工項篩選', '', function () {
+                        switchTab('workitems');
+                        const fType = document.getElementById('filterWiType');
+                        if (fType) {
+                            fType.value = tName;
+                            filterWorkItemTable();
+                            document.getElementById('workItemDataTable')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxDivider());
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', '刪除此工項代表類型 (' + tCode + ')', '永久刪除', 'danger', function () {
+                        submitDynamicPostAction('/workitem/type/delete', {
+                            workItemTypePk: tPk,
+                            typeCode: tCode
+                        }, '確定要刪除工項代表類型「' + tCode + ' - ' + tName + '」嗎？');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxDivider());
+                }
+            } else if (rowKind === 'employee') {
+                const empPk = tr.getAttribute('data-emp-pk') || '';
+                const empCode = tr.getAttribute('data-emp-code') || '';
+                const empName = tr.getAttribute('data-emp-name') || '';
+                const empAcc = tr.getAttribute('data-emp-acc') || '';
+                const empMail = tr.getAttribute('data-emp-mail') || '';
+                const empTitle = tr.getAttribute('data-emp-title') || '';
+                const empDeptPk = tr.getAttribute('data-emp-dept-pk') || '1';
+                const empRole = tr.getAttribute('data-emp-role') || 'participant';
+                const empActive = tr.getAttribute('data-emp-active') || 'true';
+                const empIsMgr = tr.getAttribute('data-emp-ismgr') || 'false';
+                const empMgrPk = tr.getAttribute('data-emp-mgrpk') || '';
+                const isSelf = tr.getAttribute('data-emp-self') === '1';
+
+                headerTitle = `👤 員工快捷操作：${empCode} - ${empName}`;
+                headerDiv.innerHTML = `<span>${headerTitle}</span><span class='badge badge-user' style='font-size:11px;'>${empAcc}</span>`;
+                spContextMenuEl.appendChild(headerDiv);
+
+                if (isCurrentUserAdmin) {
+                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '修改員工資料、部門主管註記與登入密碼', '帶入表單', 'primary-action', function () {
+                        loadEmpToForm(empPk, empCode, empName, empAcc, empMail, empTitle, empDeptPk, empRole, empActive, empIsMgr, empMgrPk);
+                        showToastNotice('✏️ 已將員工「' + empName + '」帶入上方編修表單');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('📋', '篩選檢視此員工負責的所有工項', '工項清單', '', function () {
+                        switchTab('workitems');
+                        const fEmp = document.getElementById('filterWiAssignee');
+                        if (fEmp) {
+                            fEmp.value = empName;
+                            filterWorkItemTable();
+                            document.getElementById('workItemDataTable')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxDivider());
+
+                    if (empActive === 'true') {
+                        spContextMenuEl.appendChild(createCtxMenuItem('🚫', '停用此員工帳號 (' + empAcc + ')', isSelf ? '本人不可停用' : '停用帳號', 'warn', function () {
+                            submitDynamicPostAction('/employee/setActive', {
+                                employeePk: empPk,
+                                isActive: 'false'
+                            }, '確定要停用員工帳號【' + empCode + ' - ' + empName + '】嗎？');
+                        }, isSelf));
+                    } else {
+                        spContextMenuEl.appendChild(createCtxMenuItem('✅', '啟用此員工帳號 (' + empAcc + ')', '恢復啟用', 'primary-action', function () {
+                            submitDynamicPostAction('/employee/setActive', {
+                                employeePk: empPk,
+                                isActive: 'true'
+                            });
+                        }));
+                    }
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', '永久刪除此員工帳號 (' + empCode + ')', isSelf ? '本人不可刪除' : '永久刪除', 'danger', function () {
+                        submitDynamicPostAction('/employee/delete', {
+                            employeePk: empPk
+                        }, '確定要永久刪除員工帳號【' + empCode + ' - ' + empName + ' (' + empAcc + ')】嗎？');
+                    }, isSelf));
+
+                    spContextMenuEl.appendChild(createCtxDivider());
+                }
+            } else if (rowKind === 'session') {
+                const sPk = tr.getAttribute('data-session-pk') || '';
+                const sCode = tr.getAttribute('data-session-code') || '';
+                const sTitle = tr.getAttribute('data-session-title') || '';
+                const sUrl = tr.getAttribute('data-session-url') || ('/voting/session?sessionPk=' + sPk);
+                const sLocked = tr.getAttribute('data-session-locked') === '1';
+
+                headerTitle = `🃏 盲投議程快捷操作：${sCode}`;
+                headerDiv.innerHTML = `<span>${headerTitle}</span>`;
+                spContextMenuEl.appendChild(headerDiv);
+
+                spContextMenuEl.appendChild(createCtxMenuItem('🚀', sLocked ? '此盲投 Session 已在獨立網頁開啟中' : '開啟此盲投 Session 獨立網頁', '#' + sPk, 'primary-action', function () {
+                    window.open(sUrl, '_blank', 'noopener');
+                }, sLocked));
+
+                spContextMenuEl.appendChild(createCtxDivider());
+            } else {
+                headerDiv.innerHTML = `<span>${headerTitle}</span>`;
+                spContextMenuEl.appendChild(headerDiv);
+            }
+
+            // 通用表格篩選與複製快捷動作（任何表格皆適用）
+            if (clickedTd && state) {
+                const colIdx = Array.from(tr.children).indexOf(clickedTd);
+                const cellVal = extractCellFilterDisplayText(clickedTd);
+                const colTitle = (colIdx >= 0 && state.colNames[colIdx]) ? state.colNames[colIdx] : '此欄';
+                if (cellVal) {
+                    const shortVal = cellVal.length > 22 ? cellVal.substring(0, 22) + '...' : cellVal;
+                    spContextMenuEl.appendChild(createCtxMenuItem('🔍', `以此儲存格值篩選【${colTitle}】`, shortVal, '', function () {
+                        state.colSelect.value = colIdx >= 0 ? String(colIdx) : '-1';
+                        populateToolbarColumnDistinctValues(state);
+                        state.filterInput.value = cellVal;
+                        applyToolbarTableFilter(state);
+                        showToastNotice('🔍 已篩選【' + colTitle + '】包含「' + shortVal + '」的紀錄');
+                    }));
+                }
+            }
+
+            if (state) {
+                spContextMenuEl.appendChild(createCtxMenuItem('🔄', '清除本表格所有篩選條件並重設排序', '顯示全部', '', function () {
+                    state.colSelect.value = '-1';
+                    state.valSelect.style.display = 'none';
+                    state.valSelect.innerHTML = '';
+                    state.filterInput.value = '';
+                    applyToolbarTableFilter(state);
+                    if (table.id === 'workItemDataTable') resetWorkItemFilter();
+                    if (table.id === 'workItemTypeDataTable') resetWorkItemTypeFilter();
+                    if (table.id === 'empDataTable') resetEmployeeFilter();
+                    showToastNotice('🔄 已清除本表格所有篩選條件');
+                }));
+            }
+
+            spContextMenuEl.appendChild(createCtxMenuItem('📋', '複製本列紀錄文字至剪貼簿', 'Tab 分隔', '', function () {
+                const rowText = Array.from(tr.children).map(c => extractCellFilterDisplayText(c)).join('\t');
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(rowText).then(function () {
+                        showToastNotice('📋 已複製本列紀錄至剪貼簿');
+                    });
+                }
+            }));
+
+            // 顯示並智慧定位於滑鼠座標（避免超出視窗右緣或底緣）
+            spContextMenuEl.classList.add('visible');
+            const menuRect = spContextMenuEl.getBoundingClientRect();
+            let left = clientX;
+            let top = clientY;
+            if (left + menuRect.width > window.innerWidth - 12) {
+                left = Math.max(8, window.innerWidth - menuRect.width - 12);
+            }
+            if (top + menuRect.height > window.innerHeight - 12) {
+                top = Math.max(8, window.innerHeight - menuRect.height - 12);
+            }
+            spContextMenuEl.style.left = Math.round(left) + 'px';
+            spContextMenuEl.style.top = Math.round(top) + 'px';
+        }
+
+        function filterWorkItemTable() {
+            const kw = (document.getElementById('filterWiKeyword')?.value || '').trim().toLowerCase();
+            const kind = document.getElementById('filterWiKind')?.value || '';
+            const typeName = document.getElementById('filterWiType')?.value || '';
+            const status = document.getElementById('filterWiStatus')?.value || '';
+            const assignee = (document.getElementById('filterWiAssignee')?.value || '').trim().toLowerCase();
+
+            const rows = document.querySelectorAll('#workItemDataTable tbody tr.wi-row');
+            let visibleCount = 0;
+            rows.forEach(r => {
+                const matchKw = !kw || (r.getAttribute('data-search') || '').indexOf(kw) !== -1;
+                const matchKind = !kind || r.getAttribute('data-wi-kind') === kind;
+                const matchType = !typeName || r.getAttribute('data-wi-type-name') === typeName;
+                let matchStatus = true;
+                if (status === 'expired') {
+                    matchStatus = r.getAttribute('data-wi-expired') === '1';
+                } else if (status === 'activePt') {
+                    matchStatus = r.getAttribute('data-wi-expired') !== '1';
+                } else if (status) {
+                    matchStatus = r.getAttribute('data-wi-status') === status;
+                }
+                const matchAssignee = !assignee || (r.getAttribute('data-wi-assignee') || '').toLowerCase().indexOf(assignee) !== -1;
+
+                const customMatch = matchKw && matchKind && matchType && matchStatus && matchAssignee;
+                r.setAttribute('data-custom-hidden', customMatch ? '0' : '1');
+                if (syncRowDisplayState(r)) {
+                    visibleCount++;
+                }
+            });
+
+            const lbl = document.getElementById('wiFilterCountLabel');
+            if (lbl) {
+                lbl.textContent = '符合篩選：' + visibleCount + ' / ' + rows.length + ' 筆工項';
+            }
+            refreshToolbarCountBadgeForTable('workItemDataTable');
+        }
+
+        function resetWorkItemFilter() {
+            if (document.getElementById('filterWiKeyword')) document.getElementById('filterWiKeyword').value = '';
+            if (document.getElementById('filterWiKind')) document.getElementById('filterWiKind').value = '';
+            if (document.getElementById('filterWiType')) document.getElementById('filterWiType').value = '';
+            if (document.getElementById('filterWiStatus')) document.getElementById('filterWiStatus').value = '';
+            if (document.getElementById('filterWiAssignee')) document.getElementById('filterWiAssignee').value = '';
+            const tbl = document.getElementById('workItemDataTable');
+            if (tbl && spTableStateMap.has(tbl)) {
+                const st = spTableStateMap.get(tbl);
+                st.colSelect.value = '-1';
+                st.valSelect.style.display = 'none';
+                st.filterInput.value = '';
+                applyToolbarTableFilter(st);
+            }
+            filterWorkItemTable();
+        }
+
+        function filterWorkItemTypeTable() {
+            const kw = (document.getElementById('filterTypeKeyword')?.value || '').trim().toLowerCase();
+            const kind = document.getElementById('filterTypeKind')?.value || '';
+            const status = document.getElementById('filterTypeStatus')?.value || '';
+
+            const rows = document.querySelectorAll('#workItemTypeDataTable tbody tr.type-row');
+            let visibleCount = 0;
+            rows.forEach(r => {
+                const matchKw = !kw || (r.getAttribute('data-search') || '').indexOf(kw) !== -1;
+                const matchKind = !kind || r.getAttribute('data-type-kind') === kind;
+                const matchStatus = !status || r.getAttribute('data-type-status') === status;
+                const customMatch = matchKw && matchKind && matchStatus;
+                r.setAttribute('data-custom-hidden', customMatch ? '0' : '1');
+                if (syncRowDisplayState(r)) {
+                    visibleCount++;
+                }
+            });
+
+            const lbl = document.getElementById('typeFilterCountLabel');
+            if (lbl) {
+                lbl.textContent = '符合篩選：' + visibleCount + ' / ' + rows.length + ' 筆代表類型';
+            }
+            refreshToolbarCountBadgeForTable('workItemTypeDataTable');
+        }
+
+        function resetWorkItemTypeFilter() {
+            if (document.getElementById('filterTypeKeyword')) document.getElementById('filterTypeKeyword').value = '';
+            if (document.getElementById('filterTypeKind')) document.getElementById('filterTypeKind').value = '';
+            if (document.getElementById('filterTypeStatus')) document.getElementById('filterTypeStatus').value = '';
+            const tbl = document.getElementById('workItemTypeDataTable');
+            if (tbl && spTableStateMap.has(tbl)) {
+                const st = spTableStateMap.get(tbl);
+                st.colSelect.value = '-1';
+                st.valSelect.style.display = 'none';
+                st.filterInput.value = '';
+                applyToolbarTableFilter(st);
+            }
+            filterWorkItemTypeTable();
+        }
 
         function onWorkItemTypeChange() {
             const sel = document.getElementById('wiTypeSelect');
@@ -7439,10 +8365,51 @@ public class portalController : Controller
             return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()) + 'T' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
         }
 
+        function applyWorkItemDurationPreset() {
+            const startEl = document.getElementById('wiStartDate');
+            const endEl = document.getElementById('wiEndDate');
+            const qtyEl = document.getElementById('wiDurationQty');
+            const unitEl = document.getElementById('wiDurationUnit');
+            if (!startEl || !endEl) return;
+
+            let baseDate = startEl.value ? new Date(startEl.value) : new Date();
+            if (isNaN(baseDate.getTime())) {
+                baseDate = new Date();
+                startEl.value = formatLocalIsoMinute(baseDate);
+            } else if (!startEl.value) {
+                startEl.value = formatLocalIsoMinute(baseDate);
+            }
+
+            let qty = qtyEl ? parseFloat(qtyEl.value) : 1;
+            if (isNaN(qty) || qty <= 0) {
+                qty = 1;
+            }
+            const unit = unitEl ? unitEl.value : 'day';
+            const endDate = new Date(baseDate.getTime());
+
+            if (unit === 'day') {
+                endDate.setDate(endDate.getDate() + qty);
+            } else if (unit === 'week') {
+                endDate.setDate(endDate.getDate() + (qty * 7));
+            } else if (unit === 'month') {
+                endDate.setMonth(endDate.getMonth() + qty);
+            } else if (unit === 'quarter') {
+                endDate.setMonth(endDate.getMonth() + (qty * 3));
+            } else if (unit === 'year') {
+                endDate.setFullYear(endDate.getFullYear() + qty);
+            } else {
+                endDate.setDate(endDate.getDate() + qty);
+            }
+
+            endEl.value = formatLocalIsoMinute(endDate);
+        }
+
         function setWorkItemDatePreset(daysOffset) {
             const now = new Date();
             const startEl = document.getElementById('wiStartDate');
             const endEl = document.getElementById('wiEndDate');
+            const qtyEl = document.getElementById('wiDurationQty');
+            const unitEl = document.getElementById('wiDurationUnit');
             if (!startEl || !endEl) return;
             if (daysOffset < 0) {
                 // 設為已到期（起時：7天前，迄時：10分鐘前），儲存後立即觸發自動轉換狀態為已完成、扣除 Story Point 並寄信給部門管理層與 HR
@@ -7451,9 +8418,10 @@ public class portalController : Controller
                 startEl.value = formatLocalIsoMinute(pastStart);
                 endEl.value = formatLocalIsoMinute(pastEnd);
             } else {
-                const futureEnd = new Date(now.getTime() + daysOffset * 24 * 3600 * 1000);
                 startEl.value = formatLocalIsoMinute(now);
-                endEl.value = formatLocalIsoMinute(futureEnd);
+                if (qtyEl) qtyEl.value = String(daysOffset || 1);
+                if (unitEl) unitEl.value = 'day';
+                applyWorkItemDurationPreset();
             }
         }
 
@@ -7493,7 +8461,7 @@ public class portalController : Controller
             if (nameEl) nameEl.value = '';
             if (iconEl) iconEl.value = '📌';
             if (colorEl) colorEl.value = 'blue';
-            if (sortEl) sortEl.value = '40';
+            if (sortEl) sortEl.value = '60';
             if (descEl) descEl.value = '';
             if (btnEl) btnEl.textContent = '➕ 新增 / 儲存工項類型';
         }
@@ -7509,7 +8477,16 @@ public class portalController : Controller
             if (document.getElementById('wiFormTitle')) {
                 document.getElementById('wiFormTitle').textContent = '➕ 建立/修改工項（設定工項類型、起訖時間與 Story Point）';
             }
-            setWorkItemDatePreset(14);
+            if (document.getElementById('wiDurationQty')) {
+                document.getElementById('wiDurationQty').value = '1';
+            }
+            if (document.getElementById('wiDurationUnit')) {
+                document.getElementById('wiDurationUnit').value = 'day';
+            }
+            if (document.getElementById('wiStartDate')) {
+                document.getElementById('wiStartDate').value = formatLocalIsoMinute(new Date());
+            }
+            applyWorkItemDurationPreset();
         }
 
         function loadWorkItemToForm(pk, code, title, typePk, pt, status, reason, kind, startIso, endIso) {
@@ -7738,11 +8715,10 @@ public class portalController : Controller
                 const matchRole = !role || r.getAttribute('data-role') === role;
                 const matchStatus = !status || r.getAttribute('data-active') === status;
 
-                if (matchKw && matchDept && matchRank && matchRole && matchStatus) {
-                    r.style.display = '';
+                const customMatch = matchKw && matchDept && matchRank && matchRole && matchStatus;
+                r.setAttribute('data-custom-hidden', customMatch ? '0' : '1');
+                if (syncRowDisplayState(r)) {
                     visibleCount++;
-                } else {
-                    r.style.display = 'none';
                 }
             });
 
@@ -7750,6 +8726,24 @@ public class portalController : Controller
             if (lbl) {
                 lbl.textContent = '符合查詢條件：共 ' + visibleCount + ' 位員工（總計 ' + rows.length + ' 位）';
             }
+            refreshToolbarCountBadgeForTable('empDataTable');
+        }
+
+        function resetEmployeeFilter() {
+            if (document.getElementById('filterEmpKeyword')) document.getElementById('filterEmpKeyword').value = '';
+            if (document.getElementById('filterEmpDept')) document.getElementById('filterEmpDept').value = '';
+            if (document.getElementById('filterEmpRank')) document.getElementById('filterEmpRank').value = '';
+            if (document.getElementById('filterEmpRole')) document.getElementById('filterEmpRole').value = '';
+            if (document.getElementById('filterEmpStatus')) document.getElementById('filterEmpStatus').value = '';
+            const tbl = document.getElementById('empDataTable');
+            if (tbl && spTableStateMap.has(tbl)) {
+                const st = spTableStateMap.get(tbl);
+                st.colSelect.value = '-1';
+                st.valSelect.style.display = 'none';
+                st.filterInput.value = '';
+                applyToolbarTableFilter(st);
+            }
+            filterEmployeeTable();
         }
 
         function filterSystemLogTable() {
@@ -7764,11 +8758,10 @@ public class portalController : Controller
                 const matchLvl = !lvl || r.getAttribute('data-level') === lvl;
                 const matchSrc = !src || r.getAttribute('data-source') === src;
 
-                if (matchKw && matchLvl && matchSrc) {
-                    r.style.display = '';
+                const customMatch = matchKw && matchLvl && matchSrc;
+                r.setAttribute('data-custom-hidden', customMatch ? '0' : '1');
+                if (syncRowDisplayState(r)) {
                     visibleCount++;
-                } else {
-                    r.style.display = 'none';
                 }
             });
 
@@ -7776,6 +8769,7 @@ public class portalController : Controller
             if (lbl) {
                 lbl.textContent = '符合查詢條件：共 ' + visibleCount + ' 筆 Log（總計 ' + rows.length + ' 筆）';
             }
+            refreshToolbarCountBadgeForTable('sysLogDataTable');
         }
 
         function fillSampleBatchEmployees() {
@@ -9341,9 +10335,63 @@ public class portalController : Controller
                 const tbody = table.querySelector('tbody');
                 if (!thead || !tbody) return;
                 table.setAttribute('data-header-locked', 'true');
+
+                // 建立表格上方即時關鍵字與欄位篩選工具列
+                const filterBar = document.createElement('div');
+                filterBar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:#f8fafc;border:1px solid #cbd5e1;border-bottom:none;border-radius:8px 8px 0 0;padding:7px 12px;font-size:12px;';
+                const colSelect = document.createElement('select');
+                colSelect.style.cssText = 'width:auto;padding:4px 8px;font-size:12px;border-radius:6px;border:1px solid #93c5fd;margin:0;';
+                const allOpt = document.createElement('option');
+                allOpt.value = '-1';
+                allOpt.textContent = '🏷️ 全部欄位篩選';
+                colSelect.appendChild(allOpt);
+
+                const filterInput = document.createElement('input');
+                filterInput.type = 'text';
+                filterInput.placeholder = '🔍 輸入關鍵字即時篩選本表格...';
+                filterInput.style.cssText = 'width:220px;padding:4px 9px;font-size:12px;border-radius:6px;border:1px solid #93c5fd;margin:0;';
+
+                const countBadge = document.createElement('span');
+                countBadge.style.cssText = 'font-weight:700;color:#1e40af;background:#dbeafe;padding:2px 8px;border-radius:999px;';
+                const initTotal = tbody.querySelectorAll('tr').length;
+                countBadge.textContent = '顯示 ' + initTotal + ' / ' + initTotal + ' 筆';
+
+                const leftWrap = document.createElement('div');
+                leftWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
+                leftWrap.appendChild(colSelect);
+                leftWrap.appendChild(filterInput);
+                filterBar.appendChild(leftWrap);
+                filterBar.appendChild(countBadge);
+                table.parentNode.insertBefore(filterBar, table);
+
+                const runFilter = () => {
+                    const cIdx = parseInt(colSelect.value || '-1', 10);
+                    const kw = (filterInput.value || '').trim().toLowerCase();
+                    let vis = 0;
+                    const trs = Array.from(tbody.querySelectorAll('tr'));
+                    trs.forEach(r => {
+                        let ok = true;
+                        if (kw) {
+                            const txt = (cIdx >= 0 && r.cells[cIdx]) ? (r.cells[cIdx].innerText || '') : (r.innerText || '');
+                            ok = txt.toLowerCase().indexOf(kw) !== -1;
+                        }
+                        r.style.display = ok ? '' : 'none';
+                        if (ok) vis++;
+                    });
+                    countBadge.textContent = '顯示 ' + vis + ' / ' + trs.length + ' 筆';
+                };
+                colSelect.addEventListener('change', runFilter);
+                filterInput.addEventListener('input', runFilter);
+
                 thead.querySelectorAll('tr').forEach(tr => {
                     Array.from(tr.cells).forEach((th, colIdx) => {
                         if (th.tagName.toLowerCase() !== 'th') return;
+                        const colTitle = (th.innerText || '').trim();
+                        const opt = document.createElement('option');
+                        opt.value = String(colIdx);
+                        opt.textContent = '欄位：' + colTitle;
+                        colSelect.appendChild(opt);
+
                         th.classList.add('sp-sortable-th', 'sp-th-locked');
                         const toolbar = document.createElement('span');
                         toolbar.className = 'sp-th-toolbar';

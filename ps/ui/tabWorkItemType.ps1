@@ -82,13 +82,35 @@ process {
     $gridType.readonly = $true
     $gridType.allowusertoaddrows = $false
     $gridType.autosizecolumnsmode = 'Fill'
-    enableGridHeaderSortAndLock -grid $gridType -statusLabel $statusLabel
 
     $loadTypeData = {
         $dt = & $workItemScript -actionType 'listWorkItemType'
         $gridType.datasource = $dt
         if ($null -ne $statusLabel) {
-            $statusLabel.text = "已載入 $($dt.rows.count) 筆工項代表類型"
+            $statusLabel.text = "已載入 $($dt.rows.count) 筆工項代表類型（支援於表格按滑鼠右鍵開啟快捷選單執行編輯、刪除或篩選）"
+        }
+    }
+
+    enableGridHeaderSortAndLock -grid $gridType -statusLabel $statusLabel -onEditRow {
+        param($rowItem)
+        if ($null -ne $rowItem) {
+            $txtCode.text = [string]$rowItem.typeCode
+            $txtName.text = [string]$rowItem.typeName
+            if ($rowItem.table.columns.contains('standardStoryPoint') -and $rowItem.standardStoryPoint -ne [dbnull]::value) {
+                $txtPoint.text = [string]$rowItem.standardStoryPoint
+            }
+            if ($null -ne $statusLabel) {
+                $statusLabel.text = "✏️ 已透過滑鼠快捷選單載入代表類型【$($rowItem.typeCode) - $($rowItem.typeName)】至上方表單"
+            }
+        }
+    } -onDeleteRow {
+        param($rowItem)
+        if ($null -ne $rowItem) {
+            $ans = [system.windows.forms.messagebox]::show("確定要刪除工項代表類型「$($rowItem.typeCode) - $($rowItem.typeName)」嗎？", '確認刪除代表類型', [system.windows.forms.messageboxbuttons]::yesno, [system.windows.forms.messageboxicon]::warning)
+            if ($ans -eq [system.windows.forms.dialogresult]::yes) {
+                $null = & $workItemScript -actionType 'deleteWorkItemType' -typeCode ([string]$rowItem.typeCode)
+                & $loadTypeData
+            }
         }
     }
 

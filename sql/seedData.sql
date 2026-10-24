@@ -318,7 +318,7 @@ end
 go
 
 -- ============================================================================
--- 4. 預設工項類型設定 (storyPoint.tbWorkItemKind：專案 / 維運 / 顧問時數，支援增刪修)
+-- 4. 預設工項類型設定 (storyPoint.tbWorkItemKind：專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品，支援增刪修)
 -- ============================================================================
 if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'project')
 begin
@@ -351,7 +351,31 @@ begin
     )
     values (
         'consultingHour', N'顧問時數', N'⏳', 'purple', 30,
-        N'客戶架構諮詢、技術顧問與驻點時數工項，具備合約/顧問起訖時間，達迄時自動轉態扣點並通知部門管理層與 HR。',
+        N'客戶架構諮詢、技術顧問與駐點時數工項，具備合約/顧問起訖時間，達迄時自動轉態扣點並通知部門管理層與 HR。',
+        1
+    );
+end
+
+if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'training')
+begin
+    insert into storyPoint.tbWorkItemKind (
+        kindCode, kindName, badgeIcon, badgeColor, sortOrder, description, isActive
+    )
+    values (
+        'training', N'教育訓練', N'🎓', 'green', 40,
+        N'內部技術傳承、外部課程講授與新人教育訓練工項，具備課程/培訓起訖時間，達迄時自動轉態扣點並通知部門管理層與 HR。',
+        1
+    );
+end
+
+if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'productDevelopment')
+begin
+    insert into storyPoint.tbWorkItemKind (
+        kindCode, kindName, badgeIcon, badgeColor, sortOrder, description, isActive
+    )
+    values (
+        'productDevelopment', N'開發產品', N'🚀', 'red', 50,
+        N'自有產品研發、核心模組創新與產品版本迭代工項，具備開發階段起訖時間，達迄時自動轉態扣點並通知部門管理層與 HR。',
         1
     );
 end

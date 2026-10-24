@@ -355,7 +355,7 @@ create table storyPoint.tbCardDeck (
 );
 
 -- 4.5 工項類型設定資料表 (storyPoint.tbWorkItemKind)
--- 支援增刪修工項類型（預設含：project 專案、maintenance 維運、consultingHour 顧問時數，並可自訂新增）
+-- 支援增刪修工項類型（預設含：project 專案、maintenance 維運、consultingHour 顧問時數、training 教育訓練、productDevelopment 開發產品，並可自訂新增）
 create table storyPoint.tbWorkItemKind (
     pk int identity(1,1) not null,
     kindCode varchar(64) not null,
@@ -393,7 +393,7 @@ create table storyPoint.tbWorkItemType (
 );
 
 -- 6. 實際工項資料表 (storyPoint.tbWorkItem)
--- workItemKind 對應 storyPoint.tbWorkItemKind.kindCode (預設含 project 專案 / maintenance 維運 / consultingHour 顧問時數，並支援自訂)
+-- workItemKind 對應 storyPoint.tbWorkItemKind.kindCode (預設含 project 專案 / maintenance 維運 / consultingHour 顧問時數 / training 教育訓練 / productDevelopment 開發產品，並支援自訂)
 create table storyPoint.tbWorkItem (
     pk int identity(1,1) not null,
     itemCode varchar(64) not null,
