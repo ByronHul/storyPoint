@@ -306,7 +306,7 @@
     2. **編輯該筆紀錄內容時，直接彈出置中 Modal 視窗 (`#spRecordEditModalOverlay` / `#spRecordEditModal`) 做單筆編輯，絕不捲動網頁位置**：
         * 當使用者從右鍵選單點選「✏️ 單筆編輯...」或相關修改動作時，**禁止使用 `window.scrollTo` 捲動網頁到上方或特定網頁位置**，而是**直接原地彈出置中的單筆編輯 Modal 視窗**，於 Modal 視窗內完成單筆紀錄修改與儲存：
             * **工項紀錄 (`workitem`)**：
-                * `✏️ 單筆編輯此工項設定（彈出 Modal 視窗）` ➔ 彈出 `openWorkItemEditModal` 單筆編輯工項代碼、工項類型、標題、起訖時間、代表類型、Story Point、Sprint、狀態與微調原因。
+                * `✏️ 單筆編輯此工項設定（彈出 Modal 視窗）` ➔ 彈出 `openWorkItemEditModal` 單筆編輯工項代碼、工項類型、標題、起訖時間（其中「起訖時間快速設定」完整比照主表單設定方式，提供 `數量` 數值輸入框 + `單位：天/周/月/季/年` 下拉選單，隨即依起時自動計算迄時）、代表類型、Story Point、Sprint、狀態與微調原因。
                 * `👥 修改此工項之賦予員工與配額（彈出 Modal 視窗）` ➔ 彈出 `openWorkItemAssignModal` 單筆調整負責員工與分攤比例。
                 * `🃏 針對此工項發起「多人盲投估算」（彈出 Modal 視窗）` ➔ 彈出 `openSessionSetupEditModal` 直接發起盲投。
                 * `⏰ 設為已到期並彈出 Modal 編輯（測試自動扣點寄信）` ➔ 彈出 `openWorkItemEditModal` 並預填已到期時間。

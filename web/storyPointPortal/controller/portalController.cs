@@ -7932,6 +7932,32 @@ public class portalController : Controller
                 resolvedEnd = formatLocalIsoMinute(new Date(now.getTime() - 10 * 60 * 1000));
             }
 
+            let initQty = 1;
+            let initUnit = 'day';
+            try {
+                const sDt = new Date(resolvedStart);
+                const eDt = new Date(resolvedEnd);
+                if (!isNaN(sDt.getTime()) && !isNaN(eDt.getTime()) && eDt > sDt) {
+                    const diffDays = Math.max(1, Math.round((eDt.getTime() - sDt.getTime()) / (24 * 3600 * 1000)));
+                    if (diffDays % 365 === 0) {
+                        initQty = diffDays / 365;
+                        initUnit = 'year';
+                    } else if (diffDays % 90 === 0) {
+                        initQty = diffDays / 90;
+                        initUnit = 'quarter';
+                    } else if (diffDays % 30 === 0) {
+                        initQty = diffDays / 30;
+                        initUnit = 'month';
+                    } else if (diffDays % 7 === 0) {
+                        initQty = diffDays / 7;
+                        initUnit = 'week';
+                    } else {
+                        initQty = diffDays;
+                        initUnit = 'day';
+                    }
+                }
+            } catch (e) { }
+
             const bodyHtml = `
                 <form method=""post"" action=""/workitem/save"">
                     <input type=""hidden"" name=""workItemPk"" value=""${escapeModalHtml(pk)}"" />
@@ -7953,20 +7979,30 @@ public class portalController : Controller
                     </div>
                     <div class=""form-row"">
                         <div>
-                            <label>開始時間 (起時)</label>
-                            <input type=""datetime-local"" name=""startDate"" id=""modalWiStartDate"" value=""${escapeModalHtml(resolvedStart)}"" required />
+                            <label data-tip=""設定工項開始時間（起時 startDate）"" title=""設定工項開始時間（起時 startDate）"">開始時間 (起時) <span class=""sp-tip-icon"">ⓘ</span></label>
+                            <input type=""datetime-local"" name=""startDate"" id=""modalWiStartDate"" value=""${escapeModalHtml(resolvedStart)}"" onchange=""applyModalWorkItemDurationPreset()"" required />
                         </div>
                         <div>
-                            <label>結束時間 (迄時 - 到期自動扣點寄信)</label>
+                            <label data-tip=""設定工項結束時間（迄時 endDate）：當達到迄時，系統自動轉換該工項狀態為已完成、扣掉該 Story Point，並寄信給部門管理層與 HR"" title=""設定工項結束時間（迄時 endDate）：當達到迄時，系統自動轉換該工項狀態為已完成、扣掉該 Story Point，並寄信給部門管理層與 HR"">結束時間 (迄時 - 到期自動扣點寄信) <span class=""sp-tip-icon"">ⓘ</span></label>
                             <input type=""datetime-local"" name=""endDate"" id=""modalWiEndDate"" value=""${escapeModalHtml(resolvedEnd)}"" required style=""border-color:#dc2626;font-weight:700;"" />
                         </div>
                         <div>
-                            <label>快速設定起訖時間</label>
-                            <div style=""display:flex;gap:6px;flex-wrap:wrap;"">
-                                <button type=""button"" class=""btn btn-outline"" style=""padding:6px 10px;font-size:12px;"" onclick=""setModalWorkItemPresetDays(1)"">+1天</button>
-                                <button type=""button"" class=""btn btn-outline"" style=""padding:6px 10px;font-size:12px;"" onclick=""setModalWorkItemPresetDays(7)"">+1周</button>
-                                <button type=""button"" class=""btn btn-outline"" style=""padding:6px 10px;font-size:12px;"" onclick=""setModalWorkItemPresetDays(30)"">+1月</button>
-                                <button type=""button"" class=""btn btn-warning"" style=""padding:6px 10px;font-size:12px;"" onclick=""setModalWorkItemPresetDays(-1)"">⏰ 設為已到期</button>
+                            <label data-tip=""快速設定工項起訖時間範圍：手動輸入數量（預設 1）並選擇單位（天、周、月、季、年），自動依據起時計算迄時"" title=""快速設定工項起訖時間範圍：手動輸入數量（預設 1）並選擇單位（天、周、月、季、年），自動依據起時計算迄時"">起訖時間快速設定 <span class=""sp-tip-icon"">ⓘ</span></label>
+                            <div style=""display:grid;grid-template-columns:1fr 1.15fr;gap:6px;align-items:center;"">
+                                <div style=""display:flex;align-items:center;gap:4px;"">
+                                    <span style=""font-size:12px;color:#475569;white-space:nowrap;font-weight:700;"">數量</span>
+                                    <input type=""number"" id=""modalWiDurationQty"" name=""durationQuantity"" value=""${initQty}"" min=""1"" step=""1"" placeholder=""1"" oninput=""applyModalWorkItemDurationPreset()"" onchange=""applyModalWorkItemDurationPreset()"" title=""手動輸入數量（預設 1）"" style=""text-align:center;font-weight:700;padding:8px 6px;"" />
+                                </div>
+                                <div style=""display:flex;align-items:center;gap:4px;"">
+                                    <span style=""font-size:12px;color:#475569;white-space:nowrap;font-weight:700;"">單位</span>
+                                    <select id=""modalWiDurationUnit"" name=""durationUnit"" onchange=""applyModalWorkItemDurationPreset()"" title=""選擇單位：天、周、月、季、年"" style=""font-weight:700;color:#1e40af;background:#eff6ff;border-color:#93c5fd;padding:8px 8px;"">
+                                        <option value=""day"" ${initUnit === 'day' ? 'selected' : ''}>天</option>
+                                        <option value=""week"" ${initUnit === 'week' ? 'selected' : ''}>周</option>
+                                        <option value=""month"" ${initUnit === 'month' ? 'selected' : ''}>月</option>
+                                        <option value=""quarter"" ${initUnit === 'quarter' ? 'selected' : ''}>季</option>
+                                        <option value=""year"" ${initUnit === 'year' ? 'selected' : ''}>年</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -8019,22 +8055,43 @@ public class portalController : Controller
             if (sSel && status) sSel.value = status;
         }
 
-        function setModalWorkItemPresetDays(daysOffset) {
-            const now = new Date();
-            const sEl = document.getElementById('modalWiStartDate');
-            const eEl = document.getElementById('modalWiEndDate');
-            if (!sEl || !eEl) return;
-            if (daysOffset < 0) {
-                sEl.value = formatLocalIsoMinute(new Date(now.getTime() - 7 * 24 * 3600 * 1000));
-                eEl.value = formatLocalIsoMinute(new Date(now.getTime() - 10 * 60 * 1000));
-            } else {
-                const base = sEl.value ? new Date(sEl.value) : now;
-                const startDt = isNaN(base.getTime()) ? now : base;
-                sEl.value = formatLocalIsoMinute(startDt);
-                const endDt = new Date(startDt.getTime());
-                endDt.setDate(endDt.getDate() + (daysOffset || 1));
-                eEl.value = formatLocalIsoMinute(endDt);
+        function applyModalWorkItemDurationPreset() {
+            const startEl = document.getElementById('modalWiStartDate');
+            const endEl = document.getElementById('modalWiEndDate');
+            const qtyEl = document.getElementById('modalWiDurationQty');
+            const unitEl = document.getElementById('modalWiDurationUnit');
+            if (!startEl || !endEl) return;
+
+            let baseDate = startEl.value ? new Date(startEl.value) : new Date();
+            if (isNaN(baseDate.getTime())) {
+                baseDate = new Date();
+                startEl.value = formatLocalIsoMinute(baseDate);
+            } else if (!startEl.value) {
+                startEl.value = formatLocalIsoMinute(baseDate);
             }
+
+            let qty = qtyEl ? parseFloat(qtyEl.value) : 1;
+            if (isNaN(qty) || qty <= 0) {
+                qty = 1;
+            }
+            const unit = unitEl ? unitEl.value : 'day';
+            const endDate = new Date(baseDate.getTime());
+
+            if (unit === 'day') {
+                endDate.setDate(endDate.getDate() + qty);
+            } else if (unit === 'week') {
+                endDate.setDate(endDate.getDate() + (qty * 7));
+            } else if (unit === 'month') {
+                endDate.setMonth(endDate.getMonth() + qty);
+            } else if (unit === 'quarter') {
+                endDate.setMonth(endDate.getMonth() + (qty * 3));
+            } else if (unit === 'year') {
+                endDate.setFullYear(endDate.getFullYear() + qty);
+            } else {
+                endDate.setDate(endDate.getDate() + qty);
+            }
+
+            endEl.value = formatLocalIsoMinute(endDate);
         }
 
         function onModalWorkItemTypeChange() {
