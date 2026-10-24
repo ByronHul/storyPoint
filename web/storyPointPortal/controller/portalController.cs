@@ -801,10 +801,12 @@ public class portalController : Controller
     [Authorize]
     public async Task<IActionResult> controlVotingSession(
         [FromForm] int votingSessionPk,
-        [FromForm] string controlAction,
-        [FromForm] string? roundDiscussionNote,
-        [FromForm] decimal? finalStoryPoint,
-        [FromForm] string? finalDecisionNote,
+        [FromForm] string? controlAction = null,
+        [FromForm] string? submitAction = null,
+        [FromForm] string? actionType = null,
+        [FromForm] string? roundDiscussionNote = null,
+        [FromForm] decimal? finalStoryPoint = null,
+        [FromForm] string? finalDecisionNote = null,
         [FromForm] bool syncExistingOpenWorkItem = false,
         [FromForm] bool fromStandalone = false,
         [FromForm] string? tabInstanceId = null)
@@ -814,13 +816,23 @@ public class portalController : Controller
             return Redirect($"/voting/session?sessionPk={votingSessionPk}&tabInstanceId={Uri.EscapeDataString(tabInstanceId ?? "")}&err=" + Uri.EscapeDataString("僅管理者可執行翻牌揭曉、開啟下一回合或拍板定案。"));
         }
 
+        string resolvedAction = !string.IsNullOrWhiteSpace(submitAction)
+            ? submitAction.Trim()
+            : (!string.IsNullOrWhiteSpace(controlAction)
+                ? controlAction.Trim()
+                : (!string.IsNullOrWhiteSpace(actionType) ? actionType.Trim() : "reveal"));
+
+        string? cleanDiscussionNote = string.IsNullOrWhiteSpace(roundDiscussionNote)
+            ? null
+            : roundDiscussionNote.Trim();
+
         try
         {
             await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spControlVotingSession", new Dictionary<string, object?>
             {
                 ["votingSessionPk"] = votingSessionPk,
-                ["controlAction"] = controlAction,
-                ["roundDiscussionNote"] = roundDiscussionNote,
+                ["controlAction"] = resolvedAction,
+                ["roundDiscussionNote"] = cleanDiscussionNote,
                 ["finalStoryPoint"] = finalStoryPoint,
                 ["finalDecisionNote"] = finalDecisionNote,
                 ["syncExistingOpenWorkItem"] = syncExistingOpenWorkItem,
@@ -828,10 +840,14 @@ public class portalController : Controller
                 ["operatorAccount"] = getCurrentLoginAccount()
             });
 
-            string actionText = controlAction switch
+            string actionText = resolvedAction switch
             {
-                "reveal" => "已翻牌揭曉本回合所有人的出牌點數！",
-                "nextRound" => "已儲存本回合討論紀錄，並開啟下一回合重新盲投！",
+                "reveal" => !string.IsNullOrEmpty(cleanDiscussionNote)
+                    ? "已翻牌揭曉本回合點數，並儲存本回合討論紀錄！"
+                    : "已翻牌揭曉本回合所有人的出牌點數！",
+                "nextRound" => !string.IsNullOrEmpty(cleanDiscussionNote)
+                    ? $"已將本回合討論紀錄（「{cleanDiscussionNote}」）寫入回合紀錄，並成功開啟下一回合重新盲投！"
+                    : "已開啟下一回合重新盲投！",
                 "finalize" => $"已拍板定案最終 Story Point 為 {finalStoryPoint} 點，並自動更新目標點數與歷程！",
                 _ => "投票議程狀態已更新"
             };
@@ -839,7 +855,7 @@ public class portalController : Controller
             await _hubContext.Clients.All.SendAsync("onVotingSessionUpdated", new
             {
                 votingSessionPk = votingSessionPk,
-                eventName = controlAction,
+                eventName = resolvedAction,
                 messageText = actionText,
                 timestamp = DateTime.Now.ToString("HH:mm:ss")
             });
@@ -8594,7 +8610,7 @@ public class portalController : Controller
                         <span>🖐️ 選擇您的撲克牌進行盲投（第 {currentRoundNumber} 回合）</span>
                         <span style=""font-size:12px;color:#64748b;"">範圍：{sessionMinPt:0.##} ~ {sessionMaxPt:0.##} pt ｜ 理由政策：{h(voteCommentPolicyText)}</span>
                     </div>
-                    <form method=""post"" action=""/voting/cast"" id=""formCastVote"" onsubmit=""window.__isInternalSessionNavigation=true;"">
+                    <form method=""post"" action=""/voting/cast"" id=""formCastVote"" onsubmit=""window.__isInternalSessionNavigation=true; isAutoReloading=true;"">
                         <input type=""hidden"" name=""votingSessionPk"" value=""{activeSessionPk}"" />
                         <input type=""hidden"" name=""fromStandalone"" value=""true"" />
                         <input type=""hidden"" name=""tabInstanceId"" value=""{h(assignedTabInstanceId)}"" />
@@ -8664,6 +8680,10 @@ public class portalController : Controller
                 }
             }
 
+            string currentRoundSavedNote = currentRoundStatRow != null && currentRoundStatRow["roundDiscussionNote"] != DBNull.Value
+                ? (currentRoundStatRow["roundDiscussionNote"]?.ToString() ?? "")
+                : "";
+
             sb.Append($@"
             <div class=""card"">
                 <div class=""card-title"">
@@ -8671,20 +8691,20 @@ public class portalController : Controller
                     <span class=""badge badge-revealed"">僅主持人 / 管理員可見</span>
                 </div>
                 {(isSpreadOverLimit ? $@"<div style=""background:#fef2f2;border:1px solid #f87171;color:#991b1b;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;font-weight:700;"">⚠️ 分歧度超標提醒：本回合點數極差為 <strong>{curSpread:0.##} pt</strong>，超過門檻 (<strong>{sessionMaxSpread:0.##} pt</strong>)！建議邀請最高票與最低票成員說明後，點擊「🔄 開啟下一回合重新盲投」。</div>" : "")}
-                <form method=""post"" action=""/voting/control"" id=""formControlSession"" onsubmit=""window.__isInternalSessionNavigation=true;"">
+                <form method=""post"" action=""/voting/control"" id=""formControlSession"" onsubmit=""window.__isInternalSessionNavigation=true; isAutoReloading=true;"">
                     <input type=""hidden"" name=""votingSessionPk"" value=""{activeSessionPk}"" />
                     <input type=""hidden"" name=""fromStandalone"" value=""true"" />
                     <input type=""hidden"" name=""tabInstanceId"" value=""{h(assignedTabInstanceId)}"" />
-                    <input type=""hidden"" name=""actionType"" id=""controlActionType"" value=""reveal"" />
+                    <input type=""hidden"" name=""controlAction"" id=""controlActionType"" value=""{(status == "revealed" ? "nextRound" : "reveal")}"" />
                     <div class=""form-row"">
-                        <label>本回合討論紀錄 / 下回合聚焦目標（翻牌、開啟下一回合或定案時皆會保存）：<span class=""caption-help-icon"" data-tip=""記錄本回合翻牌後的團隊討論共識；若開啟下一回合，此欄內容也會作為下一回合桌面頂部的聚焦目標提示。"">ⓘ</span></label>
-                        <input type=""text"" name=""roundDiscussionNote"" placeholder=""例如：第一輪極差較大(3 vs 13)，請最高與最低分同仁說明後進行第二輪盲投..."" />
+                        <label>本回合討論紀錄 / 下回合聚焦目標（翻牌、開啟下一回合或定案時皆會保存）：<span class=""caption-help-icon"" data-tip=""記錄本回合翻牌後的團隊討論共識；若開啟下一回合，此欄內容會寫入本回合討論紀錄，並同時作為下一回合桌面頂部的聚焦目標提示。"">ⓘ</span></label>
+                        <input type=""text"" name=""roundDiscussionNote"" id=""inputRoundDiscussionNote"" value=""{h(currentRoundSavedNote)}"" placeholder=""例如：第一輪極差較大(5 vs 13)，請最高與最低分同仁說明後進行第二輪盲投..."" />
                     </div>
                     <div style=""display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;"">
-                        <button type=""submit"" class=""btn btn-warning"" onclick=""document.getElementById('controlActionType').value='reveal'"">
+                        <button type=""submit"" name=""submitAction"" value=""reveal"" class=""btn btn-warning"" onclick=""document.getElementById('controlActionType').value='reveal'"">
                             👀 1. 立即翻牌揭曉 (Reveal Cards)
                         </button>
-                        <button type=""submit"" class=""btn btn-primary"" onclick=""document.getElementById('controlActionType').value='nextRound'"">
+                        <button type=""submit"" name=""submitAction"" value=""nextRound"" class=""btn btn-primary"" onclick=""document.getElementById('controlActionType').value='nextRound'"">
                             🔄 2. 開啟下一回合重新盲投 (Next Round)
                         </button>
                     </div>
@@ -8701,7 +8721,7 @@ public class portalController : Controller
                                 <label>定案決議說明<span class=""caption-help-icon"" data-tip=""記錄團隊最終拍板此點數的決議理由與驗收前提假設。"">ⓘ</span></label>
                                 <input type=""text"" name=""finalDecisionNote"" placeholder=""例如：團隊第 {currentRoundNumber} 輪全數收斂於 {suggestedFinalPt:0.##} 點，包含單元測試與 API 文件"" />
                             </div>
-                            <button type=""submit"" class=""btn btn-success"" onclick=""document.getElementById('controlActionType').value='finalize'"">
+                            <button type=""submit"" name=""submitAction"" value=""finalize"" class=""btn btn-success"" onclick=""document.getElementById('controlActionType').value='finalize'"">
                                 🏆 拍板定案
                             </button>
                         </div>

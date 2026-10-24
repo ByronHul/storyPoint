@@ -221,6 +221,9 @@
         * 當使用者從「📂 待參與」點選進入任一盲投議程 (`storyPoint.tbVotingSession`) 時，一律透過專屬獨立網頁路由 `GET /voting/session?sessionPk={sessionPk}`（或 `GET /voting/session/{sessionPk}`）開啟並進行整個 Session 的完整生命週期，絕不使用 Modal 對話框或內嵌於主大廳頁籤中。
         * 獨立盲投網頁內完整包含：綠色撲克牌桌與參與者座位區、單回合倒數計時器、撲克牌出牌區（含中文意義標示與理由輸入）、主持人控制台（立即翻牌揭曉、開啟下一回合重新盲投、達成共識拍板定案）、該 Session 歷次盲投回合統計表與具名出牌明細表（支援通用欄位排序 `⇅/▲/▼` 與標題列鎖定 `📌/🔒`）、以及 SignalR + 2 秒輪詢即時自動翻牌同步機制。
         * 在獨立網頁中執行出牌 (`POST /voting/cast`)、主持控制 (`POST /voting/control`) 或修改設定 (`POST /voting/create`) 時，皆帶入 `fromStandalone=true` 與 `tabInstanceId`，處理完成後直接重導向回該獨立盲投網頁，確保整個 Session 全程在該獨立網頁內完成。
+        * **主持人控制台「開啟下一回合重新盲投」與「本回合討論紀錄」雙重保存與即時切換 (`storyPoint.spControlVotingSession` + `POST /voting/control`)**：
+            * 在獨立盲投網頁主持人控制台中，輸入「本回合討論紀錄 / 下回合聚焦目標 (`roundDiscussionNote`)」並點擊「`🔄 2. 開啟下一回合重新盲投 (Next Round)`」（或「`👀 1. 立即翻牌揭曉`」、「`🏆 拍板定案`」）時，表單同時帶入 `controlAction` 與按鈕專屬 `submitAction`（後端亦相容舊版 `actionType` 欄位），並鎖定前端 `isAutoReloading` 防止輪詢或 SignalR 中斷表單送出。
+            * `storyPoint.spControlVotingSession` 於執行 `nextRound` 時，會先將本回合之 `roundDiscussionNote` 與統計數據（投票數、最低、最高、平均值）完整寫入當前 `storyPoint.tbVotingRound` 紀錄中（於右側「本 Session 歷次盲投回合統計」之「回合討論紀錄」欄位永久留存），同時建立或重設下一回合 (`@currentRound + 1`) 為 `'voting'` 盲投狀態、將 `storyPoint.tbVotingSession.currentRoundNumber` 推進至下一回合，並同步將該討論紀錄更新為下一回合桌面頂部的「本回合聚焦目標 (`roundGoalNote`)」。
     3. **支援同一人同時從「待參與」點選多個不同議程，以多個獨立網頁並行進入「參與中」**：
         * 使用者可從「📂 待參與」分別點選多個「不同」的 `sessionPk`，在各自的獨立瀏覽器分頁 (`target="_blank"`) 同時開啟多個「🟢 參與中」獨立盲投網頁（例如：分頁 A 參與 `sessionPk=1`、分頁 B 同時參與 `sessionPk=2`），彼此獨立運作、互不干擾。
         * 獨立盲投網頁頂部亦提供「🌐 多網頁並行導覽列」，標示目前本人處於「🟢 參與中」與「📂 待參與」的各議程狀態，支援一鍵從「📂 待參與」開啟其他不同 Session 的獨立網頁。

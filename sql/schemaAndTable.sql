@@ -50,9 +50,19 @@ end
 
 if object_id('storyPoint.tbEmployee', 'u') is not null
 begin
+    if col_length('storyPoint.tbEmployee', 'isDepartmentManager') is null
+        alter table storyPoint.tbEmployee add isDepartmentManager bit not null constraint dfMigrateEmpIsDeptMgr default (0);
+    if col_length('storyPoint.tbEmployee', 'managerEmployeePk') is null
+        alter table storyPoint.tbEmployee add managerEmployeePk int null;
+end
+go
+
+if object_id('storyPoint.tbEmployee', 'u') is not null
+begin
     select
         pk, employeeCode, employeeName, loginAccount, passwordHash,
-        emailAddress, jobTitle, departmentPk, roleName, isActive,
+        emailAddress, jobTitle, departmentPk, isDepartmentManager,
+        managerEmployeePk, roleName, isActive,
         lastLoginTime, createdAt, updatedAt
     into storyPoint.tbPreserveEmployee
     from storyPoint.tbEmployee;
@@ -300,6 +310,7 @@ create table storyPoint.tbDepartment (
 go
 
 -- 3. 員工與登入帳密資料表 (storyPoint.tbEmployee)
+--    包含 isDepartmentManager (是否為部門主管欄位) 與 managerEmployeePk (樹狀遞迴階層上層主管員工主鍵，自我關聯外鍵)
 create table storyPoint.tbEmployee (
     pk int identity(1,1) not null,
     employeeCode varchar(64) not null,
@@ -309,6 +320,8 @@ create table storyPoint.tbEmployee (
     emailAddress varchar(256) not null,
     jobTitle nvarchar(128) not null,
     departmentPk int not null,
+    isDepartmentManager bit not null constraint dfTbEmployeeIsDepartmentManager default (0),
+    managerEmployeePk int null,
     roleName varchar(32) not null constraint dfTbEmployeeRoleName default ('participant'),
     isActive bit not null constraint dfTbEmployeeIsActive default (1),
     lastLoginTime datetime2(3) null,
@@ -317,11 +330,15 @@ create table storyPoint.tbEmployee (
     constraint pkTbEmployee primary key clustered (pk asc),
     constraint uqTbEmployeeCode unique nonclustered (employeeCode asc),
     constraint uqTbEmployeeLoginAccount unique nonclustered (loginAccount asc),
-    constraint fkTbEmployeeDepartment foreign key (departmentPk) references storyPoint.tbDepartment (pk)
+    constraint fkTbEmployeeDepartment foreign key (departmentPk) references storyPoint.tbDepartment (pk),
+    constraint fkTbEmployeeManager foreign key (managerEmployeePk) references storyPoint.tbEmployee (pk)
 );
 go
 
-create nonclustered index ixTbEmployeeDepartment on storyPoint.tbEmployee (departmentPk asc, isActive asc);
+create nonclustered index ixTbEmployeeDepartment on storyPoint.tbEmployee (departmentPk asc, isDepartmentManager desc, isActive asc);
+go
+
+create nonclustered index ixTbEmployeeManagerHierarchy on storyPoint.tbEmployee (managerEmployeePk asc, isDepartmentManager desc, isActive asc);
 go
 
 -- 4. 撲克牌組設定資料表 (storyPoint.tbCardDeck)
@@ -584,15 +601,34 @@ begin
     set identity_insert storyPoint.tbEmployee on;
     insert into storyPoint.tbEmployee (
         pk, employeeCode, employeeName, loginAccount, passwordHash,
-        emailAddress, jobTitle, departmentPk, roleName, isActive,
+        emailAddress, jobTitle, departmentPk, isDepartmentManager,
+        managerEmployeePk, roleName, isActive,
         lastLoginTime, createdAt, updatedAt
     )
     select
         pk, employeeCode, employeeName, loginAccount, passwordHash,
-        emailAddress, jobTitle, departmentPk, roleName, isActive,
+        emailAddress, jobTitle, departmentPk,
+        case
+            when isnull(isDepartmentManager, 0) = 1 then 1
+            when jobTitle like N'%部門經理%' or jobTitle like N'%董事長%' then 1
+            else 0
+        end,
+        null,
+        roleName, isActive,
         lastLoginTime, createdAt, updatedAt
     from storyPoint.tbPreserveEmployee;
     set identity_insert storyPoint.tbEmployee off;
+
+    -- 還原樹狀遞迴階層上層主管關聯 (managerEmployeePk)
+    update e
+    set e.managerEmployeePk = p.managerEmployeePk
+    from storyPoint.tbEmployee as e
+    inner join storyPoint.tbPreserveEmployee as p
+        on e.pk = p.pk
+    inner join storyPoint.tbEmployee as mgr
+        on p.managerEmployeePk = mgr.pk
+    where p.managerEmployeePk is not null
+      and p.managerEmployeePk <> e.pk;
 end
 
 if object_id('storyPoint.tbPreserveCardDeck', 'u') is not null

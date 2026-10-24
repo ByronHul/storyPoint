@@ -143,6 +143,8 @@ begin
             e.departmentPk,
             d.departmentCode,
             d.departmentName,
+            e.isDepartmentManager,
+            e.managerEmployeePk,
             e.roleName,
             e.isActive,
             e.lastLoginTime
@@ -289,23 +291,27 @@ go
 -- 4. 新增或修改員工與登入帳密預存程序 (storyPoint.spUpsertEmployee)
 -- ============================================================================
 /*
-用途說明: 新增或更新員工資料與登入帳密 (tbEmployee)，若更新時 @passwordHash 為空字串或 null 則保留原密碼
+用途說明: 新增或更新員工資料與登入帳密 (tbEmployee)，支援設定是否為部門主管 (@isDepartmentManager)
+          與樹狀遞迴階層之上層主管員工主鍵 (@managerEmployeePk)，並內建遞迴循環參照防呆與自動部門主管樹狀關聯。
 建立者  : Antigravity Senior Full-Stack Engineer
 建立日期: 2026-10-23
 參數說明:
-    @employeePk      int           : 員工主鍵 (0 或 null 代表依員工編號/帳號新增或更新)
-    @employeeCode    varchar(64)   : 員工編號
-    @employeeName    nvarchar(128) : 員工姓名
-    @loginAccount    varchar(128)  : 登入帳號
-    @passwordHash    varchar(256)  : 密碼雜湊值 (修改時若傳空值則不變更密碼)
-    @emailAddress    varchar(256)  : 電子郵件
-    @jobTitle        nvarchar(128) : 職稱
-    @departmentPk    int           : 所屬部門主鍵
-    @roleName        varchar(32)   : 系統角色 ('admin' 或 'participant')
-    @isActive        bit           : 是否在職啟用
-    @operatorAccount varchar(128)  : 操作者帳號
+    @employeePk          int           : 員工主鍵 (0 或 null 代表依員工編號/帳號新增或更新)
+    @employeeCode        varchar(64)   : 員工編號
+    @employeeName        nvarchar(128) : 員工姓名
+    @loginAccount        varchar(128)  : 登入帳號
+    @passwordHash        varchar(256)  : 密碼雜湊值 (修改時若傳空值則不變更密碼)
+    @emailAddress        varchar(256)  : 電子郵件
+    @jobTitle            nvarchar(128) : 職稱
+    @departmentPk        int           : 所屬部門主鍵
+    @isDepartmentManager bit           : 是否為部門主管 (1=部門主管, 0=一般同仁; null 時自動依既有設定或職稱推斷)
+    @managerEmployeePk   int           : 樹狀遞迴階層之上層直屬/部門主管員工主鍵 (-1=設為頂層根節點 null; 0 或 null=自動依部門主管建立樹狀階層)
+    @roleName            varchar(32)   : 系統角色 ('admin' 或 'participant')
+    @isActive            bit           : 是否在職啟用
+    @operatorAccount     varchar(128)  : 操作者帳號
 修改歷程:
     2026-10-23 初版建立
+    2026-10-24 新增 @isDepartmentManager (是否為部門主管) 與 @managerEmployeePk (樹狀遞迴階層上層主管)
 */
 create or alter procedure storyPoint.spUpsertEmployee
     @employeePk int = null,
@@ -316,6 +322,8 @@ create or alter procedure storyPoint.spUpsertEmployee
     @emailAddress varchar(256),
     @jobTitle nvarchar(128),
     @departmentPk int,
+    @isDepartmentManager bit = null,
+    @managerEmployeePk int = null,
     @roleName varchar(32) = 'participant',
     @isActive bit = 1,
     @operatorAccount varchar(128) = 'system'
@@ -325,6 +333,9 @@ begin
     declare @startTime datetime2(3) = sysdatetime();
     declare @durationMs int = 0;
     declare @targetPk int = isnull(@employeePk, 0);
+    declare @resolvedIsDeptMgr bit = 0;
+    declare @resolvedManagerPk int = null;
+    declare @effectiveDeptPk int = @departmentPk;
 
     begin try
         if @targetPk <= 0
@@ -359,6 +370,48 @@ begin
                 where pk = @targetPk;
             end
 
+            declare @existingIsDeptMgr bit = 0;
+            declare @existingManagerPk int = null;
+            declare @existingDeptPk int = 1;
+            declare @existingJobTitle nvarchar(128) = N'';
+
+            select
+                @existingIsDeptMgr = isDepartmentManager,
+                @existingManagerPk = managerEmployeePk,
+                @existingDeptPk = departmentPk,
+                @existingJobTitle = jobTitle
+            from storyPoint.tbEmployee
+            where pk = @targetPk;
+
+            set @effectiveDeptPk = case when isnull(@departmentPk, 0) > 0 then @departmentPk else @existingDeptPk end;
+            declare @effectiveTitle nvarchar(128) = isnull(nullif(ltrim(rtrim(@jobTitle)), ''), @existingJobTitle);
+
+            if @isDepartmentManager is not null
+            begin
+                set @resolvedIsDeptMgr = @isDepartmentManager;
+            end
+            else if @existingIsDeptMgr = 1 or @effectiveTitle like N'%部門經理%' or @effectiveTitle like N'%董事長%'
+            begin
+                set @resolvedIsDeptMgr = 1;
+            end
+            else
+            begin
+                set @resolvedIsDeptMgr = 0;
+            end
+
+            if @managerEmployeePk = -1
+            begin
+                set @resolvedManagerPk = null;
+            end
+            else if isnull(@managerEmployeePk, 0) > 0 and @managerEmployeePk <> @targetPk and exists (select 1 from storyPoint.tbEmployee where pk = @managerEmployeePk)
+            begin
+                set @resolvedManagerPk = @managerEmployeePk;
+            end
+            else if @existingManagerPk is not null and @existingDeptPk = @effectiveDeptPk and @existingManagerPk <> @targetPk
+            begin
+                set @resolvedManagerPk = @existingManagerPk;
+            end
+
             update storyPoint.tbEmployee
             set employeeCode = isnull(nullif(ltrim(rtrim(@safeEmployeeCode)), ''), employeeCode),
                 employeeName = isnull(nullif(ltrim(rtrim(@employeeName)), ''), employeeName),
@@ -371,8 +424,9 @@ begin
                     when isnull(ltrim(rtrim(@emailAddress)), '') in ('', 'user@company.com') then emailAddress
                     else ltrim(rtrim(@emailAddress))
                 end,
-                jobTitle = isnull(nullif(ltrim(rtrim(@jobTitle)), ''), jobTitle),
-                departmentPk = case when isnull(@departmentPk, 0) > 0 then @departmentPk else departmentPk end,
+                jobTitle = @effectiveTitle,
+                departmentPk = @effectiveDeptPk,
+                isDepartmentManager = @resolvedIsDeptMgr,
                 roleName = case when @roleName in ('admin', 'participant') then @roleName else roleName end,
                 isActive = isnull(@isActive, isActive),
                 updatedAt = sysdatetime()
@@ -380,9 +434,28 @@ begin
         end
         else
         begin
+            if @isDepartmentManager is not null
+            begin
+                set @resolvedIsDeptMgr = @isDepartmentManager;
+            end
+            else if isnull(@jobTitle, N'') like N'%部門經理%' or isnull(@jobTitle, N'') like N'%董事長%'
+            begin
+                set @resolvedIsDeptMgr = 1;
+            end
+            else
+            begin
+                set @resolvedIsDeptMgr = 0;
+            end
+
+            if isnull(@managerEmployeePk, 0) > 0 and exists (select 1 from storyPoint.tbEmployee where pk = @managerEmployeePk)
+            begin
+                set @resolvedManagerPk = @managerEmployeePk;
+            end
+
             insert into storyPoint.tbEmployee (
                 employeeCode, employeeName, loginAccount, passwordHash,
-                emailAddress, jobTitle, departmentPk, roleName, isActive,
+                emailAddress, jobTitle, departmentPk, isDepartmentManager,
+                managerEmployeePk, roleName, isActive,
                 createdAt, updatedAt
             )
             values (
@@ -393,12 +466,114 @@ begin
                 @emailAddress,
                 @jobTitle,
                 @departmentPk,
+                @resolvedIsDeptMgr,
+                @resolvedManagerPk,
                 case when @roleName in ('admin', 'participant') then @roleName else 'participant' end,
                 isnull(@isActive, 1),
                 sysdatetime(),
                 sysdatetime()
             );
             set @targetPk = scope_identity();
+            set @effectiveDeptPk = @departmentPk;
+        end
+
+        -- 若未明確指定頂層根節點 (@managerEmployeePk <> -1) 且 @resolvedManagerPk 仍為 null，自動依部門主管建立樹狀遞迴階層
+        if isnull(@managerEmployeePk, 0) <> -1 and @resolvedManagerPk is null
+        begin
+            if @resolvedIsDeptMgr = 0
+            begin
+                -- 一般同仁自動掛載於同部門之「部門主管 (isDepartmentManager = 1)」之下
+                select top 1 @resolvedManagerPk = e.pk
+                from storyPoint.tbEmployee as e
+                where e.departmentPk = @effectiveDeptPk
+                  and e.isDepartmentManager = 1
+                  and e.isActive = 1
+                  and e.pk <> @targetPk
+                order by e.pk asc;
+            end
+            else
+            begin
+                -- 部門主管 (除最高董事長/頂層根節點外) 自動掛載於頂層最高主管之下，構成多層樹狀遞迴階層
+                declare @isTopChairman bit = case when isnull(@jobTitle, N'') like N'%董事長%' then 1 else 0 end;
+                if @isTopChairman = 0
+                begin
+                    select top 1 @resolvedManagerPk = e.pk
+                    from storyPoint.tbEmployee as e
+                    where e.isDepartmentManager = 1
+                      and e.isActive = 1
+                      and e.pk <> @targetPk
+                      and (e.managerEmployeePk is null or e.jobTitle like N'%董事長%')
+                    order by
+                        case when e.jobTitle like N'%董事長%' then 0 else 1 end asc,
+                        e.pk asc;
+                end
+            end
+        end
+
+        -- 透過遞迴 CTE 檢核設定 @resolvedManagerPk 是否會造成樹狀循環參照 (Cycle Detection)
+        if @resolvedManagerPk is not null
+        begin
+            declare @createsCycle bit = 0;
+            ;with cycleCheckCte as (
+                select
+                    e.pk as currentPk,
+                    e.managerEmployeePk as nextParentPk,
+                    1 as depthLevel
+                from storyPoint.tbEmployee as e
+                where e.pk = @resolvedManagerPk
+
+                union all
+
+                select
+                    p.pk as currentPk,
+                    p.managerEmployeePk as nextParentPk,
+                    c.depthLevel + 1 as depthLevel
+                from cycleCheckCte as c
+                inner join storyPoint.tbEmployee as p
+                    on c.nextParentPk = p.pk
+                where c.nextParentPk is not null
+                  and c.nextParentPk <> c.currentPk
+                  and c.currentPk <> @targetPk
+                  and c.depthLevel < 15
+            )
+            select top 1 @createsCycle = 1
+            from cycleCheckCte
+            where currentPk = @targetPk or nextParentPk = @targetPk;
+
+            if @createsCycle = 1 or @resolvedManagerPk = @targetPk
+            begin
+                set @resolvedManagerPk = null;
+            end
+        end
+
+        update storyPoint.tbEmployee
+        set managerEmployeePk = @resolvedManagerPk,
+            updatedAt = sysdatetime()
+        where pk = @targetPk;
+
+        -- 若該員工被設定為部門主管 (isDepartmentManager = 1)，同步更新所屬部門之 managerName，並讓同部門尚未指定主管之一般同仁自動掛載於此部門主管下
+        if @resolvedIsDeptMgr = 1
+        begin
+            update storyPoint.tbDepartment
+            set managerName = isnull(nullif(ltrim(rtrim(@employeeName)), ''), managerName),
+                updatedAt = sysdatetime()
+            where pk = @effectiveDeptPk;
+
+            update storyPoint.tbEmployee
+            set managerEmployeePk = @targetPk,
+                updatedAt = sysdatetime()
+            where departmentPk = @effectiveDeptPk
+              and pk <> @targetPk
+              and isDepartmentManager = 0
+              and (
+                  managerEmployeePk is null
+                  or not exists (
+                      select 1
+                      from storyPoint.tbEmployee as curMgr
+                      where curMgr.pk = storyPoint.tbEmployee.managerEmployeePk
+                        and curMgr.departmentPk = @effectiveDeptPk
+                  )
+              );
         end
 
         set @durationMs = datediff(millisecond, @startTime, sysdatetime());
@@ -407,7 +582,7 @@ begin
             @sourceName = 'tsql',
             @objectName = 'storyPoint.spUpsertEmployee',
             @durationMillisecond = @durationMs,
-            @executionResult = N'員工資料與帳密儲存成功',
+            @executionResult = N'員工資料、部門主管註記與樹狀遞迴階層儲存成功',
             @operatorAccount = @operatorAccount;
 
         select
@@ -422,6 +597,18 @@ begin
             v.departmentPk,
             v.departmentCode,
             v.departmentName,
+            v.isDepartmentManager,
+            v.isDepartmentManagerText,
+            v.managerEmployeePk,
+            v.managerEmployeeCode,
+            v.managerEmployeeName,
+            v.departmentManagerEmployeePk,
+            v.departmentManagerName,
+            v.departmentManagerEmail,
+            v.hrManagerName,
+            v.hrManagerEmail,
+            v.hierarchyLevel,
+            v.hierarchyPath,
             v.isActive,
             v.assignedItemCount,
             v.totalAllocatedStoryPoint
@@ -696,7 +883,22 @@ begin
             order by pk asc;
         end
 
-        -- 清理或移轉外鍵關聯紀錄以確保可安全刪除員工帳號
+        -- 清理或移轉外鍵關聯紀錄以確保可安全刪除員工帳號 (含樹狀遞迴階層下屬之上層主管移轉)
+        declare @deletedEmpParentMgrPk int = null;
+        select @deletedEmpParentMgrPk = managerEmployeePk
+        from storyPoint.tbEmployee
+        where pk = @employeePk;
+
+        if @deletedEmpParentMgrPk = @employeePk
+        begin
+            set @deletedEmpParentMgrPk = null;
+        end
+
+        update storyPoint.tbEmployee
+        set managerEmployeePk = @deletedEmpParentMgrPk,
+            updatedAt = sysdatetime()
+        where managerEmployeePk = @employeePk;
+
         update storyPoint.tbPointHistory
         set changedByEmployeePk = null
         where changedByEmployeePk = @employeePk;
@@ -2458,6 +2660,8 @@ begin
     declare @workItemTypePk int = null;
     declare @workItemPk int = null;
     declare @oldPoint decimal(8,2) = null;
+    declare @cleanAction varchar(32) = ltrim(rtrim(isnull(@controlAction, '')));
+    declare @cleanDiscussionNote nvarchar(1024) = nullif(ltrim(rtrim(isnull(@roundDiscussionNote, N''))), N'');
 
     begin try
         if @operatorEmployeePk is not null and not exists (select 1 from storyPoint.tbEmployee where pk = @operatorEmployeePk)
@@ -2469,19 +2673,34 @@ begin
         end
 
         select
-            @currentRound = currentRoundNumber,
+            @currentRound = isnull(currentRoundNumber, 1),
             @targetKind = targetKind,
             @workItemTypePk = workItemTypePk,
             @workItemPk = workItemPk
         from storyPoint.tbVotingSession
         where pk = @votingSessionPk;
 
-        if @controlAction = 'reveal'
+        if not exists (
+            select 1
+            from storyPoint.tbVotingRound
+            where votingSessionPk = @votingSessionPk
+              and roundNumber = @currentRound
+        )
+        begin
+            insert into storyPoint.tbVotingRound (
+                votingSessionPk, roundNumber, roundStatus, voteCount, roundDiscussionNote, startedAt
+            )
+            values (
+                @votingSessionPk, @currentRound, 'voting', 0, @cleanDiscussionNote, sysdatetime()
+            );
+        end
+
+        if @cleanAction = 'reveal'
         begin
             update vr
             set vr.roundStatus = 'revealed',
-                vr.revealedAt = sysdatetime(),
-                vr.roundDiscussionNote = isnull(@roundDiscussionNote, vr.roundDiscussionNote),
+                vr.revealedAt = isnull(vr.revealedAt, sysdatetime()),
+                vr.roundDiscussionNote = isnull(@cleanDiscussionNote, vr.roundDiscussionNote),
                 vr.voteCount = isnull(stat.cnt, 0),
                 vr.averagePoint = stat.avgPt,
                 vr.minPoint = stat.minPt,
@@ -2504,14 +2723,28 @@ begin
                 updatedAt = sysdatetime()
             where pk = @votingSessionPk;
         end
-        else if @controlAction = 'nextRound'
+        else if @cleanAction = 'nextRound'
         begin
-            update storyPoint.tbVotingRound
-            set roundStatus = 'revealed',
-                revealedAt = isnull(revealedAt, sysdatetime()),
-                roundDiscussionNote = isnull(@roundDiscussionNote, roundDiscussionNote)
-            where votingSessionPk = @votingSessionPk
-              and roundNumber = @currentRound;
+            update vr
+            set vr.roundStatus = 'revealed',
+                vr.revealedAt = isnull(vr.revealedAt, sysdatetime()),
+                vr.roundDiscussionNote = isnull(@cleanDiscussionNote, vr.roundDiscussionNote),
+                vr.voteCount = isnull(stat.cnt, 0),
+                vr.averagePoint = stat.avgPt,
+                vr.minPoint = stat.minPt,
+                vr.maxPoint = stat.maxPt
+            from storyPoint.tbVotingRound as vr
+            outer apply (
+                select
+                    count(pk) as cnt,
+                    cast(round(avg(numericPointValue), 2) as decimal(8,2)) as avgPt,
+                    min(numericPointValue) as minPt,
+                    max(numericPointValue) as maxPt
+                from storyPoint.tbVoteRecord
+                where votingRoundPk = vr.pk
+            ) as stat
+            where vr.votingSessionPk = @votingSessionPk
+              and vr.roundNumber = @currentRound;
 
             declare @nextRound int = @currentRound + 1;
 
@@ -2524,21 +2757,53 @@ begin
                     @votingSessionPk, @nextRound, 'voting', 0, sysdatetime()
                 );
             end
+            else
+            begin
+                delete from storyPoint.tbVoteRecord
+                where votingSessionPk = @votingSessionPk
+                  and roundNumber = @nextRound;
+
+                update storyPoint.tbVotingRound
+                set roundStatus = 'voting',
+                    voteCount = 0,
+                    averagePoint = null,
+                    minPoint = null,
+                    maxPoint = null,
+                    revealedAt = null,
+                    startedAt = sysdatetime()
+                where votingSessionPk = @votingSessionPk
+                  and roundNumber = @nextRound;
+            end
 
             update storyPoint.tbVotingSession
             set currentRoundNumber = @nextRound,
                 sessionStatus = 'voting',
+                roundGoalNote = isnull(@cleanDiscussionNote, roundGoalNote),
                 updatedAt = sysdatetime()
             where pk = @votingSessionPk;
         end
-        else if @controlAction = 'finalize'
+        else if @cleanAction = 'finalize'
         begin
-            update storyPoint.tbVotingRound
-            set roundStatus = 'revealed',
-                revealedAt = isnull(revealedAt, sysdatetime()),
-                roundDiscussionNote = isnull(@roundDiscussionNote, roundDiscussionNote)
-            where votingSessionPk = @votingSessionPk
-              and roundNumber = @currentRound;
+            update vr
+            set vr.roundStatus = 'revealed',
+                vr.revealedAt = isnull(vr.revealedAt, sysdatetime()),
+                vr.roundDiscussionNote = isnull(@cleanDiscussionNote, vr.roundDiscussionNote),
+                vr.voteCount = isnull(stat.cnt, 0),
+                vr.averagePoint = stat.avgPt,
+                vr.minPoint = stat.minPt,
+                vr.maxPoint = stat.maxPt
+            from storyPoint.tbVotingRound as vr
+            outer apply (
+                select
+                    count(pk) as cnt,
+                    cast(round(avg(numericPointValue), 2) as decimal(8,2)) as avgPt,
+                    min(numericPointValue) as minPt,
+                    max(numericPointValue) as maxPt
+                from storyPoint.tbVoteRecord
+                where votingRoundPk = vr.pk
+            ) as stat
+            where vr.votingSessionPk = @votingSessionPk
+              and vr.roundNumber = @currentRound;
 
             update storyPoint.tbVotingSession
             set sessionStatus = 'finalized',
@@ -3048,7 +3313,7 @@ begin
           and (@departmentPk is null or d.departmentPk = @departmentPk)
         order by d.totalDepartmentStoryPoint desc, d.departmentPk asc;
 
-        -- Result Set 2: 員工身上的總 Story Point 數統計 (一般員工僅可看到自己)
+        -- Result Set 2: 員工身上的總 Story Point 數、部門主管註記與樹狀遞迴階層統計 (一般員工僅可看到自己)
         select
             e.employeePk,
             e.employeeCode,
@@ -3061,6 +3326,23 @@ begin
             e.departmentPk,
             e.departmentCode,
             e.departmentName,
+            e.isDepartmentManager,
+            e.isDepartmentManagerText,
+            e.managerEmployeePk,
+            e.managerEmployeeCode,
+            e.managerEmployeeName,
+            e.managerEmailAddress,
+            e.departmentManagerEmployeePk,
+            e.departmentManagerName,
+            e.departmentManagerEmail,
+            e.hrManagerEmployeePk,
+            e.hrManagerName,
+            e.hrManagerEmail,
+            e.hierarchyLevel,
+            e.hierarchyPath,
+            e.hierarchyIndentName,
+            e.hierarchySortKey,
+            e.directSubordinateCount,
             e.isActive,
             e.assignedItemCount,
             e.todoItemCount,
@@ -3083,8 +3365,9 @@ begin
               or e.loginAccount like '%' + @cleanKeyword + '%'
               or e.departmentName like '%' + @cleanKeyword + '%'
               or e.jobTitle like N'%' + @cleanKeyword + N'%'
+              or e.hierarchyPath like N'%' + @cleanKeyword + N'%'
           )
-        order by e.totalAllocatedStoryPoint desc, e.departmentPk asc, e.employeePk asc;
+        order by e.totalAllocatedStoryPoint desc, e.departmentPk asc, e.hierarchySortKey asc, e.employeePk asc;
 
         -- Result Set 3: 工項代表類型清單
         select
@@ -3693,7 +3976,50 @@ begin
                 @operatorAccount = @operatorAccount;
         end
 
-        -- 4. 回傳本次新到期或尚待發送 Email 通知之工項清單，以及解析出之部門管理層與 HR 收件人
+        -- 4. 透過樹狀遞迴階層 CTE (empManagerHierarchyCte) 解析每位負責同仁之「部門主管」以及「人資主管 (HR 部門主管)」
+        ;with empManagerHierarchyCte as (
+            -- 錨點成員 (Anchor Member): 從每位在職員工自身出發
+            select
+                baseEmp.pk as startEmployeePk,
+                baseEmp.departmentPk as startDepartmentPk,
+                baseEmp.isDepartmentManager as startIsDeptMgr,
+                baseEmp.pk as currentEmpPk,
+                baseEmp.managerEmployeePk as nextManagerPk,
+                baseEmp.employeeName as currentEmpName,
+                ltrim(rtrim(baseEmp.emailAddress)) as currentEmpEmail,
+                baseEmp.jobTitle as currentEmpJobTitle,
+                baseEmp.departmentPk as currentDeptPk,
+                baseEmp.isDepartmentManager as currentIsDeptMgr,
+                baseEmp.isActive as currentIsActive,
+                0 as hopDistance,
+                cast(concat('/', cast(baseEmp.pk as varchar(16)), '/') as varchar(512)) as visitedPath
+            from storyPoint.tbEmployee as baseEmp
+
+            union all
+
+            -- 遞迴成員 (Recursive Member): 沿 managerEmployeePk 向上追溯直屬主管與部門主管樹狀階層
+            select
+                cte.startEmployeePk,
+                cte.startDepartmentPk,
+                cte.startIsDeptMgr,
+                mgr.pk as currentEmpPk,
+                mgr.managerEmployeePk as nextManagerPk,
+                mgr.employeeName as currentEmpName,
+                ltrim(rtrim(mgr.emailAddress)) as currentEmpEmail,
+                mgr.jobTitle as currentEmpJobTitle,
+                mgr.departmentPk as currentDeptPk,
+                mgr.isDepartmentManager as currentIsDeptMgr,
+                mgr.isActive as currentIsActive,
+                cte.hopDistance + 1 as hopDistance,
+                cast(concat(cte.visitedPath, cast(mgr.pk as varchar(16)), '/') as varchar(512)) as visitedPath
+            from empManagerHierarchyCte as cte
+            inner join storyPoint.tbEmployee as mgr
+                on cte.nextManagerPk = mgr.pk
+            where cte.nextManagerPk is not null
+              and cte.nextManagerPk <> cte.currentEmpPk
+              and charindex('/' + cast(mgr.pk as varchar(16)) + '/', cte.visitedPath) = 0
+              and cte.hopDistance < 15
+        )
         select
             v.pk as workItemPk,
             v.itemCode,
@@ -3721,84 +4047,104 @@ begin
             v.expiredProcessedAt,
             v.expiryNotificationSent,
             isnull(mgrRecipient.managerEmailCsv, '') as departmentManagerEmailCsv,
-            isnull(mgrRecipient.managerNameCsv, N'部門經理/管理層') as departmentManagerNameCsv,
+            isnull(mgrRecipient.managerNameCsv, N'該同仁部門主管') as departmentManagerNameCsv,
             isnull(hrRecipient.hrEmailCsv, '') as hrEmailCsv,
-            isnull(hrRecipient.hrNameCsv, N'HR 人資部門') as hrNameCsv,
+            isnull(hrRecipient.hrNameCsv, N'人資主管') as hrNameCsv,
             isnull(allRecipient.allEmailCsv, '') as allRecipientEmailCsv
         from storyPoint.vwWorkItemDetail as v
         left join @expiredItem as ex
             on v.pk = ex.workItemPk
         outer apply (
+            -- 針對該工項每位負責同仁，由樹狀遞迴階層向上定位「該同仁的部門主管 (isDepartmentManager = 1)」
             select
                 string_agg(m.emailAddress, ',') within group (order by m.employeePk asc) as managerEmailCsv,
                 string_agg(concat(m.employeeName, N'(', m.departmentName, N' ', m.jobTitle, N')'), N'、') within group (order by m.employeePk asc) as managerNameCsv
             from (
                 select distinct
-                    e.pk as employeePk,
-                    ltrim(rtrim(e.emailAddress)) as emailAddress,
-                    e.employeeName,
-                    e.jobTitle,
-                    d.departmentName
-                from storyPoint.tbEmployee as e
-                inner join storyPoint.tbDepartment as d
-                    on e.departmentPk = d.pk
-                where e.isActive = 1
-                  and isnull(ltrim(rtrim(e.emailAddress)), '') <> ''
-                  and (
-                      -- 所屬指派部門之部門經理/管理層
-                      (
-                          exists (
-                              select 1
-                              from storyPoint.tbWorkItemAssignment as wia
-                              inner join storyPoint.tbEmployee as assignEmp
-                                  on wia.employeePk = assignEmp.pk
-                              where wia.workItemPk = v.pk
-                                and assignEmp.departmentPk = e.departmentPk
-                          )
-                          and (
-                              e.jobTitle like N'%部門經理%'
-                              or e.jobTitle like N'%經理%'
-                              or e.jobTitle like N'%主管%'
-                              or e.jobTitle like N'%處長%'
-                              or e.jobTitle like N'%協理%'
-                              or e.jobTitle like N'%總監%'
-                              or e.jobTitle like N'%董事長%'
-                              or e.employeeName = d.managerName
-                          )
-                      )
-                      -- 或該員工姓名即為指派部門之部門主管 (managerName)
-                      or exists (
-                          select 1
-                          from storyPoint.tbWorkItemAssignment as wia
-                          inner join storyPoint.tbEmployee as assignEmp
-                              on wia.employeePk = assignEmp.pk
-                          inner join storyPoint.tbDepartment as assignDept
-                              on assignEmp.departmentPk = assignDept.pk
-                          where wia.workItemPk = v.pk
-                            and assignDept.managerName = e.employeeName
-                      )
-                      -- 或若工項無指派人員時，通知所有部門經理與管理層主管
-                      or (
-                          not exists (select 1 from storyPoint.tbWorkItemAssignment as wia where wia.workItemPk = v.pk)
-                          and (
-                              e.jobTitle like N'%部門經理%'
-                              or e.jobTitle like N'%董事長%'
-                              or e.employeeName = d.managerName
-                          )
-                      )
-                      -- 管理部門 (MGMT) 之高階管理層/部門經理
-                      or (
-                          d.departmentCode = 'MGMT'
-                          and (
-                              e.jobTitle like N'%部門經理%'
-                              or e.jobTitle like N'%董事長%'
-                              or e.jobTitle like N'%總經理%'
-                          )
-                      )
-                  )
+                    resolvedMgr.employeePk,
+                    resolvedMgr.emailAddress,
+                    resolvedMgr.employeeName,
+                    resolvedMgr.jobTitle,
+                    resolvedMgr.departmentName
+                from storyPoint.tbWorkItemAssignment as wia
+                cross apply (
+                    select top 1
+                        cand.employeePk,
+                        cand.emailAddress,
+                        cand.employeeName,
+                        cand.jobTitle,
+                        cand.departmentName
+                    from (
+                        -- 優先由樹狀遞迴階層 (empManagerHierarchyCte) 向上尋找標記為部門主管 (isDepartmentManager = 1) 之主管
+                        select
+                            h.currentEmpPk as employeePk,
+                            h.currentEmpEmail as emailAddress,
+                            h.currentEmpName as employeeName,
+                            h.currentEmpJobTitle as jobTitle,
+                            d.departmentName,
+                            case
+                                when h.startIsDeptMgr = 0 and h.hopDistance >= 1 and h.currentIsDeptMgr = 1 and h.currentDeptPk = h.startDepartmentPk then 1
+                                when h.startIsDeptMgr = 0 and h.hopDistance >= 1 and h.currentIsDeptMgr = 1 then 2
+                                when h.startIsDeptMgr = 1 and h.hopDistance = 0 then 3
+                                when h.hopDistance = 1 and h.currentIsDeptMgr = 1 then 4
+                                else 9
+                            end as priorityOrder,
+                            h.hopDistance as sortHop
+                        from empManagerHierarchyCte as h
+                        inner join storyPoint.tbDepartment as d
+                            on h.currentDeptPk = d.pk
+                        where h.startEmployeePk = wia.employeePk
+                          and h.currentIsActive = 1
+                          and isnull(h.currentEmpEmail, '') <> ''
+                          and h.currentIsDeptMgr = 1
+                          and (h.hopDistance >= 1 or h.startIsDeptMgr = 1)
+
+                        union all
+
+                        -- 備援：若該同仁尚未設定 managerEmployeePk，則取該同仁所屬部門中 isDepartmentManager = 1 之部門主管
+                        select
+                            deptMgr.pk as employeePk,
+                            ltrim(rtrim(deptMgr.emailAddress)) as emailAddress,
+                            deptMgr.employeeName,
+                            deptMgr.jobTitle,
+                            dept.departmentName,
+                            5 as priorityOrder,
+                            99 as sortHop
+                        from storyPoint.tbEmployee as assignEmp
+                        inner join storyPoint.tbEmployee as deptMgr
+                            on assignEmp.departmentPk = deptMgr.departmentPk
+                        inner join storyPoint.tbDepartment as dept
+                            on deptMgr.departmentPk = dept.pk
+                        where assignEmp.pk = wia.employeePk
+                          and deptMgr.isActive = 1
+                          and deptMgr.isDepartmentManager = 1
+                          and isnull(ltrim(rtrim(deptMgr.emailAddress)), '') <> ''
+                    ) as cand
+                    order by cand.priorityOrder asc, cand.sortHop asc, cand.employeePk asc
+                ) as resolvedMgr
+                where wia.workItemPk = v.pk
+
+                union
+
+                -- 若該工項尚未指派任何同仁，則取建立者之部門主管或頂層部門主管
+                select distinct
+                    topMgr.pk as employeePk,
+                    ltrim(rtrim(topMgr.emailAddress)) as emailAddress,
+                    topMgr.employeeName,
+                    topMgr.jobTitle,
+                    topDept.departmentName
+                from storyPoint.tbEmployee as topMgr
+                inner join storyPoint.tbDepartment as topDept
+                    on topMgr.departmentPk = topDept.pk
+                where not exists (select 1 from storyPoint.tbWorkItemAssignment as wiaEmpty where wiaEmpty.workItemPk = v.pk)
+                  and topMgr.isActive = 1
+                  and topMgr.isDepartmentManager = 1
+                  and topMgr.managerEmployeePk is null
+                  and isnull(ltrim(rtrim(topMgr.emailAddress)), '') <> ''
             ) as m
         ) as mgrRecipient
         outer apply (
+            -- 解析「人資主管」：僅選取 HR 人資部門且員工資料記載為部門主管 (isDepartmentManager = 1) 之主管
             select
                 string_agg(h.emailAddress, ',') within group (order by h.employeePk asc) as hrEmailCsv,
                 string_agg(concat(h.employeeName, N'(', h.departmentName, N' ', h.jobTitle, N')'), N'、') within group (order by h.employeePk asc) as hrNameCsv
@@ -3814,6 +4160,7 @@ begin
                     on e.departmentPk = d.pk
                 where e.isActive = 1
                   and isnull(ltrim(rtrim(e.emailAddress)), '') <> ''
+                  and e.isDepartmentManager = 1
                   and (
                       d.departmentCode = 'HR'
                       or d.departmentName = N'HR'

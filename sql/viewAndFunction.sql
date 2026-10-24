@@ -154,11 +154,87 @@ outer apply (
 go
 
 -- ============================================================================
--- 3. 員工個人 Story Point 負載與工項統計檢視表 (storyPoint.vwEmployeePointSummary)
--- 用途: 查詢每位員工身上有多少工項與多少 Story Point (含分攤點數、已到期扣點與原始工項總點數)
+-- 3. 員工個人 Story Point 負載、樹狀遞迴階層與部門主管解析檢視表 (storyPoint.vwEmployeePointSummary)
+-- 用途: 1. 查詢每位員工身上有多少工項與多少 Story Point (含分攤點數、已到期扣點與原始工項總點數)
+--       2. 透過 T-SQL 遞迴 CTE (empHierarchyCte / upwardManagerCte) 展開員工組織樹狀遞迴階層 (hierarchyLevel / hierarchyPath)
+--       3. 透過樹狀遞迴階層解析每位同仁對應之「部門主管 (departmentManager*)」與「人資主管 (hrManager*)」
 -- ============================================================================
 create or alter view storyPoint.vwEmployeePointSummary
 as
+with empHierarchyCte as (
+    -- 錨點成員 (Anchor Member): 樹狀遞迴根節點 (無上層主管、或上層主管為自己/不存在)
+    select
+        e.pk as employeePk,
+        e.managerEmployeePk,
+        1 as hierarchyLevel,
+        cast(e.employeeName as nvarchar(1024)) as hierarchyPath,
+        cast(right('00000' + cast(e.pk as varchar(16)), 5) as varchar(512)) as hierarchySortKey,
+        cast(concat('/', cast(e.pk as varchar(16)), '/') as varchar(512)) as visitedPkPath
+    from storyPoint.tbEmployee as e
+    where e.managerEmployeePk is null
+       or e.managerEmployeePk = e.pk
+       or not exists (select 1 from storyPoint.tbEmployee as p where p.pk = e.managerEmployeePk)
+
+    union all
+
+    -- 遞迴成員 (Recursive Member): 由上而下遞迴展開各階層部屬，並防範循環參照
+    select
+        c.pk as employeePk,
+        c.managerEmployeePk,
+        cte.hierarchyLevel + 1 as hierarchyLevel,
+        cast(concat(cte.hierarchyPath, N' ➔ ', c.employeeName) as nvarchar(1024)) as hierarchyPath,
+        cast(concat(cte.hierarchySortKey, '.', right('00000' + cast(c.pk as varchar(16)), 5)) as varchar(512)) as hierarchySortKey,
+        cast(concat(cte.visitedPkPath, cast(c.pk as varchar(16)), '/') as varchar(512)) as visitedPkPath
+    from storyPoint.tbEmployee as c
+    inner join empHierarchyCte as cte
+        on c.managerEmployeePk = cte.employeePk
+    where c.managerEmployeePk <> c.pk
+      and charindex('/' + cast(c.pk as varchar(16)) + '/', cte.visitedPkPath) = 0
+      and cte.hierarchyLevel < 15
+),
+upwardManagerCte as (
+    -- 錨點成員: 從每位員工自身出發向上遞迴尋找其「部門主管」
+    select
+        e.pk as startEmployeePk,
+        e.departmentPk as startDepartmentPk,
+        e.isDepartmentManager as startIsDeptMgr,
+        e.pk as currentEmpPk,
+        e.managerEmployeePk as nextManagerPk,
+        e.employeeName as currentEmpName,
+        e.emailAddress as currentEmpEmail,
+        e.jobTitle as currentEmpJobTitle,
+        e.departmentPk as currentDeptPk,
+        e.isDepartmentManager as currentIsDeptMgr,
+        e.isActive as currentIsActive,
+        0 as hopDistance,
+        cast(concat('/', cast(e.pk as varchar(16)), '/') as varchar(512)) as upwardVisitedPath
+    from storyPoint.tbEmployee as e
+
+    union all
+
+    -- 遞迴成員: 沿 managerEmployeePk 向上追溯上層主管與部門主管
+    select
+        u.startEmployeePk,
+        u.startDepartmentPk,
+        u.startIsDeptMgr,
+        mgr.pk as currentEmpPk,
+        mgr.managerEmployeePk as nextManagerPk,
+        mgr.employeeName as currentEmpName,
+        mgr.emailAddress as currentEmpEmail,
+        mgr.jobTitle as currentEmpJobTitle,
+        mgr.departmentPk as currentDeptPk,
+        mgr.isDepartmentManager as currentIsDeptMgr,
+        mgr.isActive as currentIsActive,
+        u.hopDistance + 1 as hopDistance,
+        cast(concat(u.upwardVisitedPath, cast(mgr.pk as varchar(16)), '/') as varchar(512)) as upwardVisitedPath
+    from upwardManagerCte as u
+    inner join storyPoint.tbEmployee as mgr
+        on u.nextManagerPk = mgr.pk
+    where u.nextManagerPk is not null
+      and u.nextManagerPk <> u.currentEmpPk
+      and charindex('/' + cast(mgr.pk as varchar(16)) + '/', u.upwardVisitedPath) = 0
+      and u.hopDistance < 15
+)
 select
     e.pk as employeePk,
     e.employeeCode,
@@ -171,6 +247,31 @@ select
     e.departmentPk,
     d.departmentCode,
     d.departmentName,
+    e.isDepartmentManager,
+    case
+        when e.isDepartmentManager = 1 and (d.departmentCode = 'HR' or d.departmentName = N'HR') then N'🤝 人資主管 (部門主管)'
+        when e.isDepartmentManager = 1 then N'👑 部門主管'
+        else N'一般同仁'
+    end as isDepartmentManagerText,
+    e.managerEmployeePk,
+    isnull(directMgr.employeeCode, '') as managerEmployeeCode,
+    isnull(directMgr.employeeName, N'頂層根節點(無上層)') as managerEmployeeName,
+    isnull(directMgr.emailAddress, '') as managerEmailAddress,
+    resolvedDeptMgr.deptMgrPk as departmentManagerEmployeePk,
+    isnull(resolvedDeptMgr.deptMgrName, isnull(d.managerName, N'未設定')) as departmentManagerName,
+    isnull(resolvedDeptMgr.deptMgrEmail, '') as departmentManagerEmail,
+    hrMgr.hrMgrPk as hrManagerEmployeePk,
+    isnull(hrMgr.hrMgrName, N'許立慧') as hrManagerName,
+    isnull(hrMgr.hrMgrEmail, '') as hrManagerEmail,
+    isnull(treeNode.hierarchyLevel, 1) as hierarchyLevel,
+    isnull(treeNode.hierarchyPath, e.employeeName) as hierarchyPath,
+    concat(
+        replicate(N'　', case when isnull(treeNode.hierarchyLevel, 1) > 1 then isnull(treeNode.hierarchyLevel, 1) - 1 else 0 end),
+        case when isnull(treeNode.hierarchyLevel, 1) > 1 then N'└─ ' else N'🌳 ' end,
+        e.employeeName
+    ) as hierarchyIndentName,
+    isnull(treeNode.hierarchySortKey, right('00000' + cast(e.pk as varchar(16)), 5)) as hierarchySortKey,
+    isnull(subStat.directSubordinateCount, 0) as directSubordinateCount,
     e.isActive,
     isnull(empWork.assignedItemCount, 0) as assignedItemCount,
     isnull(empWork.todoItemCount, 0) as todoItemCount,
@@ -186,6 +287,73 @@ select
 from storyPoint.tbEmployee as e
 inner join storyPoint.tbDepartment as d
     on e.departmentPk = d.pk
+left join storyPoint.tbEmployee as directMgr
+    on e.managerEmployeePk = directMgr.pk
+left join empHierarchyCte as treeNode
+    on treeNode.employeePk = e.pk
+outer apply (
+    -- 透過向上樹狀遞迴優先尋找該同仁的部門主管 (若本人即為該部門主管則取本人或上層部門主管；若一般同仁則沿樹狀向上取最近一位 isDepartmentManager = 1 之主管)
+    select top 1
+        cand.deptMgrPk,
+        cand.deptMgrName,
+        cand.deptMgrEmail
+    from (
+        select
+            u.currentEmpPk as deptMgrPk,
+            u.currentEmpName as deptMgrName,
+            u.currentEmpEmail as deptMgrEmail,
+            case
+                when e.isDepartmentManager = 0 and u.hopDistance >= 1 and u.currentIsDeptMgr = 1 and u.currentDeptPk = e.departmentPk then 1
+                when e.isDepartmentManager = 0 and u.hopDistance >= 1 and u.currentIsDeptMgr = 1 then 2
+                when e.isDepartmentManager = 1 and u.hopDistance = 0 then 3
+                when u.hopDistance = 1 then 4
+                else 9
+            end as matchPriority,
+            u.hopDistance as sortDist
+        from upwardManagerCte as u
+        where u.startEmployeePk = e.pk
+          and u.currentIsActive = 1
+          and (u.hopDistance >= 1 or e.isDepartmentManager = 1)
+
+        union all
+
+        -- 備援：若該同仁未設定 managerEmployeePk，則取同部門設定為 isDepartmentManager = 1 之部門主管
+        select
+            sameDeptMgr.pk as deptMgrPk,
+            sameDeptMgr.employeeName as deptMgrName,
+            sameDeptMgr.emailAddress as deptMgrEmail,
+            5 as matchPriority,
+            99 as sortDist
+        from storyPoint.tbEmployee as sameDeptMgr
+        where sameDeptMgr.departmentPk = e.departmentPk
+          and sameDeptMgr.isDepartmentManager = 1
+          and sameDeptMgr.isActive = 1
+    ) as cand
+    order by cand.matchPriority asc, cand.sortDist asc, cand.deptMgrPk asc
+) as resolvedDeptMgr
+outer apply (
+    -- 解析人資主管 (HR 部門且 isDepartmentManager = 1 之主管)
+    select top 1
+        he.pk as hrMgrPk,
+        he.employeeName as hrMgrName,
+        he.emailAddress as hrMgrEmail
+    from storyPoint.tbEmployee as he
+    inner join storyPoint.tbDepartment as hd
+        on he.departmentPk = hd.pk
+    where he.isActive = 1
+      and (hd.departmentCode = 'HR' or hd.departmentName = N'HR' or he.jobTitle like N'%人資%' or he.jobTitle like N'%HR%')
+      and he.isDepartmentManager = 1
+    order by
+        case when hd.departmentCode = 'HR' then 0 else 1 end asc,
+        he.pk asc
+) as hrMgr
+outer apply (
+    select count(sub.pk) as directSubordinateCount
+    from storyPoint.tbEmployee as sub
+    where sub.managerEmployeePk = e.pk
+      and sub.pk <> e.pk
+      and sub.isActive = 1
+) as subStat
 outer apply (
     select
         count(wia.pk) as assignedItemCount,
@@ -225,7 +393,7 @@ go
 
 -- ============================================================================
 -- 4. 部門總 Story Point 數與負載統計檢視表 (storyPoint.vwDepartmentPointSummary)
--- 用途: 查詢員工所屬部門的總 Story Point 數、待處理/進行中/已完成點數及人均點數
+-- 用途: 查詢員工所屬部門的總 Story Point 數、部門主管、待處理/進行中/已完成點數及人均點數
 -- ============================================================================
 create or alter view storyPoint.vwDepartmentPointSummary
 as
@@ -235,7 +403,7 @@ select
     d.departmentName,
     d.parentDepartmentPk,
     isnull(parentDept.departmentName, N'頂層部門') as parentDepartmentName,
-    d.managerName,
+    isnull(deptMgrEmp.managerNameCsv, isnull(d.managerName, N'未指派')) as managerName,
     d.departmentNote,
     d.isActive,
     isnull(empStat.totalEmployeeCount, 0) as totalEmployeeCount,
@@ -256,6 +424,14 @@ select
 from storyPoint.tbDepartment as d
 left join storyPoint.tbDepartment as parentDept
     on d.parentDepartmentPk = parentDept.pk
+outer apply (
+    select
+        string_agg(e.employeeName, N'、') within group (order by e.pk asc) as managerNameCsv
+    from storyPoint.tbEmployee as e
+    where e.departmentPk = d.pk
+      and e.isDepartmentManager = 1
+      and e.isActive = 1
+) as deptMgrEmp
 outer apply (
     select
         count(e.pk) as totalEmployeeCount,

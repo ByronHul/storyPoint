@@ -149,11 +149,11 @@ process {
         & $loadVotingData
     })
     $btnReveal.add_click({
-        $null = & $votingScript -actionType 'revealRound' -votingSessionPk ([int]$txtSessionPk.text) -employeePk ([int]$txtEmpPk.text)
+        $null = & $votingScript -actionType 'revealRound' -votingSessionPk ([int]$txtSessionPk.text) -employeePk ([int]$txtEmpPk.text) -roundDiscussionNote $txtComment.text
         & $loadVotingData
     })
     $btnNextRound.add_click({
-        $null = & $votingScript -actionType 'nextRound' -votingSessionPk ([int]$txtSessionPk.text) -employeePk ([int]$txtEmpPk.text)
+        $null = & $votingScript -actionType 'nextRound' -votingSessionPk ([int]$txtSessionPk.text) -employeePk ([int]$txtEmpPk.text) -roundDiscussionNote $txtComment.text
         & $loadVotingData
     })
 
