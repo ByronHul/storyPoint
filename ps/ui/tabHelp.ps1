@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Azure 多人參與 Story Point 系統 - [Tab 6] 線上說明與操作畫面搜尋頁籤 (tabHelp.ps1)
 .DESCRIPTION
@@ -51,6 +51,7 @@ process {
     $cmbCat.dropdownstyle = 'DropDownList'
     $null = $cmbCat.items.addrange(@(
         '全部章節',
+        'Story Point 核心概念與工作量透明',
         '登入驗證與帳密安全',
         '多人即時盲投與回合設定',
         '工項、代表類型與到期扣點',
@@ -96,6 +97,7 @@ process {
     $picBox.cursor = [system.windows.forms.cursors]::Hand
 
     $helpTopics = @(
+        [pscustomobject]@{ topicCode = '00'; category = 'Story Point 核心概念與工作量透明'; title = '認識 Story Point：概念、用途、如何評估複雜度與讓團隊/個人工作量透明'; keywords = 'story point 故事點 概念 用途 複雜度 評估 技術複雜度 工作規模 未知風險 費氏數列 權重 工作量透明 進行中點數 已完成點數'; screenFile = 'screen_09_stats_table.png'; detail = "【主題 00：認識 Story Point — 概念、用途、複雜度評估與工作量透明化】`r`n① 核心概念：Story Point 評估的是任務客觀的「綜合相對複雜度」，而非估算「幾小時或幾天」，消除資深與資淺人員的速度差異爭論。`r`n② 如何評估複雜度（三大維度）：(1) 技術複雜度 (邏輯難度與架構影響)、(2) 工作投入規模 (修改範圍與測試工作量)、(3) 未知風險與不確定性 (相依性與變動風險)。`r`n③ 費氏數列評分尺規：0.5~1點(極簡基準尺)、2~3點(標準常規功能)、5~8點(中高複雜度跨模組)、13~21點+(大型高風險建議先拆解)、?(需求不明需先釐清)。`r`n④ 核心用途（讓團隊與個人工作量透明）：打破「只看工項件數」的盲點，搭配重要性權重乘數計算加權總分，即時透明呈現個人與部門的「進行中點數（在途負載）」與「已完成點數（實質產出貢獻）」。" },
         [pscustomobject]@{ topicCode = '01'; category = '登入驗證與帳密安全'; title = '員工帳號密碼強制登入驗證與安全登出'; keywords = '登入 密碼 login 登出 logout 角色 admin participant'; screenFile = 'screen_01_login.png'; detail = "【主題 01：員工帳號密碼強制登入驗證與安全登出】`r`n① 輸入員工登入帳號 (loginAccount)。`r`n② 輸入登入密碼 (支援點擊 👁️ 顯示確認)。`r`n③ 點擊「🔐 驗證身分並登入系統」通過 spVerifyEmployeeLogin 檢核。`r`n④ 作業完畢點擊右上角紅色「🚪 登出系統」安全釋放盲投鎖定並清除憑證。" },
         [pscustomobject]@{ topicCode = '02'; category = '登入驗證與帳密安全'; title = '自助修改個人登入帳號與密碼（免重登）'; keywords = '修改帳密 修改密碼 個人帳密 spUpdateEmployeeSelfCredential'; screenFile = 'screen_11_my_account.png'; detail = "【主題 02：自助修改個人登入帳號與密碼】`r`n① 點擊頂部「🔑 修改我的帳密」。`r`n② 修改「我的登入帳號」或輸入「新登入密碼 / 確認新密碼」。`r`n③ 點擊「💾 儲存修改我的登入帳號與密碼」，自動更新資料庫與登入 Cookie 免重新登入。" },
         [pscustomobject]@{ topicCode = '03'; category = '多人即時盲投與回合設定'; title = '多人即時盲投大廳：待參與 vs 參與中分類'; keywords = '盲投大廳 待參與 參與中 已拍板定案 資料夾收合 重新整理'; screenFile = 'screen_02_voting_lobby.png'; detail = "【主題 03：多人即時盲投大廳】`r`n① 左側投票議程清單自動依個人狀態分為「📂 待參與」、「🟢 參與中」與「📁 已拍板定案（預設收合）」。`r`n② 從「📂 待參與」點擊「🚀 點選進入『參與中』獨立網頁」開始盲投。`r`n③ 已開啟之議程自動移入「🟢 參與中」並啟動防重複進入保護。" },
