@@ -25,6 +25,7 @@ param(
 
 process {
     $workItemScript = join-path -path $psRootPath -childpath 'manageWorkItem.ps1'
+    $votingScript = join-path -path $psRootPath -childpath 'manageVotingSession.ps1'
     $tabPage = new-object system.windows.forms.tabpage
     $tabPage.text = '2. 工項代表類型設定'
     $tabPage.padding = new-object system.windows.forms.padding(10)
@@ -76,6 +77,13 @@ process {
     $btnRefresh.location = new-object system.drawing.point(175, 50)
     $btnRefresh.size = new-object system.drawing.size(190, 30)
 
+    $btnRevote = new-object system.windows.forms.button
+    $btnRevote.text = '🔄 重新投票所選代表類型'
+    $btnRevote.location = new-object system.drawing.point(378, 50)
+    $btnRevote.size = new-object system.drawing.size(195, 30)
+    $btnRevote.backcolor = [system.drawing.color]::fromargb(239, 246, 255)
+    $btnRevote.forecolor = [system.drawing.color]::fromargb(29, 78, 216)
+
     $gridType = new-object system.windows.forms.datagridview
     $gridType.location = new-object system.drawing.point(12, 92)
     $gridType.size = new-object system.drawing.size(1130, 520)
@@ -112,9 +120,34 @@ process {
                 & $loadTypeData
             }
         }
+    } -onRevoteRow {
+        param($rowItem)
+        if ($null -ne $rowItem -and $rowItem.table.columns.contains('workItemTypePk')) {
+            $ans = [system.windows.forms.messagebox]::show("確定要針對代表類型「$($rowItem.typeCode) - $($rowItem.typeName)」發起重新投票（開啟新一輪盲投並重設已定案狀態）嗎？", '確認重新投票', [system.windows.forms.messageboxbuttons]::yesno, [system.windows.forms.messageboxicon]::question)
+            if ($ans -eq [system.windows.forms.dialogresult]::yes) {
+                $null = & $votingScript -actionType 'revoteSession' -targetKind 'workItemType' -workItemTypePk ([int]$rowItem.workItemTypePk) -roundDiscussionNote '由代表類型管理頁籤發起重新投票'
+                & $loadTypeData
+                if ($null -ne $statusLabel) {
+                    $statusLabel.text = "🔄 已針對代表類型【$($rowItem.typeCode) - $($rowItem.typeName)】開啟新一輪重新投票"
+                }
+            }
+        }
     }
 
     $btnRefresh.add_click($loadTypeData)
+    $btnRevote.add_click({
+        if ($gridType.selectedrows.count -gt 0 -or $null -ne $gridType.currentrow) {
+            $selRow = if ($gridType.selectedrows.count -gt 0) { $gridType.selectedrows[0] } else { $gridType.currentrow }
+            if ($null -ne $selRow -and $null -ne $selRow.databounditem) {
+                $rItem = $selRow.databounditem.row
+                $null = & $votingScript -actionType 'revoteSession' -targetKind 'workItemType' -workItemTypePk ([int]$rItem.workItemTypePk) -roundDiscussionNote '由代表類型管理頁籤發起重新投票'
+                & $loadTypeData
+                if ($null -ne $statusLabel) {
+                    $statusLabel.text = "🔄 已針對代表類型【$($rItem.typeCode) - $($rItem.typeName)】開啟新一輪重新投票"
+                }
+            }
+        }
+    })
     $btnSave.add_click({
         $ptVal = if (-not [string]::isnullorempty($txtPoint.text)) { [decimal]$txtPoint.text } else { $null }
         $null = & $workItemScript -actionType 'upsertWorkItemType' `
@@ -125,7 +158,7 @@ process {
 
     $tabPage.controls.addrange(@(
         $lblCode, $txtCode, $lblName, $txtName, $lblPoint, $txtPoint, $chkSync,
-        $btnSave, $btnRefresh, $gridType
+        $btnSave, $btnRefresh, $btnRevote, $gridType
     ))
 
     return $tabPage

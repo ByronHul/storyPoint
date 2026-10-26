@@ -618,6 +618,8 @@ function invokeParameterizedSql {
     滑鼠右鍵快捷選單點擊「✏️ 編輯 / 載入此筆紀錄」時執行的回呼 ScriptBlock (選填，傳入參數為選取的 DataRow)
 .PARAMETER onDeleteRow
     滑鼠右鍵快捷選單點擊「🗑️ 刪除此筆紀錄」時執行的回呼 ScriptBlock (選填，傳入參數為選取的 DataRow)
+.PARAMETER onRevoteRow
+    滑鼠右鍵快捷選單點擊「🔄 重新投票此筆紀錄」時執行的回呼 ScriptBlock (選填，傳入參數為選取的 DataRow)
 #>
 function enableGridHeaderSortAndLock {
     [cmdletbinding()]
@@ -629,7 +631,9 @@ function enableGridHeaderSortAndLock {
         [parameter(mandatory = $false)]
         [scriptblock]$onEditRow = $null,
         [parameter(mandatory = $false)]
-        [scriptblock]$onDeleteRow = $null
+        [scriptblock]$onDeleteRow = $null,
+        [parameter(mandatory = $false)]
+        [scriptblock]$onRevoteRow = $null
     )
     process {
         if ($null -eq $grid) {
@@ -678,6 +682,7 @@ function enableGridHeaderSortAndLock {
         # 建立資料列滑鼠右鍵快捷選單 (ContextMenuStrip)：右鍵選擇紀錄並彈出 Modal 視窗單筆編輯或檢視
         $ctxMenu = new-object system.windows.forms.contextmenustrip
         $miEdit = $ctxMenu.items.add($(if ($null -ne $onEditRow) { '✏️ 單筆編輯此筆紀錄（彈出 Modal 視窗）' } else { '🪟 檢視此筆紀錄完整明細（彈出 Modal 視窗）' }))
+        $miRevote = $ctxMenu.items.add('🔄 重新投票此筆紀錄（重啟新一輪多人盲投）')
         $miDelete = $ctxMenu.items.add('🗑️ 刪除此筆紀錄')
         $null = $ctxMenu.items.add((new-object system.windows.forms.toolstripseparator))
         $miFilterCell = $ctxMenu.items.add('🔍 以此儲存格值篩選本表格')
@@ -686,6 +691,7 @@ function enableGridHeaderSortAndLock {
         $miCopyRow = $ctxMenu.items.add('📋 複製本列紀錄至剪貼簿')
 
         $miEdit.visible = $true
+        $miRevote.visible = ($null -ne $onRevoteRow)
         $miDelete.visible = ($null -ne $onDeleteRow)
 
         $ctxState = @{
@@ -764,11 +770,17 @@ function enableGridHeaderSortAndLock {
             }
         }.GetNewClosure())
 
-        $miDelete.add_click({
-            if ($null -ne $onDeleteRow -and $null -ne $ctxState.currentRowItem) {
-                & $onDeleteRow $ctxState.currentRowItem
-            }
-        }.GetNewClosure())
+                $miDelete.add_click({
+                    if ($null -ne $onDeleteRow -and $null -ne $ctxState.currentRowItem) {
+                        & $onDeleteRow $ctxState.currentRowItem
+                    }
+                }.GetNewClosure())
+
+                $miRevote.add_click({
+                    if ($null -ne $onRevoteRow -and $null -ne $ctxState.currentRowItem) {
+                        & $onRevoteRow $ctxState.currentRowItem
+                    }
+                }.GetNewClosure())
 
         $miFilterCell.add_click({
             $dt = $grid.datasource

@@ -306,16 +306,18 @@
     2. **編輯該筆紀錄內容時，直接彈出置中 Modal 視窗 (`#spRecordEditModalOverlay` / `#spRecordEditModal`) 做單筆編輯，絕不捲動網頁位置**：
         * 當使用者從右鍵選單點選「✏️ 單筆編輯...」或相關修改動作時，**禁止使用 `window.scrollTo` 捲動網頁到上方或特定網頁位置**，而是**直接原地彈出置中的單筆編輯 Modal 視窗**，於 Modal 視窗內完成單筆紀錄修改與儲存：
             * **工項紀錄 (`workitem`)**：
-                * `✏️ 單筆編輯此工項設定（彈出 Modal 視窗）` ➔ 彈出 `openWorkItemEditModal` 單筆編輯工項代碼、工項類型、標題、起訖時間（其中「起訖時間快速設定」完整比照主表單設定方式，提供 `數量` 數值輸入框 + `單位：天/周/月/季/年` 下拉選單，隨即依起時自動計算迄時）、代表類型、Story Point、Sprint、狀態與微調原因。
+                * `✏️ 單筆編輯此工項設定（彈出 Modal 視窗）` ➔ 彈出 `openWorkItemEditModal` 單筆編輯工項代碼、工項類型、標題、起訖時間（其中「起訖時間快速設定」完整比照主表單設定方式，提供 `數量` 數值輸入框 + `單位：天/周/月/季/年` 下拉選單，隨即依起時自動計算迄時）、代表類型、Story Point、Sprint、狀態與微調原因，且於 Modal 底部直接提供 `🔄 重新投票此工項` 按鈕。
                 * `👥 修改此工項之賦予員工與配額（彈出 Modal 視窗）` ➔ 彈出 `openWorkItemAssignModal` 單筆調整負責員工與分攤比例。
-                * `🃏 針對此工項發起「多人盲投估算」（彈出 Modal 視窗）` ➔ 彈出 `openSessionSetupEditModal` 直接發起盲投。
+                * `🔄 重新投票此工項點數（重啟新一輪多人盲投議程）` ➔ 直接對該工項發起或重啟新一輪盲投議程 (`triggerRevoteFromTarget`)。
+                * `🃏 針對此工項發起「多人盲投估算」（彈出 Modal 視窗）` ➔ 彈出 `openSessionSetupEditModal` 直接發起或調整重新投票回合設定。
                 * `⏰ 設為已到期並彈出 Modal 編輯（測試自動扣點寄信）` ➔ 彈出 `openWorkItemEditModal` 並預填已到期時間。
                 * `🗑️ 刪除此工項紀錄`。
             * **工項類型紀錄 (`workitemKind`)**：
                 * `✏️ 單筆編輯此工項類型（彈出 Modal 視窗）` ➔ 彈出 `openWorkItemKindEditModal` 單筆編輯類型代碼、名稱、圖示、顏色、排序與說明。
                 * `🔍 篩選套用此類型的所有工項`、`🗑️ 刪除此工項類型`。
             * **工項代表類型紀錄 (`workitemType`)**：
-                * `✏️ 單筆編輯此工項代表類型（彈出 Modal 視窗）` ➔ 彈出 `openWorkItemTypeEditModal` 單筆編輯代表類型與標準 Story Point。
+                * `✏️ 單筆編輯此工項代表類型（彈出 Modal 視窗）` ➔ 彈出 `openWorkItemTypeEditModal` 單筆編輯代表類型與標準 Story Point，且於 Modal 底部直接提供 `🔄 重新投票此代表類型` 按鈕。
+                * `🔄 重新投票此代表類型標準點數（重啟新一輪多人盲投議程）` ➔ 直接對該代表類型發起或重啟新一輪盲投議程 (`triggerRevoteFromTarget`)，重設已定案狀態並進入盲投。
                 * `🃏 針對此代表類型發起「多人盲投估算」（彈出 Modal 視窗）`、`🔍 檢視套用此代表類型的所有工項`、`🗑️ 刪除此工項代表類型`。
             * **員工紀錄 (`employee`，含員工管理表與統計報表員工表)**：
                 * `✏️ 單筆編輯員工資料、部門主管與登入帳密（彈出 Modal 視窗）` ➔ 彈出 `openEmployeeEditModal` 單筆編輯員工資料、部門、職稱、是否為部門主管、上層主管與登入帳密。
@@ -324,6 +326,8 @@
                 * `✏️ 單筆編輯此部門資料與主管設定（彈出 Modal 視窗）` ➔ 彈出 `openDepartmentEditModal` 單筆編輯部門代碼、名稱、主管與職掌備註。
                 * `👥 篩選檢視此部門的所有員工`。
             * **盲投議程紀錄 (`session`)**：
+                * `🔄 重新投票此盲投議程（開啟新一輪盲投並重設已定案狀態）` ➔ 直接開啟新一輪盲投並將已定案議程重設回盲投進行中 (`triggerRevoteFromTarget`)。
+                * `🔁 清空本回合已出牌紀錄並重新投票（保持同一回合號）` ➔ 清空當前盲投回合已出牌紀錄並重新盲投。
                 * `✏️ 單筆編輯此盲投議程回合設定（彈出 Modal 視窗）` ➔ 彈出 `openSessionSetupEditModal` 單筆編輯議程設定。
                 * `🚀 開啟此盲投 Session 獨立網頁`。
             * **所有表格共通右鍵項目（含投票歷程表、點數異動表、系統 Log 表及獨立盲投網頁表格）**：
@@ -384,6 +388,28 @@
 * **搭配 12 幅高解析度實機操作畫面與編號標註指引 (`wwwroot/help/images/screen_01_*.png` ~ `screen_12_*.png`)**：
     1. 每個說明主題皆搭配對應之**繁體中文實機操作畫面截圖**（涵蓋：① 員工登入驗證與安全登出、② 自助修改個人帳密、③ 多人盲投大廳待參與/參與中分類、④ 獨立盲投 Session 綠色牌桌與自動翻牌/定案控制台、⑤ 設定盲投回合與牌面預覽、⑥ 估算過程與異動稽核查詢、⑦ 工項管理與起訖時間/到期自動扣點寄信、⑧ 表格滑鼠右鍵選單與雙擊單筆編輯 Modal、⑨ 工項代表類型與工項類型 CRUD、⑩ 員工/部門點數統計與表頭排序鎖定/三格式匯出、⑪ 組織部門主管樹狀階層與 CSV/Excel 批次匯入、⑫ 系統防崩潰 Log 查詢中心與測試）。
     2. 每幅操作畫面下方皆附帶**編號標註說明 (`①` `②` `③` `④`)** 與**畫面元件示意列**，點擊圖片或「`🔍 放大畫面`」按鈕即可開啟**全螢幕高解析度 Lightbox 放大檢視視窗 (`#spHelpScreenLightbox`)**（支援切換上一張/下一張操作畫面），並提供「`⚡ 立即切換至此功能畫面` / `🪟 直接彈出 Modal`」一鍵操作按鈕。
+
+### 2.21 重新投票機制 (`🔄 重新投票` / `🔁 重設本回合出牌重新投票`)
+* **核心原則**：針對任何「已定案 (`finalized`)」、「已翻牌揭曉 (`revealed`)」或「盲投進行中 (`voting`)」之**工項代表類型 (`workItemType`)**、**特定工項 (`workItem`)** 與**盲投議程 (`votingSession`)**，系統全面提供「**`🔄 重新投票`**」與「**`🔁 清空本回合出牌重新投票`**」選項，讓團隊可隨時針對既有代表類型或工項重啟多人盲投估算。
+* **Web 介面全方位「🔄 重新投票」操作入口**：
+    1. **表格滑鼠右鍵操作選單 (`#spRowContextMenu`)**：
+        * **工項代表類型 (`2-2. 工項代表類型` `rowKind === 'workitemType'`)**：右鍵選單提供「**`🔄 重新投票此代表類型標準點數（重啟新一輪多人盲投議程）`**」與「**`🃏 針對此代表類型發起「多人盲投估算」（彈出 Modal 視窗）`**」。
+        * **實際工項 (`2-1. 工項與員工指派` `rowKind === 'workitem'`)**：右鍵選單提供「**`🔄 重新投票此工項點數（重啟新一輪多人盲投議程）`**」與「**`🃏 針對此工項發起「多人盲投估算」（彈出 Modal 視窗）`**」。
+        * **盲投議程 (`1-2. 設定盲投回合` 與 `1-3. 估算過程查詢` `rowKind === 'session'`)**：右鍵選單提供「**`🔄 重新投票此盲投議程（開啟新一輪盲投並重設已定案狀態）`**」與「**`🔁 清空本回合已出牌紀錄並重新投票（保持同一回合號）`**」。
+    2. **單筆編輯 Modal 視窗內建重新投票按鈕**：
+        * `openWorkItemTypeEditModal`（工項代表類型單筆編輯 Modal）：底部提供「**`🔄 重新投票此代表類型`**」按鈕。
+        * `openWorkItemEditModal`（工項單筆編輯 Modal）：底部提供「**`🔄 重新投票此工項`**」按鈕。
+        * `openSessionSetupEditModal`（盲投回合設定 Modal）：支援載入既有或已定案議程進行重新投票設定，並內建「**`🔄 重新投票：清空本回合已投選票並重設為盲投進行中（若原為已定案則重啟盲投）`**」勾選開關。
+    3. **即時盲投大廳 (`1-1. 即時盲投大廳` `#pane-voting`)、設定盲投回合 (`1-2` `#pane-roundSetup`)、估算過程查詢 (`1-3` `#pane-history`) 與獨立盲投網頁 (`/voting/session`)**：
+        * 左側投票議程清單（含「📁 已拍板定案議程」）與右側大廳議程卡片皆提供「**`🔄 重新投票`**」按鈕。
+        * `1-2. 設定盲投回合` 之「選擇操作模式 (`#setupSessionSelector`)」包含「已定案 (`🏆 已定案 — 可重新投票`)」議程，選取已定案議程時自動勾選重新投票重設選項。
+        * `1-3. 估算過程查詢` 之議程標題列提供「**`🔄 重新投票此議程 (開啟新一輪盲投)`**」按鈕。
+        * 獨立盲投 Session 網頁 (`/voting/session`) 主持人控制台提供「**`🔄 2. 開啟下一回合重新盲投 (Next Round)`**」與「**`🔁 3. 重新投票 (清空本回合已出牌 / 重啟盲投)`**」按鈕。
+* **T-SQL 預存程序 (`storyPoint.spControlVotingSession`、`storyPoint.spCreateVotingSession`、`storyPoint.spGetStoryPointDashboard`)**：
+    1. `storyPoint.spControlVotingSession` 新增 `@controlAction in ('revote', 'resetRound')` 並支援傳入 `@targetKindParam`、`@workItemTypePkParam`、`@workItemPkParam`：若該代表類型或工項尚無盲投議程，自動建立新盲投議程與第 1 回合；若已有議程（含已定案 `finalized`），自動將 `sessionStatus` 重設為 `'voting'`、清除 `finalStoryPoint = null` 與 `finalizedAt = null`，開啟新一輪盲投回合（或於 `resetRound` 清空當前回合選票），將對應 `tbWorkItemType`（重設 `standardStoryPoint = null, estimationStatus = 'voting'`）或 `tbWorkItem`（重設 `estimationStatus = 'voting'`）狀態恢復為投票估算中，並寫入 `storyPoint.tbPointHistory`（`changeSource = 'revoteReset'`）與 `storyPoint.tbLog`。
+* **PowerShell Console (`ps/manageVotingSession.ps1`) 與 GUI (`ps/common.ps1`、`ps/ui/tabWorkItemType.ps1`、`ps/ui/tabWorkItem.ps1`、`ps/ui/tabVoting.ps1`) 同步支援**：
+    1. `ps/manageVotingSession.ps1` 新增 `-actionType 'revoteSession'` 與 `'resetRound'`。
+    2. `ps/common.ps1` 之 `enableGridHeaderSortAndLock` 右鍵選單新增 `🔄 重新投票此筆紀錄（重啟新一輪多人盲投）` (`-onRevoteRow`)，並於代表類型、工項與盲投議程頁籤提供重新投票按鈕與右鍵操作。
 
 ---
 

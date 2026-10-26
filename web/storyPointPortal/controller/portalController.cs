@@ -7074,9 +7074,10 @@ public class portalController : Controller
             bool restP = sRow.Table.Columns.Contains("restrictToParticipant") && sRow["restrictToParticipant"] != DBNull.Value && Convert.ToBoolean(sRow["restrictToParticipant"]);
             string gNote = (sRow.Table.Columns.Contains("roundGoalNote") ? (sRow["roundGoalNote"]?.ToString() ?? "") : "").Replace("\\", "\\\\").Replace("'", "\\'").Replace("\r", "").Replace("\n", " ");
             string sTitle = (sRow["sessionTitle"]?.ToString() ?? "").Replace("\\", "\\\\").Replace("'", "\\'").Replace("\r", "").Replace("\n", " ");
+            string sStatusVal = (sRow["sessionStatus"]?.ToString() ?? "voting").Replace("'", "");
 
             sessionMetaJsonList.Add(
-                $"'{sPk}':{{pk:{sPk},title:'{sTitle}',targetKind:'{tKind}',workItemTypePk:{tTypePk},workItemPk:{tItemPk},cardDeckPk:{deckPk}," +
+                $"'{sPk}':{{pk:{sPk},title:'{sTitle}',sessionStatus:'{sStatusVal}',targetKind:'{tKind}',workItemTypePk:{tTypePk},workItemPk:{tItemPk},cardDeckPk:{deckPk}," +
                 $"minStoryPoint:{minPt.ToString(CultureInfo.InvariantCulture)},maxStoryPoint:{maxPt.ToString(CultureInfo.InvariantCulture)}," +
                 $"maxAllowedSpread:{maxSpread.ToString(CultureInfo.InvariantCulture)},consensusRule:'{cRule}'," +
                 $"autoRevealWhenAllVoted:{(autoRev ? "true" : "false")},roundTimeLimitSecond:{tSec}," +
@@ -7505,9 +7506,17 @@ public class portalController : Controller
                 const empPk = parseInt(cb.value, 10);
                 cb.checked = (cfg.participants || []).indexOf(empPk) !== -1;
             });
+            const resetCb = document.getElementById('setupResetVotes');
+            if (resetCb && cfg.sessionStatus === 'finalized') {
+                resetCb.checked = true;
+            }
             updateSetupCardPreview();
             updateSetupParticipantCount();
-            if (submitBtn) submitBtn.innerHTML = '💾 更新本議程回合設定並返回盲投桌面';
+            if (submitBtn) {
+                submitBtn.innerHTML = cfg.sessionStatus === 'finalized'
+                    ? '🔄 重啟此議程重新投票並返回盲投桌面'
+                    : '💾 更新本議程回合設定並返回盲投桌面';
+            }
         }
 
         function openRoundSetupForSession(sessionPk) {
@@ -8853,8 +8862,19 @@ public class portalController : Controller
             }
         }
 
-        function openSessionSetupEditModal(sessionPk, targetKindOverride, targetPkOverride) {
-            const sPk = sessionPk ? Number(sessionPk) : 0;
+        function openSessionSetupEditModal(sessionPk, targetKindOverride, targetPkOverride, isRevoteMode) {
+            let sPk = sessionPk ? Number(sessionPk) : 0;
+            if (sPk <= 0 && targetPkOverride && typeof sessionConfigMap !== 'undefined') {
+                const matchKey = Object.keys(sessionConfigMap).find(k => {
+                    const item = sessionConfigMap[k];
+                    if (!item) return false;
+                    if (targetKindOverride === 'workItem') return Number(item.workItemPk) === Number(targetPkOverride);
+                    return Number(item.workItemTypePk) === Number(targetPkOverride);
+                });
+                if (matchKey && isRevoteMode) {
+                    sPk = Number(matchKey);
+                }
+            }
             const cfg = (sPk > 0 && typeof sessionConfigMap !== 'undefined' && sessionConfigMap[sPk]) ? sessionConfigMap[sPk] : null;
             const tKind = targetKindOverride || (cfg ? cfg.targetKind : 'workItemType');
             const wiTypePk = (tKind === 'workItemType' && targetPkOverride) ? targetPkOverride : (cfg ? cfg.workItemTypePk : 0);
@@ -8893,16 +8913,22 @@ public class portalController : Controller
             }
 
             const bodyHtml = `
-                <form method=""post"" action=""/voting/session/create"">
+                <form method=""post"" action=""/voting/create"">
                     <input type=""hidden"" name=""votingSessionPk"" value=""${sPk > 0 ? sPk : ''}"" />
                     <input type=""hidden"" name=""submitMode"" id=""modalSetupSubmitMode"" value=""saveAndGoVoting"" />
-                    <div style=""display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 12px;margin-bottom:12px;"">
+                    <div style=""display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 12px;margin-bottom:10px;"">
                         <span style=""font-size:12.5px;font-weight:800;color:#1e3a8a;"">⚡ 一鍵套用盲投規則範本：</span>
                         <div style=""display:flex;gap:6px;flex-wrap:wrap;"">
                             <button type=""button"" class=""btn btn-outline"" style=""padding:4px 9px;font-size:12px;"" onclick=""applyModalSessionPreset(0.5, 21, 5, 180, 'nearestFibonacci')"">📐 標準 Scrum (0.5~21pt / 180秒)</button>
                             <button type=""button"" class=""btn btn-outline"" style=""padding:4px 9px;font-size:12px;"" onclick=""applyModalSessionPreset(1, 13, 3, 60, 'nearestFibonacci')"">🚀 快速閃電 (1~13pt / 60秒)</button>
                             <button type=""button"" class=""btn btn-outline"" style=""padding:4px 9px;font-size:12px;"" onclick=""applyModalSessionPreset(0.5, 34, 3, 300, 'trimmedMean')"">🏛️ 嚴謹評審 (0.5~34pt / 300秒)</button>
                         </div>
+                    </div>
+                    <div style=""margin-bottom:12px;padding:8px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;"">
+                        <label style=""display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-weight:700;color:#92400e;font-size:13px;"">
+                            <input type=""checkbox"" name=""resetCurrentRoundVotes"" id=""modalSetupResetVotes"" value=""true"" ${(isRevoteMode || sPk > 0) ? 'checked' : ''} style=""width:auto;"" />
+                            <span>🔄 重新投票模式：儲存時一併重啟盲投回合並清空既有出牌紀錄（讓全體成員重新投票）</span>
+                        </label>
                     </div>
                     <div class=""form-row"">
                         <div>
@@ -8980,19 +9006,39 @@ public class portalController : Controller
                         <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
                         <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
                             <button type=""submit"" class=""btn btn-outline"" onclick=""document.getElementById('modalSetupSubmitMode').value='saveStaySetup'"">💾 僅儲存於回合設定</button>
-                            <button type=""submit"" class=""btn btn-primary"" onclick=""document.getElementById('modalSetupSubmitMode').value='saveAndGoVoting'"">${sPk > 0 ? '🚀 儲存更新並前往盲投大廳' : '🚀 建立議程並立即前往盲投大廳'}</button>
+                            <button type=""submit"" class=""btn btn-primary"" onclick=""document.getElementById('modalSetupSubmitMode').value='saveAndGoVoting'"">${isRevoteMode ? '🔄 儲存設定並啟動重新投票' : (sPk > 0 ? '🚀 儲存更新並前往盲投大廳' : '🚀 建立議程並立即前往盲投大廳')}</button>
                         </div>
                     </div>
                 </form>
             `;
             openRecordModalShell(
-                sPk > 0 ? '🃏 單筆編輯盲投議程回合設定' : '🃏 快速發起多人盲投估算議程',
+                isRevoteMode ? '🔄 重新投票回合設定' : (sPk > 0 ? '🃏 單筆編輯盲投議程回合設定' : '🃏 快速發起多人盲投估算議程'),
                 `<span class=""badge badge-user"">${sPk > 0 ? 'Session #' + sPk : '新盲投議程'}</span>`,
                 bodyHtml
             );
             if (document.getElementById('modalSetupWorkItemTypePk') && wiTypePk) document.getElementById('modalSetupWorkItemTypePk').value = String(wiTypePk);
             if (document.getElementById('modalSetupWorkItemPk') && wiPk) document.getElementById('modalSetupWorkItemPk').value = String(wiPk);
             if (cfg && document.getElementById('modalSetupConsensusRule')) document.getElementById('modalSetupConsensusRule').value = cfg.consensusRule || 'nearestFibonacci';
+        }
+
+        function triggerRevoteFromTarget(targetKind, targetPk, sessionPk, displayTitle, resetCurrentRoundOnly, returnTab) {
+            const sPk = sessionPk ? Number(sessionPk) : 0;
+            const tPk = targetPk ? Number(targetPk) : 0;
+            const actionName = resetCurrentRoundOnly ? 'resetRound' : 'revote';
+            const rTab = returnTab || 'voting';
+            const payload = {
+                votingSessionPk: sPk > 0 ? String(sPk) : '0',
+                controlAction: actionName,
+                submitAction: actionName,
+                targetKind: targetKind === 'workItem' ? 'workItem' : (targetKind === 'workItemType' ? 'workItemType' : ''),
+                workItemTypePk: targetKind === 'workItemType' && tPk > 0 ? String(tPk) : '',
+                workItemPk: targetKind === 'workItem' && tPk > 0 ? String(tPk) : '',
+                roundDiscussionNote: resetCurrentRoundOnly
+                    ? ('管理者針對「' + (displayTitle || '此議程') + '」清空本回合出牌紀錄並重新投票')
+                    : ('管理者針對「' + (displayTitle || '此項目') + '」發起重新投票（開啟新一輪盲投）'),
+                returnTab: rTab
+            };
+            submitDynamicPostAction('/voting/revote', payload);
         }
 
         function openRowDetailReadonlyModal(tr) {
@@ -9249,6 +9295,7 @@ public class portalController : Controller
                 const wiEnd = tr.getAttribute('data-wi-end') || '';
                 const wiSprint = tr.getAttribute('data-wi-sprint') || '';
                 const wiAssignee = tr.getAttribute('data-wi-assignee') || '';
+                const wiLastSessionPk = parseInt(tr.getAttribute('data-wi-last-session-pk') || '0', 10);
 
                 headerTitle = `📋 工項右鍵操作：${wiCode} - ${wiTitle}`;
                 headerDiv.innerHTML = `<span>${headerTitle}</span><span class='badge badge-user' style='font-size:11px;'>${wiKindText}｜${wiPt} pt</span>`;
@@ -9263,8 +9310,12 @@ public class portalController : Controller
                         openWorkItemAssignModal(wiPk, wiCode, wiTitle, wiPt, wiAssignee);
                     }));
 
+                    spContextMenuEl.appendChild(createCtxMenuItem('🔄', '重新投票此工項點數（重啟新一輪多人盲投議程）', '重新投票', 'primary-action', function () {
+                        triggerRevoteFromTarget('workItem', wiPk, wiLastSessionPk, wiCode + ' - ' + wiTitle, false, 'voting');
+                    }));
+
                     spContextMenuEl.appendChild(createCtxMenuItem('🃏', '針對此工項發起「多人盲投估算」（彈出 Modal 視窗）', 'Modal 盲投', '', function () {
-                        openSessionSetupEditModal(0, 'workItem', wiPk);
+                        openSessionSetupEditModal(wiLastSessionPk, 'workItem', wiPk, true);
                     }));
 
                     spContextMenuEl.appendChild(createCtxMenuItem('⏰', '設為已到期並彈出 Modal 編輯（測試自動扣點寄信）', '到期測試', '', function () {
@@ -9331,6 +9382,7 @@ public class portalController : Controller
                 const tDesc = tr.getAttribute('data-type-desc') || '';
                 const tPt = tr.getAttribute('data-type-pt') || '';
                 const tKind = tr.getAttribute('data-type-kind') || 'project';
+                const tLastSessionPk = parseInt(tr.getAttribute('data-type-last-session-pk') || '0', 10);
 
                 headerTitle = `🏷️ 代表類型右鍵操作：${tCode} - ${tName}`;
                 headerDiv.innerHTML = `<span>${headerTitle}</span><span class='badge badge-user' style='font-size:11px;'>${tPt ? tPt + ' pt' : '待估算'}</span>`;
@@ -9341,8 +9393,12 @@ public class portalController : Controller
                         openWorkItemTypeEditModal(tPk, tCode, tName, tCat, tDesc, tPt, tKind);
                     }));
 
+                    spContextMenuEl.appendChild(createCtxMenuItem('🔄', '重新投票此代表類型標準點數（重啟新一輪多人盲投議程）', '重新投票', 'primary-action', function () {
+                        triggerRevoteFromTarget('workItemType', tPk, tLastSessionPk, tCode + ' - ' + tName, false, 'voting');
+                    }));
+
                     spContextMenuEl.appendChild(createCtxMenuItem('🃏', '針對此代表類型發起「多人盲投估算」（彈出 Modal 視窗）', 'Modal 盲投', '', function () {
-                        openSessionSetupEditModal(0, 'workItemType', tPk);
+                        openSessionSetupEditModal(tLastSessionPk, 'workItemType', tPk, true);
                     }));
 
                     spContextMenuEl.appendChild(createCtxMenuItem('🔍', '檢視套用此代表類型的所有工項', '工項篩選', '', function () {
@@ -9465,6 +9521,14 @@ public class portalController : Controller
                 spContextMenuEl.appendChild(headerDiv);
 
                 if (isCurrentUserAdmin && sPk) {
+                    spContextMenuEl.appendChild(createCtxMenuItem('🔄', '重新投票此盲投議程（開啟新一輪盲投並重設已定案狀態）', '重新投票', 'primary-action', function () {
+                        triggerRevoteFromTarget('session', 0, sPk, sCode + ' - ' + sTitle, false, 'voting');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('🔁', '清空本回合已出牌紀錄並重新投票（保持同一回合號）', '重設本輪', 'warn', function () {
+                        triggerRevoteFromTarget('session', 0, sPk, sCode + ' - ' + sTitle, true, 'voting');
+                    }));
+
                     spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此盲投議程回合設定（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
                         openSessionSetupEditModal(sPk);
                     }));
@@ -9604,7 +9668,12 @@ public class portalController : Controller
             rows.forEach(r => {
                 const matchKw = !kw || (r.getAttribute('data-search') || '').indexOf(kw) !== -1;
                 const matchKind = !kind || r.getAttribute('data-type-kind') === kind;
-                const matchStatus = !status || r.getAttribute('data-type-status') === status;
+                let matchStatus = true;
+                if (status === 'voting') {
+                    matchStatus = r.getAttribute('data-type-est-status') === 'voting';
+                } else if (status) {
+                    matchStatus = r.getAttribute('data-type-status') === status;
+                }
                 const customMatch = matchKw && matchKind && matchStatus;
                 r.setAttribute('data-custom-hidden', customMatch ? '0' : '1');
                 if (syncRowDisplayState(r)) {
@@ -10444,8 +10513,8 @@ public class portalController : Controller
                         ' <a href=""/voting/session?sessionPk=' + payload.votingSessionPk + '"" target=""_blank"" rel=""noopener"" onclick=""return openIndependentVotingSession(event, ' + payload.votingSessionPk + ')"" class=""btn btn-primary"" style=""padding:4px 10px;font-size:12px;margin-left:10px;"">🚀 開啟此 Session 獨立盲投網頁 ↗</a>';
                 }
 
-                // 若為新議程建立或回合設定更新，立即檢查該議程是否屬於本成員並自動更新大廳
-                if (payload.eventName === 'sessionCreated' || payload.eventName === 'roundSettingUpdated') {
+                // 若為新議程建立、重新投票或回合設定更新，立即檢查該議程是否屬於本成員並自動更新大廳
+                if (payload.eventName === 'sessionCreated' || payload.eventName === 'roundSettingUpdated' || payload.eventName === 'revote' || payload.eventName === 'resetRound') {
                     setTimeout(function () {
                         pollMemberVotingStatus(payload.votingSessionPk, payload.messageText);
                     }, 200);
@@ -11306,8 +11375,11 @@ public class portalController : Controller
                         <button type=""submit"" name=""submitAction"" value=""nextRound"" class=""btn btn-primary"" onclick=""document.getElementById('controlActionType').value='nextRound'"">
                             🔄 2. 開啟下一回合重新盲投 (Next Round)
                         </button>
+                        <button type=""submit"" name=""submitAction"" value=""resetRound"" class=""btn btn-outline"" style=""border-color:#d97706;color:#b45309;background:#fffbeb;"" onclick=""document.getElementById('controlActionType').value='resetRound'"">
+                            🔁 3. 重新投票 (清空本回合已出牌 / 重啟盲投)
+                        </button>
                         <button type=""submit"" name=""submitAction"" value=""finalize"" class=""btn btn-success"" onclick=""document.getElementById('inputFinalStoryPoint').value='{suggestedFinalPt.ToString(CultureInfo.InvariantCulture)}'; document.getElementById('controlActionType').value='finalize';"">
-                            🏆 3. 一鍵採用推薦點數 ({suggestedFinalPt:0.##} pt) 拍板定案
+                            🏆 4. 一鍵採用推薦點數 ({suggestedFinalPt:0.##} pt) 拍板定案
                         </button>
                     </div>
                     <div style=""background:#f8fafc;border:1px solid #cbd5e1;padding:12px;border-radius:8px;"">
@@ -11933,6 +12005,8 @@ public class portalController : Controller
                     || payload.eventName === 'autoRevealed'
                     || payload.eventName === 'reveal'
                     || payload.eventName === 'nextRound'
+                    || payload.eventName === 'revote'
+                    || payload.eventName === 'resetRound'
                     || payload.eventName === 'finalize'
                     || payload.sessionStatus === 'revealed'
                     || payload.sessionStatus === 'finalized';
@@ -12090,6 +12164,50 @@ public class portalController : Controller
 
         var topics = new[]
         {
+            new
+            {
+                Id = "topic-storypoint-concept",
+                Num = "00",
+                Category = "concept",
+                CategoryName = "💡 Story Point 核心概念與工作量透明",
+                RoleScope = "all",
+                RoleBadge = "<span class='badge' style='background:#fef3c7;color:#b45309;border:1px solid #f59e0b;'>⭐ 核心觀念必讀</span>",
+                Title = "認識 Story Point：核心概念、用途、如何評估複雜度與讓團隊／個人工作量透明",
+                Keywords = "story point 故事點 概念 用途 複雜度 評估 技術複雜度 工作規模 未知風險 不確定性 費氏數列 fibonacci 權重 加權總分 工作量透明 團隊負載 個人工作量 在製品 進行中點數 已完成點數 相對基準",
+                RouteUrl = "http://localhost:5088/?tab=stats",
+                ImageFile = "/help/images/screen_09_stats_table.png",
+                ActionHtml = isStandalonePage
+                    ? "<a href='/?tab=stats' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>📊 前往工作量透明統計畫面</a>"
+                    : "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('stats')\">📊 查看團隊與個人工作量透明統計</button>",
+                Summary = "Story Point（工作複雜度點數）不是估算「要做幾小時或幾天」，而是評估一項任務客觀的「綜合相對複雜度」。不必套用繁瑣教條，其最核心的用途就是透過一致的複雜度評分尺規，打破「只看工項件數」的盲點，讓整個團隊與每位成員的工作負荷與實質貢獻完全透明！",
+                Steps = new[]
+                {
+                    "<strong>一、Story Point 核心概念（為何估「相對複雜度」而非「絕對工時」？）</strong>：同一件工作交給資深人員可能 2 小時完成，交給新進同仁可能需 2 天，直接估時間容易陷入「以誰的速度為準」的爭論；但「<strong>任務本身的複雜度與規模是客觀的</strong>」。Story Point 以相對倍數（例如：標準小改動為 <code>1 點</code>，某項跨模組任務難度與規模約為其 5 倍即為 <code>5 點</code>）建立全團隊共通的客觀度量衡。",
+                    "<strong>二、如何評估複雜度？（綜合考量三大核心維度）</strong>：<br/>① <strong>技術複雜度 (Complexity)</strong>：程式或作業邏輯是否繁瑣、是否涉及跨系統串接、架構重構或高難度技術？<br/>② <strong>工作投入規模 (Effort / Volume)</strong>：即使技術不難，但需要處理的畫面、報表、資料表、API 或測試案例數量有多龐大？<br/>③ <strong>未知風險與不確定性 (Uncertainty / Risk)</strong>：需求邊界是否清楚？是否受制於外部單位或舊系統包袱？當這三項越高，給出的點數就越高。",
+                    "<strong>三、費氏數列 (Fibonacci) 複雜度評分尺規對照</strong>：本系統採用 <code>0.5、1、2、3、5、8、13、20/21</code> 級距（任務越龐大，隱藏的不確定性呈非線性放大，拉開數字間距可避免糾結於「6 點還是 7 點」的假精確）：<br/>• <code>0.5 ~ 1 點（極簡基準）</code>：需求 100% 明確、零風險的微調（作為全團隊的 1 倍基準尺）。<br/>• <code>2 ~ 3 點（小型／標準常規）</code>：做法已知、單一模組內可完成的常規工作。<br/>• <code>5 ~ 8 點（中等／高複雜度）</code>：跨多張資料表、多畫面聯動或具外部整合風險，需透過多人盲投對齊認知。<br/>• <code>13 ~ 21 點以上（大型／巨型工項）</code>：複雜度與不確定性極高，建議先拆解為多個 3～5 點的子工項再指派；若資訊不足則出 <code>?（疑問牌）</code> 先釐清需求。",
+                    "<strong>四、核心用途：讓團隊與個人的工作量完全透明化（Workload Transparency）</strong>：<br/>① <strong>打破「只算件數（張數）」造成的勞逸不均</strong>：手上有 5 件 <code>1 點</code> 小修改（共 5 點）與 2 件 <code>8 點</code> 核心重構（共 16 點），只看件數會誤以為前者較忙；透過 Story Point 乘上「<strong>重要性權重 (<code>weightMultiplier</code>)</strong>」算出加權總分，真實呈現工作含金量。<br/>② <strong>在途負載透明（進行中點數）</strong>：從統計表即時看清每位同仁與各部門目前手上的「<strong>進行中點數</strong>」，避免單點過載並及時調度支援。<br/>③ <strong>產出貢獻透明（已完成點數與加權實拿分數）</strong>：客觀記錄個人與部門累積完成的複雜度點數與加權分數，讓承擔高難度任務的貢獻一目了然。"
+                },
+                Callouts = new[]
+                {
+                    "① 維度一：技術複雜度 (邏輯難度與架構影響)",
+                    "② 維度二：工作投入規模 (修改範圍與測試工作量)",
+                    "③ 維度三：未知風險與不確定性 (相依性與變動率)",
+                    "④ 透明化看板：進行中負載點數 vs 已完成加權貢獻"
+                },
+                UiDiagramHtml = @"<div style='display:flex;flex-direction:column;gap:8px;'>
+                    <div style='font-weight:800;color:#0f172a;font-size:12.5px;'>📐 Story Point 複雜度評估尺規與工作量透明化速查表：</div>
+                    <div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:6px;font-size:11.5px;'>
+                        <div style='background:#f0fdf4;border:1px solid #86efac;padding:6px 8px;border-radius:7px;'><strong style='color:#166534;'>🟢 0.5 ~ 1 點 (基準尺)</strong><br/>需求明確、單一微調、幾乎零風險</div>
+                        <div style='background:#eff6ff;border:1px solid #93c5fd;padding:6px 8px;border-radius:7px;'><strong style='color:#1e40af;'>🔵 2 ~ 3 點 (常規標準)</strong><br/>邏輯清楚、單一模組前後端標準功能</div>
+                        <div style='background:#fefce8;border:1px solid #fde047;padding:6px 8px;border-radius:7px;'><strong style='color:#854d0e;'>🟡 5 ~ 8 點 (中高複雜)</strong><br/>跨多表/多頁整合、具技術難度與風險</div>
+                        <div style='background:#fef2f2;border:1px solid #fca5a5;padding:6px 8px;border-radius:7px;'><strong style='color:#991b1b;'>🔴 13 ~ 21+ 點 (大型)</strong><br/>高風險跨系統任務，建議先拆解細化</div>
+                    </div>
+                    <div style='background:#1e293b;color:#f8fafc;padding:7px 10px;border-radius:7px;font-size:11.5px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;'>
+                        <span>⚖️ <strong>工作量透明化公式：</strong><code>工項加權總分 = Story Point (複雜度點數) × 重要性權重乘數</code></span>
+                        <span style='color:#38bdf8;font-weight:700;'>📊 個人/部門總負載 ＝ 已完成點數 ＋ 進行中點數 ＋ 待處理點數</span>
+                    </div>
+                </div>"
+            },
             new
             {
                 Id = "topic-auth",
@@ -12553,6 +12671,18 @@ public class portalController : Controller
         {
             new
             {
+                Q = "Q0-1. 什麼是 Story Point？它的核心概念與用途是什麼？（為什麼不直接估工時？）",
+                A = "<strong>Story Point（故事點／工作複雜度點數）</strong>是用來評估一項任務「<strong>客觀相對複雜度與工作規模</strong>」的單位，而非估算「要做幾小時或幾天」。因為資深人員 2 小時完成的事，新進人員可能需 2 天，直接估時間容易陷入「以誰的速度為準」的爭執；但任務本身的難度是客觀的。不必套用繁瑣流程，Story Point 最核心的用途就是<strong>建立全團隊一致的複雜度度量衡</strong>，打破以往「只算工作件數（張數）」的盲點，讓整個團隊與每位成員的<strong>真實工作量與貢獻度完全透明</strong>。",
+                Keywords = "story point 故事點 概念 用途 為什麼不用工時 相對複雜度 工作量透明"
+            },
+            new
+            {
+                Q = "Q0-2. 如何具體評估一個工項的複雜度？如何透過 Story Point 讓團隊與個人的工作量透明？",
+                A = "評估複雜度時請綜合考量三大維度：<strong>① 技術複雜度 (Complexity)</strong>、<strong>② 工作投入規模 (Effort / Volume)</strong>、<strong>③ 未知風險與不確定性 (Risk / Uncertainty)</strong>，並以費氏數列（<code>1 點極簡基準</code>、<code>2~3 點標準常規</code>、<code>5~8 點中高複雜度</code>、<code>13~21 點大型高風險建議拆解</code>）進行相對比較。定案後搭配本系統的「<strong>重要性權重乘數 (<code>weightMultiplier</code>)</strong>」計算加權總分，即可在「📊 統計報表」即時透明呈現每位成員與各部門的「<strong>進行中點數（當前在途負載）</strong>」與「<strong>已完成點數（累積實質貢獻）</strong>」，主管能據此公平調配資源、避免勞逸不均。",
+                Keywords = "如何評估複雜度 複雜度評估 三大維度 技術複雜度 工作規模 未知風險 費氏數列 團隊工作量 個人工作量 透明 進行中點數 已完成點數 權重"
+            },
+            new
+            {
                 Q = "Q1. 為什麼我用一般員工（參與者 participant）帳號登入後，看不到其他同事的工項或點數？",
                 A = "這是系統內建的「<strong>個人資料隱私保護與角色資料隔離機制</strong>」。一般參與者 (<code>participant</code>) 登入後，在「我的工項查詢」與「我的分數統計」中僅會顯示賦予給您本人的工項與個人配額點數；唯有具備管理者 (<code>admin</code>) 權限的帳號才能查閱全公司所有員工與各部門的完整工項與統計。",
                 Keywords = "看不到 別人的工項 權限 參與者 participant 隱私 資料隔離"
@@ -12629,13 +12759,14 @@ public class portalController : Controller
                 </div>
                 <div>
                     <select id='helpCategorySelect' onchange='filterOnlineHelpTopics()' title='依功能模組分類篩選線上說明'>
-                        <option value=''>📂 全部章節分類 (12 主題 + FAQ)</option>
+                        <option value=''>📂 全部章節分類 (13 主題 + FAQ)</option>
+                        <option value='concept' {(safeInitCat == "concept" ? "selected" : "")}>💡 Story Point 核心概念、複雜度評估與工作量透明 (1)</option>
                         <option value='auth' {(safeInitCat == "auth" ? "selected" : "")}>🔐 登入驗證、登出與個人帳密 (2)</option>
                         <option value='voting' {(safeInitCat == "voting" ? "selected" : "")}>🃏 多人即時盲投、獨立網頁與回合設定 (4)</option>
                         <option value='workitem' {(safeInitCat == "workitem" ? "selected" : "")}>📋 工項管理、代表類型與到期扣點寄信 (2)</option>
                         <option value='table' {(safeInitCat == "table" ? "selected" : "")}>🖱️ 表格右鍵 Modal、表頭排序鎖定與統計報表 (2)</option>
                         <option value='org' {(safeInitCat == "org" ? "selected" : "")}>👥 組織部門主管階層、批次匯入與系統 Log (2)</option>
-                        <option value='faq' {(safeInitCat == "faq" ? "selected" : "")}>❓ 常見問題快速解答 FAQ (8)</option>
+                        <option value='faq' {(safeInitCat == "faq" ? "selected" : "")}>❓ 常見問題快速解答 FAQ (10)</option>
                     </select>
                 </div>
                 <div>
@@ -12653,6 +12784,9 @@ public class portalController : Controller
             <!-- 熱門搜尋關鍵字快速標籤 -->
             <div style='display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:12px;'>
                 <span style='font-size:12px;font-weight:800;color:#93c5fd;'>🔥 熱門搜尋關鍵字：</span>
+                <span class='help-quick-tag' style='background:#f59e0b;color:#0f172a;border-color:#fde68a;' onclick=""applyHelpQuickKeyword('Story Point 概念 用途')"">💡 Story Point 概念與用途</span>
+                <span class='help-quick-tag' style='background:#f59e0b;color:#0f172a;border-color:#fde68a;' onclick=""applyHelpQuickKeyword('評估複雜度 費氏數列')"">📐 如何評估複雜度</span>
+                <span class='help-quick-tag' style='background:#f59e0b;color:#0f172a;border-color:#fde68a;' onclick=""applyHelpQuickKeyword('工作量透明 進行中點數')"">📊 團隊與個人工作量透明</span>
                 <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('待參與 參與中')"">📂 待參與 vs 參與中</span>
                 <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('自動翻牌')"">⚡ 全員投完自動翻牌</span>
                 <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('撲克牌 疑問牌')"">🃏 撲克牌面中文意義 (? / ☕)</span>
@@ -12670,7 +12804,7 @@ public class portalController : Controller
         // 2. 搜尋狀態提示橫幅
         sb.Append(@"
         <div id='helpSearchStatusBar' style='background:#eff6ff;border:1.5px solid #93c5fd;border-radius:10px;padding:10px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:13.5px;font-weight:700;color:#1e3a8a;'>
-            <span id='helpSearchStatusText'>📊 目前顯示全部 <strong>12</strong> 個核心操作主題（皆搭配實機操作畫面與步驟標註）及 <strong>8</strong> 則常見問題 FAQ。點擊任一操作畫面圖片可放大全螢幕檢視！</span>
+            <span id='helpSearchStatusText'>📊 目前顯示全部 <strong>13</strong> 個核心說明與操作主題（含 Story Point 概念與複雜度評估 + 12 幅實機操作畫面）及 <strong>10</strong> 則常見問題 FAQ。點擊任一操作畫面圖片可放大全螢幕檢視！</span>
             <span style='font-size:12px;color:#475569;'>💡 提示：點擊操作畫面圖片可開啟高解析度放大檢視視窗 (Lightbox)</span>
         </div>");
 
@@ -12682,7 +12816,7 @@ public class portalController : Controller
             <div class='help-toc-sidebar'>
                 <div style='font-size:13.5px;font-weight:800;color:#0f172a;padding-bottom:8px;margin-bottom:8px;border-bottom:2px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;'>
                     <span>📑 線上說明章節目錄</span>
-                    <span id='helpTocMatchCountBadge' class='badge badge-user' style='font-size:11px;'>12 主題</span>
+                    <span id='helpTocMatchCountBadge' class='badge badge-user' style='font-size:11px;'>13 主題</span>
                 </div>");
 
         foreach (var t in topics)

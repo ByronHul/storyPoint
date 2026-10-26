@@ -2179,8 +2179,20 @@ begin
 
                 update storyPoint.tbVotingSession
                 set sessionStatus = 'voting',
+                    finalStoryPoint = null,
+                    finalizedAt = null,
                     updatedAt = sysdatetime()
                 where pk = @sessionPk;
+
+                if @targetKind = 'workItemType' and @workItemTypePk is not null
+                begin
+                    update storyPoint.tbWorkItemType
+                    set standardStoryPoint = null,
+                        estimationStatus = 'voting',
+                        lastVotingSessionPk = @sessionPk,
+                        updatedAt = sysdatetime()
+                    where pk = @workItemTypePk;
+                end
             end
 
             delete from storyPoint.tbVotingSessionParticipant
@@ -2239,6 +2251,15 @@ begin
             values (
                 @sessionPk, 1, 'voting', 0, sysdatetime()
             );
+        end
+
+        if @targetKind = 'workItemType' and @workItemTypePk is not null
+        begin
+            update storyPoint.tbWorkItemType
+            set lastVotingSessionPk = @sessionPk,
+                estimationStatus = 'voting',
+                updatedAt = sysdatetime()
+            where pk = @workItemTypePk;
         end
 
         -- 建立授權參與投票之員工清單
@@ -2667,38 +2688,48 @@ go
 -- ============================================================================
 /*
 用途說明: 管理者控制多人投票議程：
-          1. 'reveal'    : 翻牌揭曉本回合所有人的點數並結算平均/最高/最低值
-          2. 'nextRound' : 記錄本回合討論摘要並開啟下一回合重新盲投
-          3. 'finalize'  : 拍板定案最終 Story Point，自動回寫至「工項代表類型」或「實際工項」並記錄點數歷程
+          1. 'reveal'     : 翻牌揭曉本回合所有人的點數並結算平均/最高/最低值
+          2. 'nextRound'  : 記錄本回合討論摘要並開啟下一回合重新盲投
+          3. 'revote'     : 重新投票（針對已定案、已翻牌或進行中之議程/代表類型/工項開啟新一輪盲投，並重設狀態為投票估算中）
+          4. 'resetRound' : 清空本回合已出牌紀錄並重設本回合重新盲投
+          5. 'finalize'   : 拍板定案最終 Story Point，自動回寫至「工項代表類型」或「實際工項」並記錄點數歷程
 建立者  : Antigravity Senior Full-Stack Engineer
 建立日期: 2026-10-23
 參數說明:
-    @votingSessionPk          int             : 投票議程主鍵
-    @controlAction            varchar(32)     : 'reveal' | 'nextRound' | 'finalize'
+    @votingSessionPk          int             : 投票議程主鍵 (若未傳入則可依 @targetKindParam 與 @workItemTypePkParam / @workItemPkParam 自動解析或建立)
+    @controlAction            varchar(32)     : 'reveal' | 'nextRound' | 'revote' | 'resetRound' | 'finalize'
     @roundDiscussionNote      nvarchar(1024)  : 本回合討論紀錄
     @finalStoryPoint          decimal(8,2)    : 定案時之最終 Story Point
     @finalDecisionNote        nvarchar(1024)  : 定案核定理由說明
     @syncExistingOpenWorkItem bit             : 若為工項代表類型定案，是否同步更新未完成且未手動微調之既有工項
     @operatorEmployeePk       int             : 操作管理者員工主鍵
     @operatorAccount          varchar(128)    : 操作者帳號
+    @targetKindParam          varchar(32)     : 選填標的類型 ('workItemType' | 'workItem')
+    @workItemTypePkParam      int             : 選填工項代表類型主鍵
+    @workItemPkParam          int             : 選填工項主鍵
 修改歷程:
     2026-10-23 初版建立
+    2026-10-27 新增 'revote' 與 'resetRound' 重新投票控制動作，支援代表類型、工項與盲投議程一鍵重新投票
 */
 create or alter procedure storyPoint.spControlVotingSession
-    @votingSessionPk int,
+    @votingSessionPk int = null,
     @controlAction varchar(32),
     @roundDiscussionNote nvarchar(1024) = null,
     @finalStoryPoint decimal(8,2) = null,
     @finalDecisionNote nvarchar(1024) = null,
     @syncExistingOpenWorkItem bit = 0,
     @operatorEmployeePk int = null,
-    @operatorAccount varchar(128) = 'system'
+    @operatorAccount varchar(128) = 'system',
+    @targetKindParam varchar(32) = null,
+    @workItemTypePkParam int = null,
+    @workItemPkParam int = null
 as
 begin
     set nocount on;
     declare @startTime datetime2(3) = sysdatetime();
     declare @durationMs int = 0;
     declare @currentRound int = 1;
+    declare @curSessionStatus varchar(32) = '';
     declare @targetKind varchar(32) = '';
     declare @workItemTypePk int = null;
     declare @workItemPk int = null;
@@ -2716,8 +2747,151 @@ begin
             where loginAccount = @operatorAccount;
         end
 
+        if @operatorEmployeePk is null
+        begin
+            select top 1 @operatorEmployeePk = pk
+            from storyPoint.tbEmployee
+            order by isActive desc, case when roleName = 'admin' then 0 else 1 end asc, pk asc;
+        end
+
+        if isnull(@votingSessionPk, 0) <= 0 or not exists (select 1 from storyPoint.tbVotingSession where pk = @votingSessionPk)
+        begin
+            set @votingSessionPk = null;
+
+            if @targetKindParam = 'workItemType' and isnull(@workItemTypePkParam, 0) > 0
+            begin
+                select top 1 @votingSessionPk = wit.lastVotingSessionPk
+                from storyPoint.tbWorkItemType as wit
+                inner join storyPoint.tbVotingSession as vs
+                    on wit.lastVotingSessionPk = vs.pk
+                where wit.pk = @workItemTypePkParam;
+
+                if @votingSessionPk is null
+                begin
+                    select top 1 @votingSessionPk = vs.pk
+                    from storyPoint.tbVotingSession as vs
+                    where vs.targetKind = 'workItemType'
+                      and vs.workItemTypePk = @workItemTypePkParam
+                    order by vs.pk desc;
+                end
+
+                if @votingSessionPk is null
+                begin
+                    declare @newTypeSessCode varchar(64) = 'VOTE-' + format(sysdatetime(), 'yyyyMMdd-HHmmss') + '-' + right(cast(abs(checksum(newid())) as varchar(16)), 3);
+                    declare @newTypeSessTitle nvarchar(256) = N'【代表類型點數盲投】';
+                    declare @newTypeDeckPk int = null;
+
+                    select top 1
+                        @newTypeSessTitle = N'【代表類型點數盲投】' + isnull(wit.typeName, N'代表類型'),
+                        @newTypeDeckPk = wit.defaultCardDeckPk
+                    from storyPoint.tbWorkItemType as wit
+                    where wit.pk = @workItemTypePkParam;
+
+                    if isnull(@newTypeDeckPk, 0) <= 0 or not exists (select 1 from storyPoint.tbCardDeck where pk = @newTypeDeckPk)
+                    begin
+                        select top 1 @newTypeDeckPk = pk
+                        from storyPoint.tbCardDeck
+                        where isActive = 1
+                        order by isDefault desc, pk asc;
+                    end
+
+                    insert into storyPoint.tbVotingSession (
+                        sessionCode, sessionTitle, targetKind, workItemTypePk,
+                        workItemPk, cardDeckPk, hostEmployeePk, currentRoundNumber,
+                        sessionStatus, minStoryPoint, maxStoryPoint, maxAllowedSpread,
+                        consensusRule, autoRevealWhenAllVoted, roundTimeLimitSecond,
+                        allowQuestionCard, allowCoffeeCard, voteCommentPolicy,
+                        restrictToParticipant, roundGoalNote, startedAt, createdAt, updatedAt
+                    )
+                    values (
+                        @newTypeSessCode, @newTypeSessTitle, 'workItemType', @workItemTypePkParam,
+                        null, isnull(@newTypeDeckPk, 1), @operatorEmployeePk, 1,
+                        'voting', 0.50, 21.00, 5.00,
+                        'nearestFibonacci', 1, 180,
+                        1, 1, 'optional',
+                        0, isnull(@cleanDiscussionNote, N'發起重新投票估算'), sysdatetime(), sysdatetime(), sysdatetime()
+                    );
+                    set @votingSessionPk = scope_identity();
+
+                    insert into storyPoint.tbVotingRound (
+                        votingSessionPk, roundNumber, roundStatus, voteCount, startedAt
+                    )
+                    values (
+                        @votingSessionPk, 1, 'voting', 0, sysdatetime()
+                    );
+
+                    insert into storyPoint.tbVotingSessionParticipant (
+                        votingSessionPk, employeePk, isRequiredVoter, joinedAt
+                    )
+                    select
+                        @votingSessionPk, e.pk, 1, sysdatetime()
+                    from storyPoint.tbEmployee as e
+                    where e.isActive = 1;
+                end
+            end
+            else if @targetKindParam = 'workItem' and isnull(@workItemPkParam, 0) > 0
+            begin
+                select top 1 @votingSessionPk = vs.pk
+                from storyPoint.tbVotingSession as vs
+                where vs.targetKind = 'workItem'
+                  and vs.workItemPk = @workItemPkParam
+                order by vs.pk desc;
+
+                if @votingSessionPk is null
+                begin
+                    declare @newWiSessCode varchar(64) = 'VOTE-' + format(sysdatetime(), 'yyyyMMdd-HHmmss') + '-' + right(cast(abs(checksum(newid())) as varchar(16)), 3);
+                    declare @newWiSessTitle nvarchar(256) = N'【工項點數盲投】';
+                    declare @newWiDeckPk int = null;
+
+                    select top 1
+                        @newWiSessTitle = N'【工項點數盲投】' + isnull(wi.itemTitle, N'實際工項')
+                    from storyPoint.tbWorkItem as wi
+                    where wi.pk = @workItemPkParam;
+
+                    select top 1 @newWiDeckPk = pk
+                    from storyPoint.tbCardDeck
+                    where isActive = 1
+                    order by isDefault desc, pk asc;
+
+                    insert into storyPoint.tbVotingSession (
+                        sessionCode, sessionTitle, targetKind, workItemTypePk,
+                        workItemPk, cardDeckPk, hostEmployeePk, currentRoundNumber,
+                        sessionStatus, minStoryPoint, maxStoryPoint, maxAllowedSpread,
+                        consensusRule, autoRevealWhenAllVoted, roundTimeLimitSecond,
+                        allowQuestionCard, allowCoffeeCard, voteCommentPolicy,
+                        restrictToParticipant, roundGoalNote, startedAt, createdAt, updatedAt
+                    )
+                    values (
+                        @newWiSessCode, @newWiSessTitle, 'workItem', null,
+                        @workItemPkParam, isnull(@newWiDeckPk, 1), @operatorEmployeePk, 1,
+                        'voting', 0.50, 21.00, 5.00,
+                        'nearestFibonacci', 1, 180,
+                        1, 1, 'optional',
+                        0, isnull(@cleanDiscussionNote, N'發起重新投票估算'), sysdatetime(), sysdatetime(), sysdatetime()
+                    );
+                    set @votingSessionPk = scope_identity();
+
+                    insert into storyPoint.tbVotingRound (
+                        votingSessionPk, roundNumber, roundStatus, voteCount, startedAt
+                    )
+                    values (
+                        @votingSessionPk, 1, 'voting', 0, sysdatetime()
+                    );
+
+                    insert into storyPoint.tbVotingSessionParticipant (
+                        votingSessionPk, employeePk, isRequiredVoter, joinedAt
+                    )
+                    select
+                        @votingSessionPk, e.pk, 1, sysdatetime()
+                    from storyPoint.tbEmployee as e
+                    where e.isActive = 1;
+                end
+            end
+        end
+
         select
             @currentRound = isnull(currentRoundNumber, 1),
+            @curSessionStatus = isnull(sessionStatus, 'voting'),
             @targetKind = targetKind,
             @workItemTypePk = workItemTypePk,
             @workItemPk = workItemPk
@@ -2767,45 +2941,19 @@ begin
                 updatedAt = sysdatetime()
             where pk = @votingSessionPk;
         end
-        else if @cleanAction = 'nextRound'
+        else if @cleanAction in ('nextRound', 'revote', 'resetRound')
         begin
-            update vr
-            set vr.roundStatus = 'revealed',
-                vr.revealedAt = isnull(vr.revealedAt, sysdatetime()),
-                vr.roundDiscussionNote = isnull(@cleanDiscussionNote, vr.roundDiscussionNote),
-                vr.voteCount = isnull(stat.cnt, 0),
-                vr.averagePoint = stat.avgPt,
-                vr.minPoint = stat.minPt,
-                vr.maxPoint = stat.maxPt
-            from storyPoint.tbVotingRound as vr
-            outer apply (
-                select
-                    count(pk) as cnt,
-                    cast(round(avg(numericPointValue), 2) as decimal(8,2)) as avgPt,
-                    min(numericPointValue) as minPt,
-                    max(numericPointValue) as maxPt
-                from storyPoint.tbVoteRecord
-                where votingRoundPk = vr.pk
-            ) as stat
-            where vr.votingSessionPk = @votingSessionPk
-              and vr.roundNumber = @currentRound;
+            declare @curRoundVoteCount int = 0;
+            select @curRoundVoteCount = count(1)
+            from storyPoint.tbVoteRecord
+            where votingSessionPk = @votingSessionPk
+              and roundNumber = @currentRound;
 
-            declare @nextRound int = @currentRound + 1;
-
-            if not exists (select 1 from storyPoint.tbVotingRound where votingSessionPk = @votingSessionPk and roundNumber = @nextRound)
-            begin
-                insert into storyPoint.tbVotingRound (
-                    votingSessionPk, roundNumber, roundStatus, voteCount, startedAt
-                )
-                values (
-                    @votingSessionPk, @nextRound, 'voting', 0, sysdatetime()
-                );
-            end
-            else
+            if @cleanAction = 'resetRound' or (@cleanAction = 'revote' and @curSessionStatus = 'voting' and @curRoundVoteCount = 0)
             begin
                 delete from storyPoint.tbVoteRecord
                 where votingSessionPk = @votingSessionPk
-                  and roundNumber = @nextRound;
+                  and roundNumber = @currentRound;
 
                 update storyPoint.tbVotingRound
                 set roundStatus = 'voting',
@@ -2814,17 +2962,144 @@ begin
                     minPoint = null,
                     maxPoint = null,
                     revealedAt = null,
+                    roundDiscussionNote = isnull(@cleanDiscussionNote, roundDiscussionNote),
                     startedAt = sysdatetime()
                 where votingSessionPk = @votingSessionPk
-                  and roundNumber = @nextRound;
+                  and roundNumber = @currentRound;
+
+                update storyPoint.tbVotingSession
+                set sessionStatus = 'voting',
+                    finalStoryPoint = null,
+                    finalizedAt = null,
+                    roundGoalNote = isnull(@cleanDiscussionNote, roundGoalNote),
+                    updatedAt = sysdatetime()
+                where pk = @votingSessionPk;
+            end
+            else
+            begin
+                update vr
+                set vr.roundStatus = 'revealed',
+                    vr.revealedAt = isnull(vr.revealedAt, sysdatetime()),
+                    vr.roundDiscussionNote = isnull(@cleanDiscussionNote, vr.roundDiscussionNote),
+                    vr.voteCount = isnull(stat.cnt, 0),
+                    vr.averagePoint = stat.avgPt,
+                    vr.minPoint = stat.minPt,
+                    vr.maxPoint = stat.maxPt
+                from storyPoint.tbVotingRound as vr
+                outer apply (
+                    select
+                        count(pk) as cnt,
+                        cast(round(avg(numericPointValue), 2) as decimal(8,2)) as avgPt,
+                        min(numericPointValue) as minPt,
+                        max(numericPointValue) as maxPt
+                    from storyPoint.tbVoteRecord
+                    where votingRoundPk = vr.pk
+                ) as stat
+                where vr.votingSessionPk = @votingSessionPk
+                  and vr.roundNumber = @currentRound;
+
+                declare @nextRound int = @currentRound + 1;
+
+                if not exists (select 1 from storyPoint.tbVotingRound where votingSessionPk = @votingSessionPk and roundNumber = @nextRound)
+                begin
+                    insert into storyPoint.tbVotingRound (
+                        votingSessionPk, roundNumber, roundStatus, voteCount, startedAt
+                    )
+                    values (
+                        @votingSessionPk, @nextRound, 'voting', 0, sysdatetime()
+                    );
+                end
+                else
+                begin
+                    delete from storyPoint.tbVoteRecord
+                    where votingSessionPk = @votingSessionPk
+                      and roundNumber = @nextRound;
+
+                    update storyPoint.tbVotingRound
+                    set roundStatus = 'voting',
+                        voteCount = 0,
+                        averagePoint = null,
+                        minPoint = null,
+                        maxPoint = null,
+                        revealedAt = null,
+                        startedAt = sysdatetime()
+                    where votingSessionPk = @votingSessionPk
+                      and roundNumber = @nextRound;
+                end
+
+                update storyPoint.tbVotingSession
+                set currentRoundNumber = @nextRound,
+                    sessionStatus = 'voting',
+                    finalStoryPoint = null,
+                    finalizedAt = null,
+                    roundGoalNote = isnull(@cleanDiscussionNote, roundGoalNote),
+                    updatedAt = sysdatetime()
+                where pk = @votingSessionPk;
             end
 
-            update storyPoint.tbVotingSession
-            set currentRoundNumber = @nextRound,
-                sessionStatus = 'voting',
-                roundGoalNote = isnull(@cleanDiscussionNote, roundGoalNote),
-                updatedAt = sysdatetime()
-            where pk = @votingSessionPk;
+            if @targetKind = 'workItemType' and @workItemTypePk is not null
+            begin
+                select @oldPoint = standardStoryPoint
+                from storyPoint.tbWorkItemType
+                where pk = @workItemTypePk;
+
+                update storyPoint.tbWorkItemType
+                set standardStoryPoint = null,
+                    estimationStatus = 'voting',
+                    lastVotingSessionPk = @votingSessionPk,
+                    updatedAt = sysdatetime()
+                where pk = @workItemTypePk;
+
+                if @oldPoint is not null
+                begin
+                    insert into storyPoint.tbPointHistory (
+                        targetKind, workItemTypePk, workItemPk, votingSessionPk,
+                        oldStoryPoint, newStoryPoint, changeSource, changeReason,
+                        changedByEmployeePk, changedAt
+                    )
+                    values (
+                        'workItemType',
+                        @workItemTypePk,
+                        null,
+                        @votingSessionPk,
+                        @oldPoint,
+                        0.00,
+                        'revoteReset',
+                        isnull(@cleanDiscussionNote, N'管理者發起重新投票，重設為投票估算中'),
+                        @operatorEmployeePk,
+                        sysdatetime()
+                    );
+                end
+            end
+            else if @targetKind = 'workItem' and @workItemPk is not null
+            begin
+                select @oldPoint = storyPoint
+                from storyPoint.tbWorkItem
+                where pk = @workItemPk;
+
+                update storyPoint.tbWorkItem
+                set estimationStatus = 'voting',
+                    updatedAt = sysdatetime()
+                where pk = @workItemPk;
+
+                insert into storyPoint.tbPointHistory (
+                    targetKind, workItemTypePk, workItemPk, votingSessionPk,
+                    oldStoryPoint, newStoryPoint, changeSource, changeReason,
+                    changedByEmployeePk, changedAt
+                )
+                values (
+                    'workItem',
+                    (select top 1 workItemTypePk from storyPoint.tbWorkItem where pk = @workItemPk),
+                    @workItemPk,
+                    @votingSessionPk,
+                    @oldPoint,
+                    isnull(@oldPoint, 0.00),
+                    'revoteReset',
+                    isnull(@cleanDiscussionNote, N'管理者發起重新投票，重設為投票估算中'),
+                    @operatorEmployeePk,
+                    sysdatetime()
+                );
+            end
         end
         else if @cleanAction = 'finalize'
         begin
@@ -3478,7 +3753,16 @@ begin
                 when wit.estimationStatus = 'voting' then N'投票估算中'
                 else N'待估算'
             end as estimationStatusText,
-            wit.lastVotingSessionPk,
+            isnull(
+                wit.lastVotingSessionPk,
+                (
+                    select top 1 vs.pk
+                    from storyPoint.tbVotingSession as vs
+                    where vs.targetKind = 'workItemType'
+                      and vs.workItemTypePk = wit.pk
+                    order by vs.pk desc
+                )
+            ) as lastVotingSessionPk,
             (
                 select count(1)
                 from storyPoint.tbWorkItem as wi
@@ -3573,6 +3857,13 @@ begin
                 when @isViewerAdmin = 1 then wi.departmentSummary
                 else isnull(myAssign.departmentName, N'-')
             end as departmentSummary,
+            (
+                select top 1 vs.pk
+                from storyPoint.tbVotingSession as vs
+                where vs.targetKind = 'workItem'
+                  and vs.workItemPk = wi.pk
+                order by vs.pk desc
+            ) as lastVotingSessionPk,
             wi.isActive,
             wi.createdAt,
             wi.updatedAt
@@ -3675,6 +3966,7 @@ begin
             ph.changeSource,
             case
                 when ph.changeSource = 'votingFinalized' then N'多人投票拍板定案'
+                when ph.changeSource = 'revoteReset' then N'發起重新投票重設'
                 when ph.changeSource = 'autoFromType' then N'代表類型自動帶入'
                 when ph.changeSource = 'manualAdjust' then N'管理者手動微調'
                 when ph.changeSource = 'typeSync' then N'隨代表類型同步更新'

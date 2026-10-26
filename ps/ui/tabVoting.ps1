@@ -46,7 +46,18 @@ process {
     $gridSession.allowusertoaddrows = $false
     $gridSession.autosizecolumnsmode = 'Fill'
     $gridSession.selectionmode = 'FullRowSelect'
-    enableGridHeaderSortAndLock -grid $gridSession -statusLabel $statusLabel
+    enableGridHeaderSortAndLock -grid $gridSession -statusLabel $statusLabel -onRevoteRow {
+        param($rowItem)
+        if ($null -ne $rowItem -and $rowItem.table.columns.contains('votingSessionPk')) {
+            $sPk = [int]$rowItem.votingSessionPk
+            $txtSessionPk.text = [string]$sPk
+            $null = & $votingScript -actionType 'revoteSession' -votingSessionPk $sPk -employeePk ([int]$txtEmpPk.text) -roundDiscussionNote $txtComment.text
+            & $loadVotingData
+            if ($null -ne $statusLabel) {
+                $statusLabel.text = "🔄 已針對投票議程 (#$sPk) 發起重新投票"
+            }
+        }
+    }
 
     $lblCast = new-object system.windows.forms.label
     $lblCast.text = '議程 ID：'
@@ -115,9 +126,14 @@ process {
     $btnReveal.size = new-object system.drawing.size(120, 30)
 
     $btnNextRound = new-object system.windows.forms.button
-    $btnNextRound.text = '⏭️ 下一回合'
+    $btnNextRound.text = '🔄 下一回合 / 重新投票'
     $btnNextRound.location = new-object system.drawing.point(1000, 240)
-    $btnNextRound.size = new-object system.drawing.size(120, 30)
+    $btnNextRound.size = new-object system.drawing.size(140, 30)
+
+    $btnResetRound = new-object system.windows.forms.button
+    $btnResetRound.text = '🔁 重設本回合出牌重投'
+    $btnResetRound.location = new-object system.drawing.point(530, 8)
+    $btnResetRound.size = new-object system.drawing.size(180, 28)
 
     $lblHistory = new-object system.windows.forms.label
     $lblHistory.text = '訂出 Story Point 的各回合出牌與討論過程明細：'
@@ -153,12 +169,16 @@ process {
         & $loadVotingData
     })
     $btnNextRound.add_click({
-        $null = & $votingScript -actionType 'nextRound' -votingSessionPk ([int]$txtSessionPk.text) -employeePk ([int]$txtEmpPk.text) -roundDiscussionNote $txtComment.text
+        $null = & $votingScript -actionType 'revoteSession' -votingSessionPk ([int]$txtSessionPk.text) -employeePk ([int]$txtEmpPk.text) -roundDiscussionNote $txtComment.text
+        & $loadVotingData
+    })
+    $btnResetRound.add_click({
+        $null = & $votingScript -actionType 'resetRound' -votingSessionPk ([int]$txtSessionPk.text) -employeePk ([int]$txtEmpPk.text) -roundDiscussionNote $txtComment.text
         & $loadVotingData
     })
 
     $tabPage.controls.addrange(@(
-        $lblSession, $btnRefresh, $gridSession,
+        $lblSession, $btnRefresh, $btnResetRound, $gridSession,
         $lblCast, $txtSessionPk, $lblEmp, $txtEmpPk, $lblCard, $cmbCard, $lblComment, $txtComment,
         $btnVote, $btnReveal, $btnNextRound,
         $lblHistory, $gridProcess
