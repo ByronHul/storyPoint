@@ -330,6 +330,61 @@
                 * `🪟 彈出 Modal 視窗檢視此筆紀錄完整明細` (`openRowDetailReadonlyModal`)、`🔍 以此儲存格值篩選【欄位名稱】`、`🔄 清除本表格所有篩選條件並重設排序`、`📋 複製本列紀錄文字至剪貼簿`。
     3. **PowerShell GUI (`ps/common.ps1` 與 `ps/ui/*.ps1`) 同步支援**：所有 `DataGridView` 皆掛載右鍵 `ContextMenuStrip` 快捷選單，右鍵點選「✏️ 單筆編輯此筆紀錄（彈出 Modal 視窗）」即直接彈出置中 WinForms Modal 對話框 (`Form.ShowDialog()`) 進行單筆編輯與儲存，並支援右鍵刪除、以此儲存格值篩選表格、清除篩選與複製整列紀錄。
 
+### 2.18 全面優化操作介面與流程（表格置頂呈現、雙擊與快捷鍵彈出 Modal、單一 Modal 整合工項與指派、一鍵發起盲投與快速出牌/定案）
+* **1. 精簡各分頁版面（新增置頂快捷指令列 `.sp-page-action-bar`，將大型管理/匯入表單收合於可展開抽屜 `.sp-collapsible-drawer`，讓資料表格直接置頂呈現）**：
+    * 於「工項管理 (`#pane-workitems`)」、「工項代表類型 (`#pane-types`)」與「組織與員工管理 (`#pane-employees`)」分頁頂部配置精簡的**快捷指令列 (`.sp-page-action-bar`)**，提供一鍵彈出 Modal 新增紀錄（`➕ 新增工項與指派 (彈出 Modal)`、`👥 指派員工與分攤配額 (Modal)`、`🗂️ 新增工項類型 (Modal)`、`➕ 新增工項代表類型 (彈出 Modal)`、`➕ 新增員工帳號 (彈出 Modal)`、`🏢 新增/修改部門 (Modal)`）及抽屜面板展開/收合按鈕（`toggleAdminDrawer`）。
+    * 原本佔用大量垂直畫面的新增、批次匯入與組織樹面板預設收合於 `.sp-collapsible-drawer.collapsed` 容器中，使各分頁的核心資料表格（`#workItemDataTable`、`#workItemTypeDataTable`、`#empDataTable`）一進入分頁即直接置頂呈現，免捲動即可立即瀏覽、篩選與操作。
+* **2. 優化表格互動體驗（滑鼠左鍵單擊選取列、雙擊列直接彈出單筆編輯 Modal、鍵盤快捷鍵 `Enter` / `F2` / `Esc`）**：
+    * **滑鼠左鍵單擊 (`click`)**：點選任一表格資料列 (`tbody tr`) 即高亮度反白選取該筆紀錄 (`.sp-context-active-row`)。
+    * **滑鼠左鍵雙擊 (`dblclick`)**：雙擊任一表格資料列 (`tbody tr`) 直接觸發 `triggerDefaultRowEditOrView(tr)` 彈出對應之置中單筆編輯 Modal 視窗（管理員針對 `workitem`、`workitemKind`、`workitemType`、`employee`、`department`、`session` 彈出編輯 Modal，一般參與者或唯讀紀錄彈出 `openRowDetailReadonlyModal` 明細檢視 Modal），完全不捲動網頁。
+    * **鍵盤快捷鍵 (`keydown`)**：選取任一表格列後，按 `Enter` 或 `F2` 直接彈出該列單筆編輯/明細 Modal 視窗；按 `Escape` 立即關閉右鍵選單或 Modal 視窗。
+    * **PowerShell GUI (`ps/common.ps1`) 同步支援雙擊列彈出 Modal**：於 `enableGridHeaderSortAndLock` 新增 `$grid.add_celldoubleclick` 事件，雙擊 `DataGridView` 任一資料列即自動彈出單筆編輯/檢視 Modal 視窗 (`Form.ShowDialog()`)。
+* **3. 優化「多人盲投估算」流程（大廳一鍵彈出 Modal 快速發起盲投、預設規則範本、一鍵出牌與一鍵採用推薦點數定案）**：
+    * **大廳快速發起盲投**：於即時盲投大廳 (`#pane-voting`) 側邊欄與頂部標題列新增 `⚡ 快速發起盲投議程 (彈出 Modal)` 按鈕 (`openSessionSetupEditModal(0)`)，管理員不需離開大廳即可彈出 Modal 建立新盲投議程。
+    * **回合設定 Modal 範本與全選控制**：`openSessionSetupEditModal` 內建「📐 標準 Scrum (0.5~21pt / 180秒)」、「🚀 快速閃電 (1~13pt / 60秒)」、「🏛️ 嚴謹評審 (0.5~34pt / 300秒)」一鍵套用範本按鈕、「✅ 全選成員 / ⬜ 全不選」按鈕，以及「🚀 建立議程並立即前往盲投大廳」與「💾 僅儲存於回合設定」雙模式送出按鈕。
+    * **獨立盲投網頁 (`/voting/session`) 快速出牌與定案**：
+        * 投票者支援**雙擊撲克牌面直接送出盲投**，並提供「`⚡ 點選牌面即直接送出盲投`」勾選開關，點選撲克牌即可一鍵完成蓋牌投票。
+        * 主持人控制台新增「`🏆 3. 一鍵採用推薦點數 ({suggestedFinalPt} pt) 拍板定案`」按鈕，一鍵帶入共識演算法推薦點數並完成定案回寫。
+* **4. 優化「工項管理與員工指派」流程（於單筆新增/編輯工項 Modal 直接整合負責員工與分攤配額指派）**：
+    * `openWorkItemEditModal` 直接整合「**👥 負責員工與點數分攤配額指派**」設定區塊（包含 `primaryEmployeePk` 負責員工下拉選單與 `primaryAllocationPercent` 分攤比例輸入框，以及 `🔄 切換至多人分攤配額設定 Modal` 快捷切換鈕），讓管理員在單一 Modal 視窗內即可一次完成工項建立/修改與員工配額指派。
+    * `openWorkItemAssignModal` 支援從頂部快捷指令列直接開啟並透過下拉選單選擇任一目標工項進行多人分攤配額管理。
+* **5. 優化「組織與員工管理」介面**：
+    * 於頂部快捷指令列整合 `➕ 新增員工帳號 (彈出 Modal)`、`🏢 新增/修改部門 (Modal)`、`🔑 修改我本人的帳密` 與 `🌳 組織與部門主管樹狀階層檢視` 切換鈕；並在組織樹狀圖每張部門主管卡片標題列新增 `🏢 修改部門` 快捷按鈕，點擊即可直接彈出 `openDepartmentEditModal` 編修該部門設定。
+
+### 2.19 全系統安全登出機制 (`🚪 登出系統` / `🚪 登出`)
+* **Web 介面全方位登出入口（任何畫面與捲動位置皆可一鍵安全登出）**：
+    1. **頂部使用者資訊列 (`.topbar-user`)**：醒目紅色按鈕 `🚪 登出系統` (`href="/logout"` + `performSystemLogout(event)`)。
+    2. **置頂懸浮主選單列 (`.top-menubar` Sticky Bar)**：
+        * 右側位置狀態列 (`.current-location-bar`) 常駐顯示 `🚪 登出` 按鈕，當使用者向下捲動長表格時仍固定於畫面頂端隨時可按。
+        * 「👥 組織與員工」（管理者）與「🔑 帳號設定」（一般參與者）下拉子選單內建 `🚪 4-3. 登出系統 (切換帳號)` 項目。
+    3. **個人帳密設定頁面 (`#pane-myAccount` 與參與者 `#pane-employees`)**：卡片標題列右側提供 `🚪 登出系統` 按鈕。
+    4. **獨立盲投 Session 網頁 (`/voting/session`)**：頂部 `<header>` 除「`🚪 結束參與並返回大廳`」外，直接提供「`🚪 登出系統`」按鈕，一鍵釋放該議程鎖定並登出返回登入頁。
+* **後端與前端登出安全清理程序 (`GET/POST /logout` + `sqlDataService.releaseAllVotingSessionLeasesForEmployee`)**：
+    1. 自動釋放該名員工在伺服器端持有的所有盲投 Session 活躍鎖定 (`releaseAllVotingSessionLeasesForEmployee(empPk)`)。
+    2. 自動寫入系統稽核 Log (`storyPoint.tbLog`，物件名稱 `portalController.logout`) 記錄登出之員工姓名、帳號與 PK。
+    3. 徹底清除所有登入驗證 Cookie (`sp_emp_pk`、`sp_emp_code`、`sp_emp_name`、`sp_emp_dept`、`sp_emp_role`、`sp_emp_login`)。
+    4. 前端自動清除 `localStorage` 內所有 `sp_active_session_lock_*` 鎖定，並透過 `BroadcastChannel('sp_voting_session_guard')` 廣播 `USER_LOGGED_OUT` 訊息，使同瀏覽器開啟的其他獨立盲投分頁同步安全導回 `/login` 登入畫面。
+* **PowerShell 多 Tab GUI 介面 (`ps/ui/uiMain.ps1`) 同步提供 `🚪 登出系統` 按鈕**：
+    1. 於主視窗頂部導覽列 (`$topPanel`) 右上角「`🔑 修改我的帳密`」旁新增醒目紅色「`🚪 登出系統` (`$btnLogout`)」按鈕。
+    2. 點擊「`🚪 登出系統`」時，自動將登出紀錄寫入 `storyPoint.tbLog` (`uiMain.logout`)，關閉目前主視窗並自動返回「員工帳號密碼登入對話框 (`showEmployeeLoginDialog`)」，支援隨時切換不同員工帳號重新登入或結束程式。
+
+### 2.20 系統線上說明與操作畫面搜尋手冊 (`📖 線上說明` / `/?tab=help` / `GET /help` / `ps/ui/tabHelp.ps1`)
+* **多管道線上說明入口**：
+    1. **Web 主系統內嵌頁籤 (`/?tab=help` / `#pane-help`)**：
+        * 於頂部使用者資訊列 (`.topbar-user`) 提供「`📖 線上說明`」按鈕。
+        * 於頂部置頂主選單列 (`.top-menubar`) 新增「`📖 線上說明`」主選單與下拉快速章節導覽 (`6-1` ~ `6-8`)，並於右側位置狀態列 (`.current-location-bar`) 常駐提供「`📖 說明`」按鈕。
+    2. **Web 獨立線上說明專頁 (`GET /help`，支援未登入與已登入存取)**：
+        * 於員工登入頁 (`/login`) 與獨立盲投 Session 網頁 (`/voting/session`) 頂部皆提供「`📖 線上說明`」按鈕，支援於新分頁直接開啟 `/help`（亦支援 `/help?q=關鍵字&cat=分類&topic=主題ID` 參數直接定位）。
+    3. **PowerShell 多 Tab GUI 線上說明頁籤 (`ps/ui/tabHelp.ps1` 與 `ps/ui/uiMain.ps1`)**：
+        * 於 `ps/ui/uiMain.ps1` 頂部導覽列新增「`📖 線上說明`」按鈕，並新增第 6 個獨立頁籤「`6. 📖 線上說明與搜尋` (`tabHelp.ps1`)」，支援關鍵字即時搜尋、分類過濾、步驟詳解與右側實機操作畫面 (`PictureBox`) 預覽及點擊放大檢視。
+* **全文關鍵字即時搜尋與高亮標示機制**：
+    1. **多關鍵字即時檢索 (`#helpSearchInput`)**：支援輸入單一或多個空白分隔關鍵字（如 `盲投 自動翻牌`、`待參與 參與中`、`滑鼠右鍵 Modal`、`起訖時間 到期自動扣點`、`部門主管 上一層主管`、`表頭排序 欄位鎖定`），即時比對所有主題標題、步驟說明、操作畫面標註與常見問題 FAQ。
+    2. **關鍵字黃底高亮度標示 (`<mark class="help-highlight">`)**：搜尋時自動將符合的關鍵字於標題、操作步驟與畫面標註文字中以醒目黃底高亮反白，並即時顯示符合的主題數與 FAQ 數。
+    3. **分類篩選、角色篩選、熱門搜尋關鍵字標籤與左側章節目錄樹 (`TOC`)**：支援依 6 大分類與適用角色過濾，提供 11 組熱門關鍵字一鍵搜尋標籤，以及左側 Sticky 章節目錄快速跳轉。
+* **搭配 12 幅高解析度實機操作畫面與編號標註指引 (`wwwroot/help/images/screen_01_*.png` ~ `screen_12_*.png`)**：
+    1. 每個說明主題皆搭配對應之**繁體中文實機操作畫面截圖**（涵蓋：① 員工登入驗證與安全登出、② 自助修改個人帳密、③ 多人盲投大廳待參與/參與中分類、④ 獨立盲投 Session 綠色牌桌與自動翻牌/定案控制台、⑤ 設定盲投回合與牌面預覽、⑥ 估算過程與異動稽核查詢、⑦ 工項管理與起訖時間/到期自動扣點寄信、⑧ 表格滑鼠右鍵選單與雙擊單筆編輯 Modal、⑨ 工項代表類型與工項類型 CRUD、⑩ 員工/部門點數統計與表頭排序鎖定/三格式匯出、⑪ 組織部門主管樹狀階層與 CSV/Excel 批次匯入、⑫ 系統防崩潰 Log 查詢中心與測試）。
+    2. 每幅操作畫面下方皆附帶**編號標註說明 (`①` `②` `③` `④`)** 與**畫面元件示意列**，點擊圖片或「`🔍 放大畫面`」按鈕即可開啟**全螢幕高解析度 Lightbox 放大檢視視窗 (`#spHelpScreenLightbox`)**（支援切換上一張/下一張操作畫面），並提供「`⚡ 立即切換至此功能畫面` / `🪟 直接彈出 Modal`」一鍵操作按鈕。
+
 ---
 
 ## 3. 系統架構與技術開發規範

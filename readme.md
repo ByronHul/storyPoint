@@ -1,4 +1,4 @@
-﻿# Azure 多人參與 Story Point 估算與工項權重管理系統 (readme.md)
+# Azure 多人參與 Story Point 估算與工項權重管理系統 (readme.md)
 
 ## 1. 系統簡介
 本系統為基於 **Azure PaaS (`storyPoint` 資源群組)**、**SQL Server / Azure SQL Database**、**PowerShell** 與 **.NET 8 (ASP.NET Core + SignalR)** 建置之企業級敏捷 Story Point 估算與部門/員工工項點數管理平台。
@@ -49,9 +49,10 @@ c:\temp\storyPoint\
 │       ├── tabWorkItemType.ps1       # [頁籤 2] 工項代表類型設定
 │       ├── tabWorkItem.ps1           # [頁籤 3] 工項建立與員工賦予
 │       ├── tabEmployee.ps1           # [頁籤 4] 員工帳密與部門管理
-│       └── tabReport.ps1             # [頁籤 5] 員工與部門總點數統計報表
+│       ├── tabReport.ps1             # [頁籤 5] 員工與部門總點數統計報表
+│       └── tabHelp.ps1               # [頁籤 6] 線上說明與操作畫面搜尋手冊
 └── web\
-    └── storyPointPortal\             # ASP.NET Core 8 MVC + SignalR 網站專案
+    └── storyPointPortal\             # ASP.NET Core 8 MVC + SignalR 網站專案 (含 /help 與 /?tab=help 線上說明與實機操作畫面搜尋中心)
 ```
 
 ---

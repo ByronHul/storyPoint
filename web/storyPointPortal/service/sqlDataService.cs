@@ -211,6 +211,36 @@ public class sqlDataService
     }
 
     /// <summary>
+    /// 當員工執行系統登出 (/logout) 時，立即釋放該員工名下所有盲投 Session 獨立網頁之佔用鎖定
+    /// </summary>
+    public static int releaseAllVotingSessionLeasesForEmployee(int employeePk)
+    {
+        if (employeePk <= 0)
+        {
+            return 0;
+        }
+
+        string prefix = $"{employeePk}_";
+        int releasedCount = 0;
+
+        lock (_leaseSyncLock)
+        {
+            foreach (var kv in _activeVotingSessionLeases.ToArray())
+            {
+                if (kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (_activeVotingSessionLeases.TryRemove(kv.Key, out _))
+                    {
+                        releasedCount++;
+                    }
+                }
+            }
+        }
+
+        return releasedCount;
+    }
+
+    /// <summary>
     /// 取得指定員工目前正在獨立網頁中開啟進行的所有盲投 Session 主鍵清單
     /// </summary>
     public static List<int> getActiveLockedSessionPksForEmployee(int employeePk)

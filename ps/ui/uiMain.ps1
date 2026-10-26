@@ -335,118 +335,161 @@ process {
         }
     }
 
-    if ($null -eq $loggedInEmployee) {
-        if ($noDialog.ispresent) {
-            throw '安全性限制：禁止未提供有效員工帳號與密碼直接進入系統，請傳入 -loginAccount 與 -plainPassword 進行登入驗證。'
-        }
-        $loggedInEmployee = showEmployeeLoginDialog -empScriptPath $empScriptPath
+    while ($true) {
         if ($null -eq $loggedInEmployee) {
-            writeSystemLog -logLevel 2 -sourceScript 'uiMain.ps1' -objectName 'uiMain' `
-                -executionResult '使用者取消或未通過員工帳號登入驗證，拒絕直接進入系統主畫面'
-            return $null
-        }
-    }
-
-    $currentEmpPk = [int]$loggedInEmployee.employeePk
-    $currentEmpName = [string]$loggedInEmployee.employeeName
-    $currentLoginAcc = [string]$loggedInEmployee.loginAccount
-    $currentRoleName = [string]$loggedInEmployee.roleName
-    $currentDeptName = [string]$loggedInEmployee.departmentName
-
-    $mainForm = new-object system.windows.forms.form
-    $modeTitle = if ($uiMode -eq 'simplified') { '簡化快速模式' } else { '完整專業模式' }
-    $mainForm.text = "Azure 多人參與 Story Point 估算與工項權重管理系統 - [$modeTitle] - 登入者：$currentEmpName ($currentLoginAcc)"
-    $mainForm.size = new-object system.drawing.size(1200, 780)
-    $mainForm.startposition = 'CenterScreen'
-    $mainForm.font = new-object system.drawing.font('Microsoft JhengHei UI', 9.5)
-
-    $topPanel = new-object system.windows.forms.panel
-    $topPanel.dock = 'Top'
-    $topPanel.height = 46
-    $topPanel.backcolor = [system.drawing.color]::fromargb(15, 23, 42)
-
-    $lblTitle = new-object system.windows.forms.label
-    $lblTitle.text = "🃏 Azure 多人參與 Story Point 估算系統 ($modeTitle) ｜ 👤 $currentEmpName ($currentLoginAcc / $currentDeptName / $currentRoleName)"
-    $lblTitle.forecolor = [system.drawing.color]::white
-    $lblTitle.font = new-object system.drawing.font('Microsoft JhengHei UI', 11.5, [system.drawing.fontstyle]::Bold)
-    $lblTitle.autosize = $true
-    $lblTitle.location = new-object system.drawing.point(16, 11)
-    $topPanel.controls.add($lblTitle)
-
-    $btnChangeMyAccount = new-object system.windows.forms.button
-    $btnChangeMyAccount.text = '🔑 修改我的帳密'
-    $btnChangeMyAccount.size = new-object system.drawing.size(150, 30)
-    $btnChangeMyAccount.location = new-object system.drawing.point(1015, 8)
-    $btnChangeMyAccount.anchor = 'Top, Right'
-    $btnChangeMyAccount.backcolor = [system.drawing.color]::fromargb(37, 99, 235)
-    $btnChangeMyAccount.forecolor = [system.drawing.color]::white
-    $btnChangeMyAccount.add_click({
-        $updatedRow = showChangeOwnCredentialDialog -empScriptPath $empScriptPath `
-            -employeePk $currentEmpPk -currentLoginAccount $currentLoginAcc -employeeName $currentEmpName
-        if ($null -ne $updatedRow) {
-            $script:currentLoginAcc = [string]$updatedRow.loginAccount
-            $currentLoginAcc = [string]$updatedRow.loginAccount
-            $lblTitle.text = "🃏 Azure 多人參與 Story Point 估算系統 ($modeTitle) ｜ 👤 $currentEmpName ($currentLoginAcc / $currentDeptName / $currentRoleName)"
-            $mainForm.text = "Azure 多人參與 Story Point 估算與工項權重管理系統 - [$modeTitle] - 登入者：$currentEmpName ($currentLoginAcc)"
-            if ($null -ne $statusLabel) {
-                $statusLabel.text = "✅ 已成功修改您的個人登入帳號與密碼！目前登入帳號：$currentLoginAcc"
+            if ($noDialog.ispresent) {
+                throw '安全性限制：禁止未提供有效員工帳號與密碼直接進入系統，請傳入 -loginAccount 與 -plainPassword 進行登入驗證。'
+            }
+            $loggedInEmployee = showEmployeeLoginDialog -empScriptPath $empScriptPath
+            if ($null -eq $loggedInEmployee) {
+                writeSystemLog -logLevel 2 -sourceScript 'uiMain.ps1' -objectName 'uiMain' `
+                    -executionResult '使用者取消或未通過員工帳號登入驗證，結束或拒絕進入系統主畫面'
+                return $null
             }
         }
-    })
-    $topPanel.controls.add($btnChangeMyAccount)
 
-    $statusStrip = new-object system.windows.forms.statusstrip
-    $statusLabel = new-object system.windows.forms.toolstripstatuslabel
-    $statusLabel.text = "已登入：$currentEmpName ($currentLoginAcc) | 角色：$currentRoleName | Azure RG：$($configObj.azureSetting.resourceGroupName)"
-    $null = $statusStrip.items.add($statusLabel)
+        $currentEmpPk = [int]$loggedInEmployee.employeePk
+        $currentEmpName = [string]$loggedInEmployee.employeeName
+        $currentLoginAcc = [string]$loggedInEmployee.loginAccount
+        $currentRoleName = [string]$loggedInEmployee.roleName
+        $currentDeptName = [string]$loggedInEmployee.departmentName
+        $script:isUserLogoutRequested = $false
 
-    $tabControl = new-object system.windows.forms.tabcontrol
-    $tabControl.dock = 'Fill'
-    $tabControl.padding = new-object system.drawing.point(14, 6)
+        $mainForm = new-object system.windows.forms.form
+        $modeTitle = if ($uiMode -eq 'simplified') { '簡化快速模式' } else { '完整專業模式' }
+        $mainForm.text = "Azure 多人參與 Story Point 估算與工項權重管理系統 - [$modeTitle] - 登入者：$currentEmpName ($currentLoginAcc)"
+        $mainForm.size = new-object system.drawing.size(1200, 780)
+        $mainForm.startposition = 'CenterScreen'
+        $mainForm.font = new-object system.drawing.font('Microsoft JhengHei UI', 9.5)
 
-    $tabScriptList = if ($uiMode -eq 'simplified' -or $currentRoleName -ne 'admin') {
-        @(
-            'tabVoting.ps1',
-            'tabWorkItem.ps1',
-            'tabReport.ps1'
-        )
-    }
-    else {
-        @(
-            'tabVoting.ps1',
-            'tabWorkItemType.ps1',
-            'tabWorkItem.ps1',
-            'tabEmployee.ps1',
-            'tabReport.ps1'
-        )
-    }
+        $topPanel = new-object system.windows.forms.panel
+        $topPanel.dock = 'Top'
+        $topPanel.height = 46
+        $topPanel.backcolor = [system.drawing.color]::fromargb(15, 23, 42)
 
-    foreach ($tabScriptName in $tabScriptList) {
-        $tabScriptPath = join-path -path $psscriptroot -childpath $tabScriptName
-        if (test-path -path $tabScriptPath) {
-            $tabPage = & $tabScriptPath -psRootPath $psRoot -statusLabel $statusLabel
-            if ($null -ne $tabPage) {
-                $null = $tabControl.tabpages.add($tabPage)
+        $lblTitle = new-object system.windows.forms.label
+        $lblTitle.text = "🃏 Azure 多人參與 Story Point 估算系統 ($modeTitle) ｜ 👤 $currentEmpName ($currentLoginAcc / $currentDeptName / $currentRoleName)"
+        $lblTitle.forecolor = [system.drawing.color]::white
+        $lblTitle.font = new-object system.drawing.font('Microsoft JhengHei UI', 11.5, [system.drawing.fontstyle]::Bold)
+        $lblTitle.autosize = $true
+        $lblTitle.location = new-object system.drawing.point(16, 11)
+        $topPanel.controls.add($lblTitle)
+
+        $btnOnlineHelp = new-object system.windows.forms.button
+        $btnOnlineHelp.text = '📖 線上說明'
+        $btnOnlineHelp.size = new-object system.drawing.size(118, 30)
+        $btnOnlineHelp.location = new-object system.drawing.point(770, 8)
+        $btnOnlineHelp.anchor = 'Top, Right'
+        $btnOnlineHelp.backcolor = [system.drawing.color]::fromargb(13, 148, 136)
+        $btnOnlineHelp.forecolor = [system.drawing.color]::white
+        $btnOnlineHelp.add_click({
+            foreach ($tp in $tabControl.tabpages) {
+                if ($tp.text -match '線上說明') {
+                    $tabControl.selectedtab = $tp
+                    break
+                }
+            }
+        })
+        $topPanel.controls.add($btnOnlineHelp)
+
+        $btnChangeMyAccount = new-object system.windows.forms.button
+        $btnChangeMyAccount.text = '🔑 修改我的帳密'
+        $btnChangeMyAccount.size = new-object system.drawing.size(145, 30)
+        $btnChangeMyAccount.location = new-object system.drawing.point(895, 8)
+        $btnChangeMyAccount.anchor = 'Top, Right'
+        $btnChangeMyAccount.backcolor = [system.drawing.color]::fromargb(37, 99, 235)
+        $btnChangeMyAccount.forecolor = [system.drawing.color]::white
+        $btnChangeMyAccount.add_click({
+            $updatedRow = showChangeOwnCredentialDialog -empScriptPath $empScriptPath `
+                -employeePk $currentEmpPk -currentLoginAccount $currentLoginAcc -employeeName $currentEmpName
+            if ($null -ne $updatedRow) {
+                $script:currentLoginAcc = [string]$updatedRow.loginAccount
+                $currentLoginAcc = [string]$updatedRow.loginAccount
+                $lblTitle.text = "🃏 Azure 多人參與 Story Point 估算系統 ($modeTitle) ｜ 👤 $currentEmpName ($currentLoginAcc / $currentDeptName / $currentRoleName)"
+                $mainForm.text = "Azure 多人參與 Story Point 估算與工項權重管理系統 - [$modeTitle] - 登入者：$currentEmpName ($currentLoginAcc)"
+                if ($null -ne $statusLabel) {
+                    $statusLabel.text = "✅ 已成功修改您的個人登入帳號與密碼！目前登入帳號：$currentLoginAcc"
+                }
+            }
+        })
+        $topPanel.controls.add($btnChangeMyAccount)
+
+        $btnLogout = new-object system.windows.forms.button
+        $btnLogout.text = '🚪 登出系統'
+        $btnLogout.size = new-object system.drawing.size(120, 30)
+        $btnLogout.location = new-object system.drawing.point(1048, 8)
+        $btnLogout.anchor = 'Top, Right'
+        $btnLogout.backcolor = [system.drawing.color]::fromargb(220, 38, 38)
+        $btnLogout.forecolor = [system.drawing.color]::white
+        $btnLogout.add_click({
+            writeSystemLog -logLevel 3 -sourceScript 'uiMain.ps1' -objectName 'uiMain.logout' `
+                -executionResult "員工安全登出系統：$currentEmpName ($currentLoginAcc，PK=$currentEmpPk)"
+            $script:isUserLogoutRequested = $true
+            $mainForm.close()
+        })
+        $topPanel.controls.add($btnLogout)
+
+        $statusStrip = new-object system.windows.forms.statusstrip
+        $statusLabel = new-object system.windows.forms.toolstripstatuslabel
+        $statusLabel.text = "已登入：$currentEmpName ($currentLoginAcc) | 角色：$currentRoleName | Azure RG：$($configObj.azureSetting.resourceGroupName)"
+        $null = $statusStrip.items.add($statusLabel)
+
+        $tabControl = new-object system.windows.forms.tabcontrol
+        $tabControl.dock = 'Fill'
+        $tabControl.padding = new-object system.drawing.point(14, 6)
+
+        $tabScriptList = if ($uiMode -eq 'simplified' -or $currentRoleName -ne 'admin') {
+            @(
+                'tabVoting.ps1',
+                'tabWorkItem.ps1',
+                'tabReport.ps1',
+                'tabHelp.ps1'
+            )
+        }
+        else {
+            @(
+                'tabVoting.ps1',
+                'tabWorkItemType.ps1',
+                'tabWorkItem.ps1',
+                'tabEmployee.ps1',
+                'tabReport.ps1',
+                'tabHelp.ps1'
+            )
+        }
+
+        foreach ($tabScriptName in $tabScriptList) {
+            $tabScriptPath = join-path -path $psscriptroot -childpath $tabScriptName
+            if (test-path -path $tabScriptPath) {
+                $tabPage = & $tabScriptPath -psRootPath $psRoot -statusLabel $statusLabel
+                if ($null -ne $tabPage) {
+                    $null = $tabControl.tabpages.add($tabPage)
+                }
             }
         }
-    }
 
-    $mainForm.controls.add($tabControl)
-    $mainForm.controls.add($topPanel)
-    $mainForm.controls.add($statusStrip)
+        $mainForm.controls.add($tabControl)
+        $mainForm.controls.add($topPanel)
+        $mainForm.controls.add($statusStrip)
 
-    writeSystemLog -logLevel 3 -sourceScript 'uiMain.ps1' -objectName 'uiMain' `
-        -executionResult "啟動多 Tab 圖形化管理介面成功 (模式：$uiMode，載入頁籤數：$($tabControl.tabpages.count))"
+        writeSystemLog -logLevel 3 -sourceScript 'uiMain.ps1' -objectName 'uiMain' `
+            -executionResult "啟動多 Tab 圖形化管理介面成功 (模式：$uiMode，載入頁籤數：$($tabControl.tabpages.count))"
 
-    if ($noDialog.ispresent) {
-        return [pscustomobject]@{
-            formObject = $mainForm
-            tabControl = $tabControl
-            tabCount   = $tabControl.tabpages.count
-            uiMode     = $uiMode
+        if ($noDialog.ispresent) {
+            return [pscustomobject]@{
+                formObject   = $mainForm
+                tabControl   = $tabControl
+                tabCount     = $tabControl.tabpages.count
+                uiMode       = $uiMode
+                logoutButton = $btnLogout
+            }
         }
-    }
-    else {
-        $null = $mainForm.showdialog()
+        else {
+            $null = $mainForm.showdialog()
+            if ($script:isUserLogoutRequested) {
+                $loggedInEmployee = $null
+                continue
+            }
+            break
+        }
     }
 }

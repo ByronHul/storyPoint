@@ -214,6 +214,11 @@ public class portalController : Controller
             </div>
             <button type=""submit"" class=""btn-primary"">🔐 驗證身分並登入系統</button>
         </form>
+        <div style=""margin-top:14px;text-align:center;"">
+            <a href=""/help"" target=""_blank"" style=""display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:10px 14px;border-radius:9px;background:#eff6ff;border:1.5px solid #93c5fd;color:#1d4ed8;font-size:13.5px;font-weight:800;text-decoration:none;transition:all .15s;"">
+                📖 開啟系統線上說明與操作畫面手冊 (支援關鍵字搜尋)
+            </a>
+        </div>
         <div class=""security-footer"">
             🛡️ <strong>安全存取與權限隔離規範：</strong><br/>
             • 系統依登入帳號自動識別「<strong>👑 管理者 (Admin)</strong>」或「<strong>🙋 參與者 (Participant)</strong>」權限。<br/>
@@ -222,6 +227,19 @@ public class portalController : Controller
         </div>
     </div>
     <script>
+        try {{
+            for (let i = localStorage.length - 1; i >= 0; i--) {{
+                const k = localStorage.key(i);
+                if (k && k.indexOf('sp_active_session_lock_') === 0) {{
+                    localStorage.removeItem(k);
+                }}
+            }}
+            if (typeof BroadcastChannel !== 'undefined') {{
+                const bc = new BroadcastChannel('sp_voting_session_guard');
+                bc.postMessage({{ type: 'USER_LOGGED_OUT' }});
+            }}
+        }} catch (e) {{ }}
+
         function togglePasswordVisibility() {{
             const pwdInput = document.getElementById('plainPassword');
             const btn = document.getElementById('btnTogglePwd');
@@ -330,13 +348,59 @@ public class portalController : Controller
     }
 
     [HttpGet("logout")]
+    [HttpPost("logout")]
     [AllowAnonymous]
     public async Task<IActionResult> logout()
     {
+        int empPk = getCurrentEmployeePk();
+        string empAcc = getCurrentLoginAccount();
+        string empName = getCurrentEmployeeName();
+        int releasedLocks = 0;
+
+        if (empPk > 0)
+        {
+            releasedLocks = sqlDataService.releaseAllVotingSessionLeasesForEmployee(empPk);
+        }
+
+        if (!string.IsNullOrWhiteSpace(empAcc) && !string.Equals(empAcc, "anonymous", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                await _sqlService.writeSystemLogAsync(
+                    logLevel: 3,
+                    sourceName: "webPortal.auth",
+                    objectName: "portalController.logout",
+                    durationMillisecond: 1,
+                    executionResult: $"員工帳號執行安全登出系統：{empName} ({empAcc})，已同步釋放 {releasedLocks} 個盲投議程獨立網頁佔用鎖定",
+                    operatorAccount: empAcc
+                );
+            }
+            catch
+            {
+                // 登出過程若記錄 Log 發生異常不阻斷登出動作
+            }
+        }
+
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         Response.Cookies.Delete("storyPointAuthSession");
         Response.Cookies.Delete("storyPointStrictAuthCookie");
+        Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+        Response.Headers["Pragma"] = "no-cache";
         return Redirect("/login?msg=" + Uri.EscapeDataString("您已安全登出系統，請重新輸入員工帳號與密碼登入。"));
+    }
+
+    // =========================================================================
+    // 1-2. 系統線上說明與操作畫面搜尋專頁 (/help)
+    // =========================================================================
+
+    [HttpGet("help")]
+    [AllowAnonymous]
+    public IActionResult onlineHelpPage([FromQuery] string? q = null, [FromQuery] string? cat = null, [FromQuery] string? topic = null)
+    {
+        bool isAuth = User?.Identity?.IsAuthenticated == true && getCurrentEmployeePk() > 0;
+        bool isAdmin = isAuth && isAdminUser();
+        string html = buildStandaloneOnlineHelpPageHtml(isAuth, isAdmin, q, cat, topic);
+        return Content(html, "text/html; charset=utf-8");
     }
 
     // =========================================================================
@@ -3845,6 +3909,13 @@ public class portalController : Controller
         .sp-modal-close-btn:hover {{ background:#dc2626; border-color:#f87171; }}
         .sp-modal-body {{ padding:20px; overflow-y:auto; flex:1; background:#ffffff; }}
         .sp-modal-footer {{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 20px; background:#f8fafc; border-top:1px solid #cbd5e1; flex-wrap:wrap; }}
+        .sp-page-action-bar {{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%); color:#ffffff; padding:11px 16px; border-radius:11px; margin-bottom:14px; box-shadow:0 6px 18px rgba(15,23,42,0.16); border:1px solid #3b82f6; }}
+        .sp-page-action-bar .sp-action-title {{ font-size:14.5px; font-weight:800; display:flex; align-items:center; gap:8px; color:#f8fafc; }}
+        .sp-page-action-bar .sp-action-group {{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; }}
+        .sp-drawer-toggle-btn {{ background:rgba(255,255,255,0.13); color:#f8fafc; border:1px solid rgba(255,255,255,0.32); padding:6px 12px; border-radius:7px; font-size:12.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all .15s; }}
+        .sp-drawer-toggle-btn:hover, .sp-drawer-toggle-btn.active-drawer {{ background:#2563eb; border-color:#93c5fd; color:#ffffff; }}
+        .sp-collapsible-drawer {{ transition:all .2s ease; margin-bottom:14px; }}
+        .sp-collapsible-drawer.collapsed {{ display:none !important; }}
         .sp-form-flash {{ animation:spFormPulse 1.3s ease; }}
         @keyframes spFormPulse {{ 0% {{ box-shadow:0 0 0 0 rgba(37,99,235,0.55); border-color:#2563eb; }} 50% {{ box-shadow:0 0 0 6px rgba(37,99,235,0.22); border-color:#1d4ed8; }} 100% {{ box-shadow:0 1px 3px rgba(0,0,0,0.04); }} }}
         .sp-toast-notice {{ position:fixed; bottom:24px; right:24px; z-index:100010; background:#0f172a; color:#ffffff; border-left:4px solid #3b82f6; padding:11px 16px; border-radius:10px; font-size:13px; font-weight:700; box-shadow:0 12px 28px rgba(15,23,42,0.3); opacity:0; transform:translateY(12px); transition:all .2s ease; pointer-events:none; }}
@@ -3879,6 +3950,47 @@ public class portalController : Controller
         .alert-ok {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
         .alert-err {{ background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; }}
         .alert-live {{ background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; display:none; }}
+        /* 線上說明與搜尋中心 (Online Help Center with Search & Operation Screens) 樣式 */
+        .help-hero-banner {{ background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 65%,#1d4ed8 100%); color:#ffffff; border-radius:14px; padding:22px 24px; margin-bottom:18px; box-shadow:0 10px 28px rgba(15,23,42,0.22); border:1px solid #3b82f6; }}
+        .help-search-grid {{ display:grid; grid-template-columns:1.6fr 0.7fr 0.7fr auto; gap:10px; margin-top:14px; align-items:center; }}
+        @media (max-width:960px) {{ .help-search-grid {{ grid-template-columns:1fr; }} }}
+        .help-search-input-wrap {{ position:relative; display:flex; align-items:center; }}
+        .help-search-input {{ width:100% !important; padding:11px 14px 11px 38px !important; border-radius:10px !important; border:2px solid #60a5fa !important; background:#ffffff !important; color:#0f172a !important; font-size:14.5px !important; font-weight:700 !important; box-shadow:0 4px 14px rgba(0,0,0,0.18); }}
+        .help-search-input:focus {{ outline:none; border-color:#f59e0b !important; box-shadow:0 0 0 3px rgba(245,158,11,0.35); }}
+        .help-quick-tag {{ display:inline-flex; align-items:center; gap:4px; padding:4px 11px; border-radius:999px; background:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.3); color:#f8fafc; font-size:12px; font-weight:700; cursor:pointer; transition:all .15s; user-select:none; }}
+        .help-quick-tag:hover, .help-quick-tag.active-tag {{ background:#f59e0b; border-color:#fbbf24; color:#0f172a; transform:translateY(-1px); }}
+        .help-layout-grid {{ display:grid; grid-template-columns:280px 1fr; gap:18px; align-items:start; }}
+        @media (max-width:1080px) {{ .help-layout-grid {{ grid-template-columns:1fr; }} }}
+        .help-toc-sidebar {{ position:sticky; top:62px; background:#ffffff; border:1px solid #cbd5e1; border-radius:12px; padding:14px; box-shadow:0 2px 8px rgba(15,23,42,0.05); max-height:calc(100vh - 84px); overflow-y:auto; }}
+        .help-toc-item {{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border-radius:8px; color:#1e293b; font-size:12.5px; font-weight:700; text-decoration:none; cursor:pointer; transition:all .15s; margin-bottom:3px; border-left:3px solid transparent; }}
+        .help-toc-item:hover {{ background:#eff6ff; color:#1d4ed8; border-left-color:#3b82f6; }}
+        .help-toc-item.active-toc {{ background:#dbeafe; color:#1e3a8a; border-left-color:#1d4ed8; font-weight:800; }}
+        .help-toc-item.toc-filtered-out {{ opacity:0.35; }}
+        .help-topic-card {{ background:#ffffff; border:1.5px solid #cbd5e1; border-radius:14px; padding:20px; margin-bottom:20px; box-shadow:0 4px 12px rgba(15,23,42,0.05); transition:border-color .2s, box-shadow .2s; scroll-margin-top:70px; }}
+        .help-topic-card:hover {{ border-color:#60a5fa; box-shadow:0 8px 22px rgba(37,99,235,0.1); }}
+        .help-topic-header {{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; border-bottom:2px solid #f1f5f9; padding-bottom:12px; margin-bottom:16px; }}
+        .help-topic-body-grid {{ display:grid; grid-template-columns:1fr 1.18fr; gap:18px; align-items:start; }}
+        @media (max-width:980px) {{ .help-topic-body-grid {{ grid-template-columns:1fr; }} }}
+        .help-step-list {{ display:flex; flex-direction:column; gap:10px; margin:10px 0; }}
+        .help-step-item {{ display:flex; align-items:flex-start; gap:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #2563eb; border-radius:9px; padding:10px 12px; font-size:13px; line-height:1.55; color:#1e293b; }}
+        .help-step-num {{ display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; background:#2563eb; color:#ffffff; font-size:12.5px; font-weight:800; flex-shrink:0; margin-top:1px; box-shadow:0 2px 6px rgba(37,99,235,0.3); }}
+        .help-browser-frame {{ border:2px solid #334155; border-radius:12px; overflow:hidden; background:#0f172a; box-shadow:0 10px 26px rgba(15,23,42,0.22); }}
+        .help-browser-bar {{ background:#1e293b; padding:7px 12px; display:flex; align-items:center; justify-content:space-between; gap:8px; border-bottom:1px solid #334155; color:#cbd5e1; font-size:11.5px; }}
+        .help-browser-dots {{ display:flex; gap:5px; align-items:center; }}
+        .help-browser-dot {{ width:10px; height:10px; border-radius:50%; display:inline-block; }}
+        .help-browser-url {{ flex:1; background:#0f172a; color:#93c5fd; padding:3px 10px; border-radius:6px; font-family:Consolas,monospace; font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border:1px solid #334155; }}
+        .help-screenshot-box {{ position:relative; background:#0f172a; cursor:zoom-in; overflow:hidden; border-bottom:1px solid #334155; }}
+        .help-screenshot-box img {{ width:100%; height:auto; display:block; transition:transform .25s ease; }}
+        .help-screenshot-box:hover img {{ transform:scale(1.015); }}
+        .help-screenshot-zoom-hint {{ position:absolute; right:10px; bottom:10px; background:rgba(15,23,42,0.88); color:#ffffff; border:1px solid #60a5fa; border-radius:8px; padding:5px 10px; font-size:11.5px; font-weight:700; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.4); }}
+        .help-callout-legend {{ background:#f8fafc; padding:10px 12px; display:grid; grid-template-columns:repeat(auto-fit,minmax(195px,1fr)); gap:7px; border-top:1px solid #cbd5e1; }}
+        .help-callout-chip {{ display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:#1e293b; background:#ffffff; border:1px solid #cbd5e1; border-radius:7px; padding:5px 8px; }}
+        .help-callout-pin {{ display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:#dc2626; color:#ffffff; font-size:11px; font-weight:800; flex-shrink:0; }}
+        .help-ui-diagram {{ background:#f1f5f9; padding:10px 12px; border-top:1px dashed #cbd5e1; font-size:12px; color:#334155; }}
+        mark.help-highlight {{ background:#fef08a; color:#854d0e; padding:1px 4px; border-radius:4px; font-weight:800; box-shadow:0 0 0 1px #facc15; }}
+        .help-faq-item {{ border:1px solid #cbd5e1; border-radius:10px; padding:12px 16px; margin-bottom:10px; background:#f8fafc; }}
+        .help-faq-q {{ font-size:14px; font-weight:800; color:#1e3a8a; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; }}
+        .help-faq-a {{ margin-top:8px; padding-top:8px; border-top:1px dashed #cbd5e1; font-size:13px; color:#334155; line-height:1.6; }}
     </style>
 </head>
 <body>
@@ -3890,8 +4002,9 @@ public class portalController : Controller
         <div class=""topbar-user"">
             <span>👤 {h(getCurrentEmployeeName())} ({h(getCurrentLoginAccount())}) ｜ 部門：{h(getCurrentDepartmentName())}</span>
             {roleBadge}
-            <button type=""button"" class=""btn btn-outline"" style=""padding:5px 12px;font-size:12px;background:#2563eb;color:#fff;border-color:#60a5fa;"" onclick=""switchTab('myAccount')"">🔑 修改我的帳密</button>
-            <a href=""/logout"" class=""btn btn-outline"" style=""padding:5px 12px;font-size:12px;background:#1e293b;color:#fff;border-color:#475569;"">登出切換帳號</a>
+            <button type=""button"" class=""btn btn-outline"" style=""padding:5px 12px;font-size:12px;background:#0d9488;color:#fff;border-color:#5eead4;font-weight:800;"" onclick=""switchTab('help')"" data-tip=""開啟線上說明與操作畫面搜尋手冊：提供全站關鍵字搜尋與實機操作畫面步驟圖解"">📖 線上說明</button>
+            <button type=""button"" class=""btn btn-outline"" style=""padding:5px 12px;font-size:12px;background:#2563eb;color:#fff;border-color:#60a5fa;"" onclick=""switchTab('myAccount')"" data-tip=""修改您個人的登入帳號與登入密碼"">🔑 修改我的帳密</button>
+            <a href=""/logout"" onclick=""return performSystemLogout(event)"" class=""btn btn-danger"" style=""padding:5px 12px;font-size:12.5px;background:#dc2626;color:#fff;border-color:#f87171;font-weight:800;"" data-tip=""安全登出系統：清除目前登入憑證、釋放盲投議程鎖定並返回員工登入頁面"">🚪 登出系統</a>
         </div>
     </div>
 
@@ -4052,6 +4165,11 @@ public class portalController : Controller
                             <span class=""menu-sub-icon"">📊</span>
                             <span class=""menu-sub-title"">4-2B. 員工 Excel 範本</span>
                         </a>
+                        <div class=""menu-sub-header"" style=""margin-top:6px;"">工作階段與安全登出</div>
+                        <a class=""menu-sub-item"" href=""/logout"" onclick=""return performSystemLogout(event)"" data-tip=""4-3. 安全登出系統：清除目前登入狀態、釋放盲投議程鎖定並返回登入畫面"" style=""color:#dc2626;font-weight:800;"">
+                            <span class=""menu-sub-icon"">🚪</span>
+                            <span class=""menu-sub-title"">4-3. 登出系統 (切換帳號)</span>
+                        </a>
                     </div>
                 </div>
 
@@ -4102,11 +4220,59 @@ public class portalController : Controller
                             <span class=""menu-sub-icon"">👤</span>
                             <span class=""menu-sub-title"">4-2. 個人帳號資訊</span>
                         </a>
+                        <div class=""menu-sub-header"" style=""margin-top:6px;"">工作階段與安全登出</div>
+                        <a class=""menu-sub-item"" href=""/logout"" onclick=""return performSystemLogout(event)"" data-tip=""4-3. 安全登出系統：清除目前登入狀態、釋放盲投議程鎖定並返回登入畫面"" style=""color:#dc2626;font-weight:800;"">
+                            <span class=""menu-sub-icon"">🚪</span>
+                            <span class=""menu-sub-title"">4-3. 登出系統 (切換帳號)</span>
+                        </a>
                     </div>
                 </div>");
         }
 
         sb.Append($@"
+                <!-- 主選單 6: 線上說明 (含搜尋與搭配操作畫面) -->
+                <div class=""menu-dropdown"" id=""menu-group-help"">
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "help" ? "active-group" : "")}"" data-tip=""系統線上說明與互動操作手冊：提供全站關鍵字搜尋、12 大章節搭配實機操作畫面與常見問題 FAQ"" onclick=""toggleDropdownMenu(event, 'menu-group-help')"">
+                        <span>📖 線上說明</span>
+                        <span class=""menu-caret"">▼</span>
+                    </button>
+                    <div class=""menu-sub-list"">
+                        <div class=""menu-sub-header"">線上說明搜尋與操作畫面圖解</div>
+                        <a class=""menu-sub-item {(currentTab == "help" ? "active" : "")}"" data-tab=""help"" data-tip=""6-1. 線上說明與全站搜尋中心：關鍵字即時搜尋、高亮反白與 12 幅實機操作畫面詳解"" onclick=""openHelpTopic('')"">
+                            <span class=""menu-sub-icon"">📖</span>
+                            <span class=""menu-sub-title"">6-1. 線上說明搜尋中心</span>
+                        </a>
+                        <a class=""menu-sub-item"" data-tip=""6-2. 登入驗證與個人帳密修改操作畫面圖解"" onclick=""openHelpTopic('topic-auth')"">
+                            <span class=""menu-sub-icon"">🔐</span>
+                            <span class=""menu-sub-title"">6-2. 登入與帳密操作畫面</span>
+                        </a>
+                        <a class=""menu-sub-item"" data-tip=""6-3. 多人即時盲投大廳 (待參與/參與中) 與獨立盲投網頁操作畫面圖解"" onclick=""openHelpTopic('topic-voting-lobby')"">
+                            <span class=""menu-sub-icon"">🃏</span>
+                            <span class=""menu-sub-title"">6-3. 多人盲投與獨立網頁畫面</span>
+                        </a>
+                        <a class=""menu-sub-item"" data-tip=""6-4. 盲投回合設定、撲克牌意義與共識規則操作畫面圖解"" onclick=""openHelpTopic('topic-round-setup')"">
+                            <span class=""menu-sub-icon"">⚙️</span>
+                            <span class=""menu-sub-title"">6-4. 回合設定與牌組畫面</span>
+                        </a>
+                        <a class=""menu-sub-item"" data-tip=""6-5. 工項管理、代表類型自動帶點、到期自動扣點寄信與右鍵 Modal 單筆編輯操作畫面圖解"" onclick=""openHelpTopic('topic-workitem')"">
+                            <span class=""menu-sub-icon"">📋</span>
+                            <span class=""menu-sub-title"">6-5. 工項與右鍵 Modal 畫面</span>
+                        </a>
+                        <a class=""menu-sub-item"" data-tip=""6-6. 員工/部門點數統計、表頭排序與欄位鎖定、CSV/Excel/HTML 報表匯出操作畫面圖解"" onclick=""openHelpTopic('topic-stats-export')"">
+                            <span class=""menu-sub-icon"">📊</span>
+                            <span class=""menu-sub-title"">6-6. 統計報表與表頭鎖定畫面</span>
+                        </a>
+                        <a class=""menu-sub-item"" data-tip=""6-7. 組織與部門主管樹狀階層、批次匯入、系統 Log 與 PowerShell GUI 操作畫面圖解"" onclick=""openHelpTopic('topic-org-employees')"">
+                            <span class=""menu-sub-icon"">👥</span>
+                            <span class=""menu-sub-title"">6-7. 組織主管與 Log 畫面</span>
+                        </a>
+                        <div class=""menu-sub-header"" style=""margin-top:6px;"">獨立視窗檢視</div>
+                        <a class=""menu-sub-item"" href=""/help"" target=""_blank"" data-tip=""6-8. 於瀏覽器新分頁開啟獨立線上說明與搜尋專頁 (/help)"">
+                            <span class=""menu-sub-icon"">🗗</span>
+                            <span class=""menu-sub-title"">6-8. 獨立視窗開啟說明 (/help)</span>
+                        </a>
+                    </div>
+                </div>
             </div>
 
             <div class=""current-location-bar"">
@@ -4121,6 +4287,7 @@ public class portalController : Controller
                     "myAccount" => "修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號與密碼",
                     "employees" => isAdmin ? "4-1. 員工列表與登入帳密管理：增刪修查、部門主管設定、樹狀階層與批次匯入" : "4-1. 修改我的個人登入帳號與密碼：檢視個人基本資料並修改帳密",
                     "logs" => "5-1. 系統與錯誤 Log 查詢中心 (tbLog)：查詢錯誤碼、行號、例外訊息與防崩潰保護紀錄",
+                    "help" => "6-1. 系統線上說明與操作畫面搜尋手冊：支援關鍵字全文搜尋與 12 幅實機操作畫面詳解",
                     _ => "1-1. 多人即時盲投大廳 (Planning Poker)：參與盲投出牌、同步翻牌揭曉與拍板定案"
                 })}"">
                     {(currentTab switch
@@ -4133,9 +4300,12 @@ public class portalController : Controller
                         "myAccount" => "🔑 修改我的帳密",
                         "employees" => isAdmin ? "👥 4-1. 員工與組織管理" : "🔑 4-1. 修改我的帳密",
                         "logs" => "🛡️ 5-1. 系統 Log 查詢",
+                        "help" => "📖 6-1. 線上說明與搜尋",
                         _ => "🃏 1-1. 即時盲投大廳"
                     })}
                 </span>
+                <button type=""button"" onclick=""switchTab('help')"" class=""btn btn-outline"" style=""padding:4px 9px;font-size:12px;background:#0d9488;color:#fff;border-color:#5eead4;font-weight:800;margin-left:4px;white-space:nowrap;"" data-tip=""開啟線上說明與操作畫面搜尋手冊"">📖 說明</button>
+                <a href=""/logout"" onclick=""return performSystemLogout(event)"" class=""btn btn-danger"" style=""padding:4px 10px;font-size:12px;background:#dc2626;color:#fff;border-color:#f87171;font-weight:800;margin-left:4px;white-space:nowrap;"" data-tip=""安全登出系統：清除目前登入狀態、釋放盲投議程鎖定並返回員工帳號登入頁面"">🚪 登出</a>
             </div>
         </div>
     </div>
@@ -4404,8 +4574,11 @@ public class portalController : Controller
         if (isAdmin)
         {
             sb.Append(@"
-                    <div style='border-top:1px solid #e2e8f0;padding-top:12px;margin-top:6px;'>
-                        <button type='button' class='btn btn-primary' style='width:100%;margin-bottom:8px;' onclick=""switchTab('roundSetup')"">
+                    <div style='border-top:1px solid #e2e8f0;padding-top:12px;margin-top:6px;display:flex;flex-direction:column;gap:6px;'>
+                        <button type='button' class='btn btn-primary' style='width:100%;background:#1d4ed8;' onclick=""openSessionSetupEditModal(0)"">
+                            ⚡ 快速發起盲投議程 (彈出 Modal)
+                        </button>
+                        <button type='button' class='btn btn-outline' style='width:100%;font-size:12px;padding:6px 10px;' onclick=""switchTab('roundSetup')"">
                             ⚙️ 開啟「設定盲投回合」完整設定精靈
                         </button>
                         <div style='font-size:12px;color:#64748b;text-align:center;'>可設定投什麼、誰可參與、最高/最低 Story Point 與共識規則</div>
@@ -4425,7 +4598,7 @@ public class portalController : Controller
                 </div>
                 <div style=""display:flex;align-items:center;gap:8px;flex-wrap:wrap;"">
                     <button type=""button"" class=""btn btn-outline"" style=""padding:6px 12px;font-size:12.5px;"" onclick=""refreshVotingSessionsNow(this)"" title=""重新整理並檢查是否有屬於您的新投票議程"">🔄 重新整理議程清單</button>
-                    {(isAdmin ? "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;' onclick=\"switchTab('roundSetup')\">➕ 發起新盲投議程</button>" : "")}
+                    {(isAdmin ? "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;background:#1d4ed8;' onclick=\"openSessionSetupEditModal(0)\">⚡ 快速發起盲投 (Modal)</button><button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12.5px;' onclick=\"switchTab('roundSetup')\">⚙️ 回合設定精靈</button>" : "")}
                 </div>
             </div>
 
@@ -5119,6 +5292,24 @@ public class portalController : Controller
             string nextWiCode = "WI-2026-" + (itemTable.Rows.Count + 1).ToString("D3");
 
             sb.Append($@"
+            <div class='sp-page-action-bar'>
+                <div class='sp-action-title'>
+                    <span>⚡ 工項管理快捷指令列</span>
+                    <span style='font-size:12px;font-weight:600;color:#93c5fd;'>（表格直接置頂呈現｜支援左鍵單擊選取列、雙擊列彈出 Modal 編輯、右鍵快捷選單）</span>
+                </div>
+                <div class='sp-action-group'>
+                    <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;background:#2563eb;border-color:#60a5fa;' onclick=""openWorkItemEditModal('','{nextWiCode}','','0','','todo','','project','{defaultStartIso}','{defaultEndIso}','2026-Q4 Sprint 2',false,'')"">➕ 新增工項與指派 (彈出 Modal)</button>
+                    <button type='button' class='btn btn-success' style='padding:6px 12px;font-size:12.5px;' onclick=""openWorkItemAssignModal('','','','','')"">👥 指派員工與分攤配額 (Modal)</button>
+                    <button type='button' class='sp-drawer-toggle-btn' onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','workitems')"">🗂️ 新增工項類型 (Modal)</button>
+                    <button type='button' class='sp-drawer-toggle-btn' onclick=""toggleAdminDrawer('drawer-wi-import', this)"">📤 批次匯入工項面板 ▾</button>
+                    <button type='button' class='sp-drawer-toggle-btn' onclick=""toggleAdminDrawer('drawer-wi-full', this)"">🛠️ 完整管理與類型面板 ▾</button>
+                    <form method='post' action='/workitem/checkExpired' style='margin:0;display:inline;'>
+                        <button type='submit' class='btn btn-warning' style='padding:6px 12px;font-size:12.5px;white-space:nowrap;' title='立即執行到期工項自動轉態、扣減 Story Point 並寄信給部門主管與 HR'>⚡ 立即檢核到期工項</button>
+                    </form>
+                </div>
+            </div>
+
+            <div id='drawer-wi-full' class='sp-collapsible-drawer collapsed'>
             <div class='card' style='border:2px solid #93c5fd;background:linear-gradient(135deg,#eff6ff 0%,#ffffff 100%);margin-bottom:18px;'>
                 <div style='display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;'>
                     <div style='flex:1;min-width:280px;'>
@@ -5308,8 +5499,10 @@ public class portalController : Controller
                     </form>
                 </div>
             </div>
+            </div>
 
             <!-- 批次匯入工項與 Story Point 面板 (提供 CSV 與 Excel 兩種匯入選項) -->
+            <div id='drawer-wi-import' class='sp-collapsible-drawer collapsed'>
             <div class='card' style='border:1px solid #93c5fd;background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);'>
                 <div class='card-title'>
                     <span>📤 批次匯入工項與 Story Point（支援工項類型「專案/維運/顧問時數/自訂類型」與起訖時間，提供 CSV、Excel 兩種匯入選項）</span>
@@ -5336,6 +5529,7 @@ public class portalController : Controller
                         </div>
                     </div>
                 </form>
+            </div>
             </div>");
         }
 
@@ -5356,7 +5550,7 @@ public class portalController : Controller
             <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                 <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
                     <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
-                        💡 <strong>操作提示：</strong>直接於表格內任一筆紀錄<strong>按滑鼠右鍵</strong>，即可選擇該筆紀錄並開啟右鍵選單執行<strong>單筆編輯 (彈出 Modal 視窗)、修改指派員工 (彈出 Modal 視窗)、發起盲投、刪除、以此欄值篩選</strong>等操作，不用下拉選單、也不會捲動網頁！
+                        💡 <strong>操作提示：</strong>於表格內任一筆紀錄<strong>滑鼠雙擊 (Double-Click)</strong> 直接彈出單筆編輯 Modal（含負責員工與配額指派）；<strong>按滑鼠右鍵</strong>開啟快捷選單執行<strong>單筆編輯、修改指派員工、發起盲投、刪除、以此欄值篩選</strong>（選取列後亦可按 <code>Enter</code> / <code>F2</code> 編輯）！
                     </div>
                     <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick='resetWorkItemFilter()'>🔄 清除全部篩選條件</button>
                 </div>
@@ -5548,6 +5742,20 @@ public class portalController : Controller
         sb.Append($"<div id='pane-types' class='tab-pane {(currentTab == "types" ? "active" : "")}'>");
         if (isAdmin)
         {
+            sb.Append(@"
+            <div class='sp-page-action-bar'>
+                <div class='sp-action-title'>
+                    <span>⚡ 工項代表類型與工項類型快捷指令列</span>
+                    <span style='font-size:12px;font-weight:600;color:#93c5fd;'>（表格直接置頂呈現｜支援左鍵單擊選取、雙擊列彈出 Modal 編輯、右鍵選單發起盲投）</span>
+                </div>
+                <div class='sp-action-group'>
+                    <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;background:#2563eb;border-color:#60a5fa;' onclick=""openWorkItemTypeEditModal('','','','後端與資料庫','','','project')"">➕ 新增工項代表類型 (彈出 Modal)</button>
+                    <button type='button' class='sp-drawer-toggle-btn' onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','types')"">🗂️ 新增工項類型 (Modal)</button>
+                    <button type='button' class='sp-drawer-toggle-btn' onclick=""toggleAdminDrawer('drawer-types-full', this)"">🛠️ 展開/收合工項類型與代表類型管理面板 ▾</button>
+                </div>
+            </div>
+            <div id='drawer-types-full' class='sp-collapsible-drawer collapsed'>");
+
             renderWorkItemKindCrudCard("types");
 
             sb.Append($@"
@@ -5596,6 +5804,7 @@ public class portalController : Controller
                         </div>
                     </div>
                 </form>
+            </div>
             </div>");
         }
 
@@ -5609,7 +5818,7 @@ public class portalController : Controller
             <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                 <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
                     <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
-                        💡 <strong>操作提示：</strong>直接於代表類型列<strong>按滑鼠右鍵</strong>即可選擇該筆紀錄並開啟右鍵選單執行<strong>單筆編輯 (彈出 Modal 視窗)、發起盲投、刪除、以此欄值篩選</strong>，不用下拉選單、也不會捲動網頁！
+                        💡 <strong>操作提示：</strong>於代表類型列<strong>滑鼠雙擊 (Double-Click)</strong> 直接彈出單筆編輯 Modal；<strong>按滑鼠右鍵</strong>開啟快捷選單執行<strong>單筆編輯、發起盲投、刪除、以此欄值篩選</strong>（選取列後亦可按 <code>Enter</code> / <code>F2</code> 編輯）！
                     </div>
                     <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick='resetWorkItemTypeFilter()'>🔄 清除全部篩選條件</button>
                 </div>
@@ -5862,6 +6071,22 @@ public class portalController : Controller
             }
             string nextEmpCode = "EMP" + (maxEmpNum + 1).ToString("D3");
             sb.Append($@"
+            <div class='sp-page-action-bar'>
+                <div class='sp-action-title'>
+                    <span>⚡ 組織、部門與員工帳號管理快捷指令列</span>
+                    <span style='font-size:12px;font-weight:600;color:#93c5fd;'>（表格直接置頂呈現｜支援左鍵單擊選取、雙擊列彈出 Modal 編輯、右鍵快捷選單）</span>
+                </div>
+                <div class='sp-action-group'>
+                    <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;background:#2563eb;border-color:#60a5fa;' onclick=""openEmployeeEditModal('','{nextEmpCode}','','','user@company.com','資深工程師','1','participant','true','false','')"">➕ 新增員工帳號 (彈出 Modal)</button>
+                    <button type='button' class='btn btn-success' style='padding:6px 12px;font-size:12.5px;' onclick=""openDepartmentEditModal('','','','','')"">🏢 新增/修改部門 (Modal)</button>
+                    <button type='button' class='sp-drawer-toggle-btn' onclick=""switchTab('myAccount')"">🔑 修改我本人的帳密</button>
+                    <button type='button' class='sp-drawer-toggle-btn' onclick=""toggleAdminDrawer('drawer-emp-tree', this)"">🌳 組織與部門主管樹狀階層檢視 ▾</button>
+                    <button type='button' class='sp-drawer-toggle-btn' onclick=""toggleAdminDrawer('drawer-emp-import', this)"">📤 批次載入員工面板 ▾</button>
+                    <button type='button' class='sp-drawer-toggle-btn' onclick=""toggleAdminDrawer('drawer-emp-full', this)"">🛠️ 完整新增員工/部門面板 ▾</button>
+                </div>
+            </div>
+
+            <div id='drawer-emp-full' class='sp-collapsible-drawer collapsed'>
             <div class='grid-2'>
                 <div class='card'>
                     <div class='card-title'>
@@ -6029,8 +6254,10 @@ public class portalController : Controller
                     </form>
                 </div>
             </div>
+            </div>
 
             <!-- 批次載入員工資料與登入帳密面板 (提供 CSV、Excel 兩種匯入選項，以及 CSV、Excel、互動 HTML 三種匯出選項) -->
+            <div id='drawer-emp-import' class='sp-collapsible-drawer collapsed'>
             <div class='card' style='border:1px solid #93c5fd;background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);'>
                 <div class='card-title'>
                     <span>📤 批次載入員工資料與登入帳密（匯入支援 CSV、Excel 兩種選項；匯出支援 CSV、Excel、互動 HTML 三種選項）</span>
@@ -6082,6 +6309,7 @@ public class portalController : Controller
                         <button type='submit' class='btn btn-primary' style='min-width:240px;'>🚀 執行批次載入員工資料</button>
                     </div>
                 </form>
+            </div>
             </div>");
 
             // 建立視覺化「🌳 員工與部門主管樹狀遞迴階層檢視 (Recursive Tree Hierarchy & 通知信路由)」卡片
@@ -6091,6 +6319,7 @@ public class portalController : Controller
             int deptMgrTotalCount = treeOrderedRows.Count(r => r.Table.Columns.Contains("isDepartmentManager") && r["isDepartmentManager"] != DBNull.Value && Convert.ToBoolean(r["isDepartmentManager"]));
 
             sb.Append($@"
+            <div id='drawer-emp-tree' class='sp-collapsible-drawer collapsed'>
             <div class='card' style='border:2px solid #86efac;background:linear-gradient(180deg,#f0fdf4 0%,#ffffff 100%);'>
                 <div class='card-title'>
                     <span>🌳 組織與部門主管樹狀遞迴階層檢視（支援同部門多位主管 ＆ 到期通知信路由）</span>
@@ -6100,7 +6329,7 @@ public class portalController : Controller
                     </div>
                 </div>
                 <div style='font-size:13px;color:#334155;margin-bottom:12px;line-height:1.6;'>
-                    系統於 <code>storyPoint.tbEmployee</code> 以 <strong><code>isDepartmentManager</code> (是否為部門主管，同一個部門可設定多位主管)</strong> 與 <strong><code>managerEmployeePk</code> (上一層主管自我參照外鍵)</strong> 建立樹狀遞迴階層。當任何同仁負責之工項達到迄時，<code>storyPoint.spProcessExpiredWorkItem</code> 會通知<strong>該同仁所屬部門之所有部門主管</strong>與<strong>人資主管</strong>（點擊任一節點可直接載入上方表單編修）：
+                    系統於 <code>storyPoint.tbEmployee</code> 以 <strong><code>isDepartmentManager</code> (是否為部門主管，同一個部門可設定多位主管)</strong> 與 <strong><code>managerEmployeePk</code> (上一層主管自我參照外鍵)</strong> 建立樹狀遞迴階層。當任何同仁負責之工項達到迄時，<code>storyPoint.spProcessExpiredWorkItem</code> 會通知<strong>該同仁所屬部門之所有部門主管</strong>與<strong>人資主管</strong>（點擊任一節點可直接彈出單筆編輯 Modal）：
                 </div>
                 <div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;'>");
 
@@ -6153,8 +6382,9 @@ public class portalController : Controller
                         <div style='background:{headerBg};padding:10px 12px;border-bottom:1px solid #e2e8f0;cursor:pointer;' onclick=""loadEmpToForm({mPk},'{escapeJsString(mCode)}','{escapeJsString(mName)}','{escapeJsString(mAcc)}','{escapeJsString(mMail)}','{escapeJsString(mTitle)}',{mDeptPk},'{escapeJsString(mRole)}','{(mActive ? "true" : "false")}','true','{mParentPk}')"">
                             <div style='display:flex;justify-content:space-between;align-items:center;gap:6px;'>
                                 <span style='font-size:11.5px;font-weight:800;color:#1e293b;'>{roleTag} ｜ {h(mDeptName)}</span>
-                                <span style='font-size:11px;color:#475569;'>{(string.IsNullOrEmpty(mParentName) || mParentName == "頂層根節點(無上層)" ? "上一層主管：無 (頂層)" : $"上一層主管：{h(mParentName)}")}</span>
+                                <button type='button' class='btn btn-outline' style='padding:2px 7px;font-size:11px;' onclick=""event.stopPropagation(); openDepartmentEditModal('{mDeptPk}','{escapeJsString(mDeptCode)}','{escapeJsString(mDeptName)}','{escapeJsString(mName)}','');"">🏢 修改部門</button>
                             </div>
+                            <div style='font-size:11px;color:#475569;margin-top:2px;'>{(string.IsNullOrEmpty(mParentName) || mParentName == "頂層根節點(無上層)" ? "上一層主管：無 (頂層)" : $"上一層主管：{h(mParentName)}")}</div>
                             <div style='font-size:15px;font-weight:800;color:#0f172a;margin-top:3px;'>👑 {h(mName)} <span style='font-size:12px;font-weight:600;color:#475569;'>({h(mCode)} / {h(mAcc)})</span></div>
                             <div style='font-size:11.5px;color:#334155;margin-top:2px;'>📧 {h(mMail)} ｜ {h(mTitle)}</div>
                         </div>
@@ -6191,18 +6421,26 @@ public class portalController : Controller
             sb.Append(@"
                 </div>
             </div>
+            </div>
 
             <div class='card'>
                 <div class='card-title'>
-                    <span>👥 員工列表、部門主管註記、上一層主管、登入帳號與權限角色一覽表（支援增、刪、修、查與停用）</span>
-                    <span id='empFilterCountLabel' style='font-size:13px;color:#2563eb;font-weight:700;'>共 " + empTable.Rows.Count + @" 位員工</span>
+                    <div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>
+                        <span>👥 員工列表、部門主管註記、上一層主管、登入帳號與權限角色一覽表（支援增、刪、修、查與停用）</span>
+                    </div>
+                    <div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>
+                        <span id='empFilterCountLabel' style='font-size:13px;color:#2563eb;font-weight:700;'>共 " + empTable.Rows.Count + @" 位員工</span>
+                        <a href='/export/report?type=employee&format=csv' class='btn btn-outline' style='padding:5px 10px;font-size:12px;'>📥 匯出 CSV</a>
+                        <a href='/export/report?type=employee&format=excel' class='btn btn-outline' style='padding:5px 10px;font-size:12px;'>📊 匯出 Excel</a>
+                        <a href='/export/report?type=employee&format=html' class='btn btn-primary' style='padding:5px 10px;font-size:12px;'>🌐 匯出互動 HTML</a>
+                    </div>
                 </div>
 
                 <!-- 員工帳號多維度查詢與篩選列 -->
                 <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                     <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
                         <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
-                            💡 <strong>操作提示：</strong>直接於員工列表任一筆紀錄<strong>按滑鼠右鍵</strong>，即可選擇該筆紀錄並開啟右鍵選單執行<strong>單筆編輯資料/密碼 (彈出 Modal 視窗)、啟用/停用、刪除、檢視指派工項</strong>，不用下拉選單、也不會捲動網頁！
+                            💡 <strong>操作提示：</strong>於員工列表任一筆紀錄<strong>滑鼠雙擊 (Double-Click)</strong> 直接彈出單筆編輯 Modal；<strong>按滑鼠右鍵</strong>開啟快捷選單執行<strong>單筆編輯資料/密碼、啟用/停用、刪除、檢視指派工項</strong>（選取列後亦可按 <code>Enter</code> / <code>F2</code> 編輯）！
                         </div>
                         <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick='resetEmployeeFilter()'>🔄 清除全部篩選條件</button>
                     </div>
@@ -6354,7 +6592,10 @@ public class portalController : Controller
             <div class='card' style='max-width:860px;margin:0 auto 18px auto;border:2px solid #93c5fd;'>
                 <div class='card-title'>
                     <span>🔑 修改我的個人登入帳號與密碼（每個人皆可修改自己的帳/密）</span>
-                    <span class='badge badge-user'>👤 員工編號：{h(getCurrentEmployeeCode())}</span>
+                    <div style='display:flex;gap:8px;align-items:center;'>
+                        <span class='badge badge-user'>👤 員工編號：{h(getCurrentEmployeeCode())}</span>
+                        <a href='/logout' onclick='return performSystemLogout(event)' class='btn btn-danger' style='padding:4px 10px;font-size:12px;' data-tip='安全登出系統並返回員工登入頁面'>🚪 登出系統</a>
+                    </div>
                 </div>
                 <form method='post' action='/account/updateSelf' onsubmit='return validateSelfCredentialForm(this)'>
                     <input type='hidden' name='returnTab' value='employees' />
@@ -6419,6 +6660,7 @@ public class portalController : Controller
                     <div style='display:flex;gap:8px;align-items:center;'>
                         <span class='badge {(isAdmin ? "badge-admin" : "badge-user")}'>{(isAdmin ? "👑 管理者 (Admin)" : "🙋 參與者 (Participant)")}</span>
                         <span class='badge badge-user'>員工編號：{h(getCurrentEmployeeCode())}</span>
+                        <a href='/logout' onclick='return performSystemLogout(event)' class='btn btn-danger' style='padding:4px 10px;font-size:12px;' data-tip='安全登出系統並返回員工登入頁面'>🚪 登出系統</a>
                     </div>
                 </div>
                 <div style='background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#1e3a8a;'>
@@ -6718,6 +6960,18 @@ public class portalController : Controller
         }
         sb.Append("</div>"); // end Tab 7 (logs)
 
+        // =========================================================================
+        // Tab 8: 系統線上說明與操作畫面搜尋手冊 (#pane-help)
+        // =========================================================================
+        sb.Append($"<div id='pane-help' class='tab-pane {(currentTab == "help" ? "active" : "")}'>");
+        sb.Append(buildOnlineHelpCenterInnerHtml(
+            isAdmin,
+            isStandalonePage: false,
+            initialSearchQuery: Request.Query["q"].ToString(),
+            initialCategory: Request.Query["cat"].ToString(),
+            initialTopic: Request.Query["topic"].ToString()));
+        sb.Append("</div>"); // end Tab 8 (help)
+
         // 建立前端設定回合所需的既有議程設定與工項指派對應 JSON
         var sessionMetaJsonList = new List<string>();
         foreach (DataRow sRow in sessionTable.Rows)
@@ -6817,6 +7071,10 @@ public class portalController : Controller
                 const directMyAccBtn = document.querySelector('#menu-group-myaccount .menu-main-btn');
                 if (directMyAccBtn) directMyAccBtn.classList.add('active-group');
             }
+            if (tabName === 'help') {
+                const directHelpBtn = document.querySelector('#menu-group-help .menu-main-btn');
+                if (directHelpBtn) directHelpBtn.classList.add('active-group');
+            }
 
             const titleMap = {
                 'voting': '🃏 1-1. 即時盲投大廳',
@@ -6827,7 +7085,8 @@ public class portalController : Controller
                 'stats': isViewerAdmin ? '📊 3-1. 員工與部門統計' : '📊 3-1. 我的分數統計',
                 'myAccount': '🔑 修改我的帳密',
                 'employees': isViewerAdmin ? '👥 4-1. 員工與組織管理' : '🔑 4-1. 修改我的帳密',
-                'logs': '🛡️ 5-1. 系統 Log 查詢'
+                'logs': '🛡️ 5-1. 系統 Log 查詢',
+                'help': '📖 6-1. 線上說明與搜尋'
             };
             const tipMap = {
                 'voting': '1-1. 多人即時盲投大廳 (Planning Poker)：參與盲投出牌、同步翻牌揭曉與拍板定案',
@@ -6838,7 +7097,8 @@ public class portalController : Controller
                 'stats': isViewerAdmin ? '3-1. 員工與部門總 Story Point 統計：查詢員工身上的點數與所屬部門的總 Story Point 數' : '3-1. 我的個人總 Story Point 分數統計：查看個人工項數量與各狀態 Story Point 分數',
                 'myAccount': '修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號與密碼',
                 'employees': isViewerAdmin ? '4-1. 員工列表與登入帳密管理：增刪修查、部門主管設定、樹狀階層與批次匯入' : '4-1. 修改我的個人登入帳號與密碼：檢視個人基本資料並修改帳密',
-                'logs': '5-1. 系統與錯誤 Log 查詢中心 (tbLog)：查詢錯誤碼、行號、例外訊息與防崩潰保護紀錄'
+                'logs': '5-1. 系統與錯誤 Log 查詢中心 (tbLog)：查詢錯誤碼、行號、例外訊息與防崩潰保護紀錄',
+                'help': '6-1. 系統線上說明與操作畫面搜尋手冊：支援關鍵字全文搜尋與 12 幅實機操作畫面詳解'
             };
             const pill = document.getElementById('currentMenuTitlePill');
             if (pill && titleMap[tabName]) {
@@ -6851,6 +7111,19 @@ public class portalController : Controller
 
             history.replaceState(null, '', '/?tab=' + tabName);
             setTimeout(refreshAllTableStickyOffsets, 30);
+        }
+
+        function openHelpTopic(topicId, searchKw) {
+            switchTab('help');
+            if (typeof resetOnlineHelpFilter === 'function' && !searchKw) {
+                resetOnlineHelpFilter();
+            }
+            if (searchKw && typeof applyHelpQuickKeyword === 'function') {
+                applyHelpQuickKeyword(searchKw);
+            }
+            if (topicId && typeof jumpToHelpTopic === 'function') {
+                setTimeout(function () { jumpToHelpTopic(topicId); }, 60);
+            }
         }
 
         // 投票議程邊欄水平收合/展開（放大右側出牌桌面）
@@ -7809,6 +8082,26 @@ public class portalController : Controller
 
         window.addEventListener('resize', refreshAllTableStickyOffsets);
 
+        // 系統安全登出處理函數：清除前端盲投 Session 鎖定、廣播登出通知並導向 /logout
+        function performSystemLogout(evt) {
+            try {
+                const keysToRemove = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    if (k && k.indexOf('sp_active_session_lock_') === 0) {
+                        keysToRemove.push(k);
+                    }
+                }
+                keysToRemove.forEach(k => localStorage.removeItem(k));
+                if (typeof BroadcastChannel !== 'undefined') {
+                    const ch = new BroadcastChannel('sp_voting_session_guard');
+                    ch.postMessage({ type: 'USER_LOGGED_OUT', timestamp: new Date().toLocaleTimeString() });
+                    ch.close();
+                }
+            } catch (e) { }
+            return true;
+        }
+
         // =====================================================================
         // 全域表格紀錄「滑鼠右鍵選單 (Context Menu)」與「單筆紀錄編輯 Modal 視窗」引擎
         // 支援：
@@ -7920,9 +8213,23 @@ public class portalController : Controller
             }
         }
 
-        function openWorkItemEditModal(pk, code, title, typePk, pt, status, reason, kind, startIso, endIso, sprintName, forceExpired) {
+        function toggleAdminDrawer(drawerId, btnEl) {
+            const drawer = document.getElementById(drawerId);
+            if (!drawer) return;
+            const isNowCollapsed = drawer.classList.toggle('collapsed');
+            if (btnEl) {
+                btnEl.classList.toggle('active-drawer', !isNowCollapsed);
+            }
+            if (!isNowCollapsed) {
+                showToastNotice('📂 已展開管理面板');
+            }
+        }
+
+        function openWorkItemEditModal(pk, code, title, typePk, pt, status, reason, kind, startIso, endIso, sprintName, forceExpired, assigneeSummary) {
+            const isCreate = !pk || String(pk).trim() === '' || String(pk) === '0';
             const kindOptionsHtml = document.getElementById('wiKindSelect') ? document.getElementById('wiKindSelect').innerHTML : '<option value=""project"">🚀 專案 (project)</option><option value=""maintenance"">🛠️ 維運 (maintenance)</option><option value=""consulting"">💼 顧問時數 (consulting)</option>';
             const typeOptionsHtml = document.getElementById('wiTypeSelect') ? document.getElementById('wiTypeSelect').innerHTML : '<option value=""0"">-- 不使用代表類型 --</option>';
+            const empOptionsHtml = document.getElementById('assignEmployeeSelect') ? document.getElementById('assignEmployeeSelect').innerHTML : '';
             const curSprint = sprintName || (document.getElementById('wiSprint') ? document.getElementById('wiSprint').value : '2026-Q4 Sprint 2');
             let resolvedStart = startIso || formatLocalIsoMinute(new Date());
             let resolvedEnd = endIso || formatLocalIsoMinute(new Date(Date.now() + 24 * 3600 * 1000));
@@ -7974,7 +8281,7 @@ public class portalController : Controller
                         </div>
                         <div>
                             <label>工項標題</label>
-                            <input type=""text"" name=""itemTitle"" id=""modalWiTitle"" value=""${escapeModalHtml(title)}"" required />
+                            <input type=""text"" name=""itemTitle"" id=""modalWiTitle"" value=""${escapeModalHtml(title)}"" placeholder=""請輸入工項標題"" required />
                         </div>
                     </div>
                     <div class=""form-row"">
@@ -8036,15 +8343,35 @@ public class portalController : Controller
                             <input type=""text"" name=""adjustmentReason"" id=""modalWiReason"" value=""${escapeModalHtml(reason)}"" placeholder=""選填：說明為何與代表類型不同"" />
                         </div>
                     </div>
+                    <div style=""background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;margin-bottom:12px;"">
+                        <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px;"">
+                            <span style=""font-size:12.5px;font-weight:800;color:#1e3a8a;"">👥 負責員工與點數分攤配額指派（可於儲存工項時一次完成指派）</span>
+                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""padding:3px 9px;font-size:11.5px;"" onclick=""openWorkItemAssignModal('${escapeModalHtml(pk)}','${escapeModalHtml(code)}','${escapeModalHtml(title)}','${escapeModalHtml(pt)}','${escapeModalHtml(assigneeSummary || '')}')"">🔄 切換至多人分攤配額設定 Modal</button>` : ''}
+                        </div>
+                        ${assigneeSummary ? `<div style=""font-size:12px;color:#334155;margin-bottom:8px;"">📌 目前已指派負責員工：<strong>${escapeModalHtml(assigneeSummary)}</strong></div>` : ''}
+                        <div class=""form-row"" style=""margin-bottom:0;"">
+                            <div style=""grid-column: span 2;"">
+                                <label>${isCreate ? '指派主要負責員工（選填）' : '新增或更新主要負責員工（選填，留空則保持原指派）'}</label>
+                                <select name=""primaryEmployeePk"" id=""modalWiPrimaryEmp"">
+                                    <option value=""0"">${isCreate ? '-- 暫不指派（或稍後指派） --' : '-- 保持原指派不變 --'}</option>
+                                    ${empOptionsHtml}
+                                </select>
+                            </div>
+                            <div>
+                                <label>分攤比例 (%)</label>
+                                <input type=""number"" step=""5"" min=""5"" max=""100"" name=""primaryAllocationPercent"" value=""100"" />
+                            </div>
+                        </div>
+                    </div>
                     <div class=""sp-modal-footer"">
                         <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
-                        <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆工項修改</button>
+                        <button type=""submit"" class=""btn btn-primary"">${isCreate ? '➕ 建立工項並完成指派' : '💾 儲存此筆工項與指派修改'}</button>
                     </div>
                 </form>
             `;
             openRecordModalShell(
-                '✏️ 單筆編輯工項紀錄',
-                `<span class=""badge badge-user"">${escapeModalHtml(code)} - ${escapeModalHtml(title)}</span>`,
+                isCreate ? '➕ 新增工項與指派負責員工' : '✏️ 單筆編輯工項紀錄与負責員工指派',
+                `<span class=""badge badge-user"">${escapeModalHtml(code)}${title ? ' - ' + escapeModalHtml(title) : ' (新增工項)'}</span>`,
                 bodyHtml
             );
             const kSel = document.getElementById('modalWiKind');
@@ -8110,13 +8437,25 @@ public class portalController : Controller
 
         function openWorkItemAssignModal(wiPk, wiCode, wiTitle, wiPt, currentAssigneeText) {
             const empOptionsHtml = document.getElementById('assignEmployeeSelect') ? document.getElementById('assignEmployeeSelect').innerHTML : '';
+            const wiSelectOptionsHtml = document.getElementById('assignWorkItemSelect') ? document.getElementById('assignWorkItemSelect').innerHTML : '';
+            const hasFixedWi = wiPk && String(wiPk).trim() !== '' && String(wiPk) !== '0';
+            const targetWiSectionHtml = hasFixedWi
+                ? `<input type=""hidden"" name=""workItemPk"" value=""${escapeModalHtml(wiPk)}"" />
+                   <div style=""background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#1e3a8a;"">
+                       <div><strong>📌 目標工項：</strong>${escapeModalHtml(wiCode)} - ${escapeModalHtml(wiTitle)} （總點數：<strong>${escapeModalHtml(wiPt || '0')} pt</strong>）</div>
+                       <div style=""margin-top:4px;""><strong>👥 目前負責員工與配額：</strong>${escapeModalHtml(currentAssigneeText || '尚未指派')}</div>
+                   </div>`
+                : `<div class=""form-row"">
+                       <div style=""grid-column: span 3;"">
+                           <label>選擇要指派或調整分攤配額的目標工項</label>
+                           <select name=""workItemPk"" id=""modalAssignWiSelect"" required style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">
+                               ${wiSelectOptionsHtml}
+                           </select>
+                       </div>
+                   </div>`;
             const bodyHtml = `
                 <form method=""post"" action=""/workitem/assign"">
-                    <input type=""hidden"" name=""workItemPk"" value=""${escapeModalHtml(wiPk)}"" />
-                    <div style=""background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#1e3a8a;"">
-                        <div><strong>📌 目標工項：</strong>${escapeModalHtml(wiCode)} - ${escapeModalHtml(wiTitle)} （總點數：<strong>${escapeModalHtml(wiPt || '0')} pt</strong>）</div>
-                        <div style=""margin-top:4px;""><strong>👥 目前負責員工與配額：</strong>${escapeModalHtml(currentAssigneeText || '尚未指派')}</div>
-                    </div>
+                    ${targetWiSectionHtml}
                     <div class=""form-row"">
                         <div style=""grid-column: span 3;"">
                             <label>選擇要賦予或調整配額的員工</label>
@@ -8156,13 +8495,14 @@ public class portalController : Controller
                 </form>
             `;
             openRecordModalShell(
-                '👥 單筆修改工項之賦予員工與分攤配額',
-                `<span class=""badge badge-user"">${escapeModalHtml(wiCode)}</span>`,
+                '👥 修改工項之賦予員工與分攤配額',
+                `<span class=""badge badge-user"">${hasFixedWi ? escapeModalHtml(wiCode) : '選擇工項指派'}</span>`,
                 bodyHtml
             );
         }
 
         function openWorkItemKindEditModal(pk, code, name, icon, color, sortOrder, desc, tabSuffix) {
+            const isCreate = !pk || String(pk).trim() === '' || String(pk) === '0';
             const sfx = tabSuffix || 'workitems';
             const bodyHtml = `
                 <form method=""post"" action=""/workitem/kind/save"">
@@ -8171,11 +8511,11 @@ public class portalController : Controller
                     <div class=""form-row"">
                         <div>
                             <label>類型代碼 (kindCode)</label>
-                            <input type=""text"" name=""kindCode"" value=""${escapeModalHtml(code)}"" required />
+                            <input type=""text"" name=""kindCode"" value=""${escapeModalHtml(code)}"" placeholder=""例如：research"" required />
                         </div>
                         <div>
                             <label>類型顯示名稱 (kindName)</label>
-                            <input type=""text"" name=""kindName"" value=""${escapeModalHtml(name)}"" required />
+                            <input type=""text"" name=""kindName"" value=""${escapeModalHtml(name)}"" placeholder=""例如：研發創新"" required />
                         </div>
                         <div>
                             <label>圖示 Emoji</label>
@@ -8206,13 +8546,13 @@ public class portalController : Controller
                     </div>
                     <div class=""sp-modal-footer"">
                         <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
-                        <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆工項類型修改</button>
+                        <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆工項類型</button>
                     </div>
                 </form>
             `;
             openRecordModalShell(
-                '✏️ 單筆編輯工項類型 (tbWorkItemKind)',
-                `<span class=""badge badge-user"">${escapeModalHtml(icon || '📌')} ${escapeModalHtml(name)} (${escapeModalHtml(code)})</span>`,
+                isCreate ? '➕ 新增工項類型 (tbWorkItemKind)' : '✏️ 單筆編輯工項類型 (tbWorkItemKind)',
+                `<span class=""badge badge-user"">${escapeModalHtml(icon || '📌')} ${name ? escapeModalHtml(name) + ' (' + escapeModalHtml(code) + ')' : '新工項類型'}</span>`,
                 bodyHtml
             );
             const cSel = document.getElementById('modalWikColor');
@@ -8220,6 +8560,7 @@ public class portalController : Controller
         }
 
         function openWorkItemTypeEditModal(pk, code, name, cat, desc, pt, kind) {
+            const isCreate = !pk || String(pk).trim() === '' || String(pk) === '0';
             const kindOptionsHtml = document.getElementById('typeKind')
                 ? document.getElementById('typeKind').innerHTML
                 : (document.getElementById('wiKindSelect') ? document.getElementById('wiKindSelect').innerHTML : '<option value=""project"">🚀 專案 (project)</option>');
@@ -8229,7 +8570,7 @@ public class portalController : Controller
                     <div class=""form-row"">
                         <div>
                             <label>代表類型代碼</label>
-                            <input type=""text"" name=""typeCode"" value=""${escapeModalHtml(code)}"" required />
+                            <input type=""text"" name=""typeCode"" value=""${escapeModalHtml(code)}"" placeholder=""例如：TYPE_API_DEV"" required />
                         </div>
                         <div>
                             <label>預設工項類型</label>
@@ -8239,7 +8580,7 @@ public class portalController : Controller
                         </div>
                         <div>
                             <label>代表類型名稱</label>
-                            <input type=""text"" name=""typeName"" value=""${escapeModalHtml(name)}"" required />
+                            <input type=""text"" name=""typeName"" value=""${escapeModalHtml(name)}"" placeholder=""例如：標準 RESTful API 開發"" required />
                         </div>
                     </div>
                     <div class=""form-row"">
@@ -8253,7 +8594,7 @@ public class portalController : Controller
                         </div>
                         <div>
                             <label>類型規模與複雜度說明</label>
-                            <input type=""text"" name=""description"" value=""${escapeModalHtml(desc || '')}"" />
+                            <input type=""text"" name=""description"" value=""${escapeModalHtml(desc || '')}"" placeholder=""描述開發複雜度與驗收標準"" />
                         </div>
                     </div>
                     <div style=""margin:8px 0 14px 0;"">
@@ -8264,13 +8605,13 @@ public class portalController : Controller
                     </div>
                     <div class=""sp-modal-footer"">
                         <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
-                        <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆代表類型修改</button>
+                        <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆代表類型</button>
                     </div>
                 </form>
             `;
             openRecordModalShell(
-                '✏️ 單筆編輯工項代表類型 (tbWorkItemType)',
-                `<span class=""badge badge-user"">${escapeModalHtml(code)} - ${escapeModalHtml(name)}</span>`,
+                isCreate ? '➕ 新增工項代表類型 (tbWorkItemType)' : '✏️ 單筆編輯工項代表類型 (tbWorkItemType)',
+                `<span class=""badge badge-user"">${code ? escapeModalHtml(code) + ' - ' + escapeModalHtml(name) : '新代表類型'}</span>`,
                 bodyHtml
             );
             const kSel = document.getElementById('modalTypeKind');
@@ -8278,6 +8619,7 @@ public class portalController : Controller
         }
 
         function openEmployeeEditModal(pk, code, name, acc, mail, title, deptPk, role, isActiveStr, isDeptMgrStr, mgrPkStr) {
+            const isCreate = !pk || String(pk).trim() === '' || String(pk) === '0';
             const deptOptionsHtml = document.getElementById('empDept') ? document.getElementById('empDept').innerHTML : '<option value=""1"">預設部門</option>';
             const mgrOptionsHtml = document.getElementById('empManagerPk') ? document.getElementById('empManagerPk').innerHTML : '<option value="""">🌳 自動依所屬部門之部門主管掛載</option>';
             const bodyHtml = `
@@ -8290,7 +8632,7 @@ public class portalController : Controller
                         </div>
                         <div>
                             <label>員工姓名</label>
-                            <input type=""text"" name=""employeeName"" value=""${escapeModalHtml(name)}"" required />
+                            <input type=""text"" name=""employeeName"" value=""${escapeModalHtml(name)}"" placeholder=""例如：林志豪 (Leo)"" required />
                         </div>
                         <div>
                             <label>所屬部門</label>
@@ -8302,12 +8644,12 @@ public class portalController : Controller
                     <div class=""form-row"">
                         <div>
                             <label>登入帳號</label>
-                            <input type=""text"" name=""loginAccount"" value=""${escapeModalHtml(acc)}"" required />
+                            <input type=""text"" name=""loginAccount"" value=""${escapeModalHtml(acc)}"" placeholder=""例如：leo.lin"" required />
                         </div>
                         <div>
-                            <label>重設登入密碼（留空代表不更改密碼）</label>
+                            <label>${isCreate ? '登入密碼（未填預設 pass123）' : '重設登入密碼（留空代表不更改密碼）'}</label>
                             <div style=""position:relative;display:flex;align-items:center;"">
-                                <input type=""password"" name=""plainPassword"" id=""modalEmpPwd"" placeholder=""留空代表不更改密碼"" style=""padding-right:64px;"" />
+                                <input type=""password"" name=""plainPassword"" id=""modalEmpPwd"" placeholder=""${isCreate ? '未填預設 pass123' : '留空代表不更改密碼'}"" style=""padding-right:64px;"" />
                                 <button type=""button"" id=""btnToggleModalEmpPwd"" onclick=""togglePasswordVisibilityById('modalEmpPwd','btnToggleModalEmpPwd')"" style=""position:absolute;right:6px;background:#e2e8f0;border:none;border-radius:5px;padding:3px 7px;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer;"">👁️ 顯示</button>
                             </div>
                         </div>
@@ -8353,13 +8695,13 @@ public class portalController : Controller
                     </div>
                     <div class=""sp-modal-footer"">
                         <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
-                        <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆員工與登入帳密修改</button>
+                        <button type=""submit"" class=""btn btn-primary"">${isCreate ? '➕ 新增儲存員工與登入帳密' : '💾 儲存此筆員工與登入帳密修改'}</button>
                     </div>
                 </form>
             `;
             openRecordModalShell(
-                '✏️ 單筆編輯員工資料、部門主管與樹狀階層',
-                `<span class=""badge badge-user"">${escapeModalHtml(code)} - ${escapeModalHtml(name)} (${escapeModalHtml(acc)})</span>`,
+                isCreate ? '➕ 新增員工帳號、部門主管與樹狀階層' : '✏️ 單筆編輯員工資料、部門主管與樹狀階層',
+                `<span class=""badge badge-user"">${escapeModalHtml(code)}${name ? ' - ' + escapeModalHtml(name) + ' (' + escapeModalHtml(acc) + ')' : ' (新員工帳號)'}</span>`,
                 bodyHtml
             );
             if (document.getElementById('modalEmpDept') && deptPk) document.getElementById('modalEmpDept').value = String(deptPk);
@@ -8370,17 +8712,18 @@ public class portalController : Controller
         }
 
         function openDepartmentEditModal(deptPk, deptCode, deptName, mgrName, deptNote) {
+            const isCreate = !deptPk || String(deptPk).trim() === '' || String(deptPk) === '0';
             const bodyHtml = `
                 <form method=""post"" action=""/employee/department/save"">
                     <input type=""hidden"" name=""departmentPk"" value=""${escapeModalHtml(deptPk)}"" />
                     <div class=""form-row"">
                         <div>
                             <label>部門代碼 (departmentCode)</label>
-                            <input type=""text"" name=""departmentCode"" value=""${escapeModalHtml(deptCode)}"" required />
+                            <input type=""text"" name=""departmentCode"" value=""${escapeModalHtml(deptCode)}"" placeholder=""例如：DEPT_DATA_AI"" required />
                         </div>
                         <div>
                             <label>部門名稱 (departmentName)</label>
-                            <input type=""text"" name=""departmentName"" value=""${escapeModalHtml(deptName)}"" required />
+                            <input type=""text"" name=""departmentName"" value=""${escapeModalHtml(deptName)}"" placeholder=""例如：數據科學與 AI 研發部"" required />
                         </div>
                         <div>
                             <label>部門主管姓名</label>
@@ -8400,10 +8743,35 @@ public class portalController : Controller
                 </form>
             `;
             openRecordModalShell(
-                '🏢 單筆編輯部門資料 (tbDepartment)',
-                `<span class=""badge badge-user"">${escapeModalHtml(deptCode)} - ${escapeModalHtml(deptName)}</span>`,
+                isCreate ? '🏢 新增組織部門 (tbDepartment)' : '🏢 單筆編輯部門資料 (tbDepartment)',
+                `<span class=""badge badge-user"">${deptCode ? escapeModalHtml(deptCode) + ' - ' + escapeModalHtml(deptName) : '新部門'}</span>`,
                 bodyHtml
             );
+        }
+
+        function applyModalSessionPreset(minPt, maxPt, spread, sec, rule) {
+            if (document.getElementById('modalSetupMinPt')) document.getElementById('modalSetupMinPt').value = minPt;
+            if (document.getElementById('modalSetupMaxPt')) document.getElementById('modalSetupMaxPt').value = maxPt;
+            if (document.getElementById('modalSetupSpread')) document.getElementById('modalSetupSpread').value = spread;
+            if (document.getElementById('modalSetupTimeSec')) document.getElementById('modalSetupTimeSec').value = sec;
+            if (document.getElementById('modalSetupConsensusRule') && rule) document.getElementById('modalSetupConsensusRule').value = rule;
+        }
+
+        function toggleAllModalSessionParticipants(checkedState) {
+            document.querySelectorAll('#spRecordEditModal input[name=""participantPks""]').forEach(cb => {
+                cb.checked = checkedState;
+            });
+        }
+
+        function onModalSessionTargetOptionChange() {
+            const tKind = document.getElementById('modalSetupTargetKind')?.value || 'workItemType';
+            const sel = document.getElementById(tKind === 'workItem' ? 'modalSetupWorkItemPk' : 'modalSetupWorkItemTypePk');
+            const titleInput = document.getElementById('modalSetupTitleInput');
+            if (!sel || !titleInput) return;
+            const opt = sel.options[sel.selectedIndex];
+            if (opt && (!titleInput.value || titleInput.value.indexOf('【') === 0)) {
+                titleInput.value = (tKind === 'workItem' ? '【工項點數盲投】' : '【代表類型點數盲投】') + opt.text.split('(')[0].trim();
+            }
         }
 
         function openSessionSetupEditModal(sessionPk, targetKindOverride, targetPkOverride) {
@@ -8417,10 +8785,12 @@ public class portalController : Controller
             const deckOptionsHtml = document.getElementById('setupCardDeckPk') ? document.getElementById('setupCardDeckPk').innerHTML : '<option value=""1"">標準 Fibonacci 牌組</option>';
 
             let defaultTitle = cfg ? (cfg.title || '') : '';
-            if (!defaultTitle && targetPkOverride) {
+            if (!defaultTitle) {
                 const srcSel = document.getElementById(tKind === 'workItem' ? 'setupWorkItemPk' : 'setupWorkItemTypePk');
                 if (srcSel) {
-                    const matchOpt = Array.from(srcSel.options).find(o => String(o.value) === String(targetPkOverride));
+                    const matchOpt = targetPkOverride
+                        ? Array.from(srcSel.options).find(o => String(o.value) === String(targetPkOverride))
+                        : srcSel.options[0];
                     if (matchOpt) {
                         defaultTitle = (tKind === 'workItem' ? '【工項點數盲投】' : '【代表類型點數盲投】') + matchOpt.text.split('(')[0].trim();
                     }
@@ -8446,28 +8816,36 @@ public class portalController : Controller
             const bodyHtml = `
                 <form method=""post"" action=""/voting/session/create"">
                     <input type=""hidden"" name=""votingSessionPk"" value=""${sPk > 0 ? sPk : ''}"" />
-                    <input type=""hidden"" name=""submitMode"" value=""saveStaySetup"" />
+                    <input type=""hidden"" name=""submitMode"" id=""modalSetupSubmitMode"" value=""saveAndGoVoting"" />
+                    <div style=""display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 12px;margin-bottom:12px;"">
+                        <span style=""font-size:12.5px;font-weight:800;color:#1e3a8a;"">⚡ 一鍵套用盲投規則範本：</span>
+                        <div style=""display:flex;gap:6px;flex-wrap:wrap;"">
+                            <button type=""button"" class=""btn btn-outline"" style=""padding:4px 9px;font-size:12px;"" onclick=""applyModalSessionPreset(0.5, 21, 5, 180, 'nearestFibonacci')"">📐 標準 Scrum (0.5~21pt / 180秒)</button>
+                            <button type=""button"" class=""btn btn-outline"" style=""padding:4px 9px;font-size:12px;"" onclick=""applyModalSessionPreset(1, 13, 3, 60, 'nearestFibonacci')"">🚀 快速閃電 (1~13pt / 60秒)</button>
+                            <button type=""button"" class=""btn btn-outline"" style=""padding:4px 9px;font-size:12px;"" onclick=""applyModalSessionPreset(0.5, 34, 3, 300, 'trimmedMean')"">🏛️ 嚴謹評審 (0.5~34pt / 300秒)</button>
+                        </div>
+                    </div>
                     <div class=""form-row"">
                         <div>
                             <label>估算目標類型</label>
-                            <select name=""targetKind"" id=""modalSetupTargetKind"" onchange=""const isWi=this.value==='workItem'; document.getElementById('modalSetupTypeBox').style.display=isWi?'none':''; document.getElementById('modalSetupWiBox').style.display=isWi?'':'none';"">
+                            <select name=""targetKind"" id=""modalSetupTargetKind"" onchange=""const isWi=this.value==='workItem'; document.getElementById('modalSetupTypeBox').style.display=isWi?'none':''; document.getElementById('modalSetupWiBox').style.display=isWi?'':'none'; onModalSessionTargetOptionChange();"">
                                 <option value=""workItemType"" ${tKind === 'workItemType' ? 'selected' : ''}>🏷️ 工項代表類型 (tbWorkItemType)</option>
                                 <option value=""workItem"" ${tKind === 'workItem' ? 'selected' : ''}>📋 實際工項 (tbWorkItem)</option>
                             </select>
                         </div>
                         <div id=""modalSetupTypeBox"" style=""grid-column: span 2; ${tKind === 'workItem' ? 'display:none;' : ''}"">
                             <label>選擇工項代表類型</label>
-                            <select name=""workItemTypePk"" id=""modalSetupWorkItemTypePk"">${typeOptionsHtml}</select>
+                            <select name=""workItemTypePk"" id=""modalSetupWorkItemTypePk"" onchange=""onModalSessionTargetOptionChange()"">${typeOptionsHtml}</select>
                         </div>
                         <div id=""modalSetupWiBox"" style=""grid-column: span 2; ${tKind === 'workItem' ? '' : 'display:none;'}"">
                             <label>選擇實際工項</label>
-                            <select name=""workItemPk"" id=""modalSetupWorkItemPk"">${wiOptionsHtml}</select>
+                            <select name=""workItemPk"" id=""modalSetupWorkItemPk"" onchange=""onModalSessionTargetOptionChange()"">${wiOptionsHtml}</select>
                         </div>
                     </div>
                     <div class=""form-row"">
                         <div style=""grid-column: span 2;"">
                             <label>盲投議程標題</label>
-                            <input type=""text"" name=""sessionTitle"" value=""${escapeModalHtml(defaultTitle)}"" placeholder=""請輸入議程標題"" required />
+                            <input type=""text"" name=""sessionTitle"" id=""modalSetupTitleInput"" value=""${escapeModalHtml(defaultTitle)}"" placeholder=""請輸入議程標題"" required />
                         </div>
                         <div>
                             <label>使用撲克牌組</label>
@@ -8477,15 +8855,15 @@ public class portalController : Controller
                     <div class=""form-row"">
                         <div>
                             <label>最小點數下限 (minStoryPoint)</label>
-                            <input type=""number"" step=""0.5"" name=""minStoryPoint"" value=""${cfg ? cfg.minStoryPoint : 0.5}"" />
+                            <input type=""number"" step=""0.5"" name=""minStoryPoint"" id=""modalSetupMinPt"" value=""${cfg ? cfg.minStoryPoint : 0.5}"" />
                         </div>
                         <div>
                             <label>最大點數上限 (maxStoryPoint)</label>
-                            <input type=""number"" step=""0.5"" name=""maxStoryPoint"" value=""${cfg ? cfg.maxStoryPoint : 21}"" />
+                            <input type=""number"" step=""0.5"" name=""maxStoryPoint"" id=""modalSetupMaxPt"" value=""${cfg ? cfg.maxStoryPoint : 21}"" />
                         </div>
                         <div>
                             <label>分歧容許差距 (maxAllowedSpread)</label>
-                            <input type=""number"" step=""0.5"" name=""maxAllowedSpread"" value=""${cfg ? cfg.maxAllowedSpread : 5}"" />
+                            <input type=""number"" step=""0.5"" name=""maxAllowedSpread"" id=""modalSetupSpread"" value=""${cfg ? cfg.maxAllowedSpread : 5}"" />
                         </div>
                     </div>
                     <div class=""form-row"">
@@ -8500,7 +8878,7 @@ public class portalController : Controller
                         </div>
                         <div>
                             <label>回合思考時限 (秒)</label>
-                            <input type=""number"" step=""30"" name=""roundTimeLimitSecond"" value=""${cfg ? cfg.roundTimeLimitSecond : 180}"" />
+                            <input type=""number"" step=""30"" name=""roundTimeLimitSecond"" id=""modalSetupTimeSec"" value=""${cfg ? cfg.roundTimeLimitSecond : 180}"" />
                         </div>
                         <div>
                             <label>備註/目標提示</label>
@@ -8508,20 +8886,29 @@ public class portalController : Controller
                         </div>
                     </div>
                     <div style=""margin:8px 0;"">
-                        <label style=""font-weight:700;margin-bottom:6px;display:block;"">👥 受邀參與盲投成員</label>
+                        <div style=""display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"">
+                            <label style=""font-weight:700;margin:0;"">👥 受邀參與盲投成員</label>
+                            <div style=""display:flex;gap:6px;"">
+                                <button type=""button"" class=""btn btn-outline"" style=""padding:2px 8px;font-size:11.5px;"" onclick=""toggleAllModalSessionParticipants(true)"">✅ 全選成員</button>
+                                <button type=""button"" class=""btn btn-outline"" style=""padding:2px 8px;font-size:11.5px;"" onclick=""toggleAllModalSessionParticipants(false)"">⬜ 全不選</button>
+                            </div>
+                        </div>
                         <div style=""display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow-y:auto;padding:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;"">
                             ${participantHtml}
                         </div>
                     </div>
                     <div class=""sp-modal-footer"">
                         <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
-                        <button type=""submit"" class=""btn btn-primary"">${sPk > 0 ? '💾 儲存更新此筆議程回合設定' : '🚀 建立並啟動多人盲投議程'}</button>
+                        <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
+                            <button type=""submit"" class=""btn btn-outline"" onclick=""document.getElementById('modalSetupSubmitMode').value='saveStaySetup'"">💾 僅儲存於回合設定</button>
+                            <button type=""submit"" class=""btn btn-primary"" onclick=""document.getElementById('modalSetupSubmitMode').value='saveAndGoVoting'"">${sPk > 0 ? '🚀 儲存更新並前往盲投大廳' : '🚀 建立議程並立即前往盲投大廳'}</button>
+                        </div>
                     </div>
                 </form>
             `;
             openRecordModalShell(
-                sPk > 0 ? '🃏 單筆編輯盲投議程回合設定' : '🃏 發起多人盲投估算議程',
-                `<span class=""badge badge-user"">${sPk > 0 ? 'Session #' + sPk : '新議程'}</span>`,
+                sPk > 0 ? '🃏 單筆編輯盲投議程回合設定' : '🃏 快速發起多人盲投估算議程',
+                `<span class=""badge badge-user"">${sPk > 0 ? 'Session #' + sPk : '新盲投議程'}</span>`,
                 bodyHtml
             );
             if (document.getElementById('modalSetupWorkItemTypePk') && wiTypePk) document.getElementById('modalSetupWorkItemTypePk').value = String(wiTypePk);
@@ -8555,6 +8942,85 @@ public class portalController : Controller
             openRecordModalShell('🔍 單筆紀錄完整明細檢視', '<span class=""badge badge-user"">唯讀檢視</span>', bodyHtml);
         }
 
+        function triggerDefaultRowEditOrView(tr) {
+            if (!tr) return;
+            const rowKind = tr.getAttribute('data-row-kind') || 'generic';
+            if (isCurrentUserAdmin) {
+                if (rowKind === 'workitem') {
+                    openWorkItemEditModal(
+                        tr.getAttribute('data-wi-pk') || '',
+                        tr.getAttribute('data-wi-code') || '',
+                        tr.getAttribute('data-wi-title') || '',
+                        tr.getAttribute('data-wi-type-pk') || '0',
+                        tr.getAttribute('data-wi-pt') || '',
+                        tr.getAttribute('data-wi-status') || 'todo',
+                        tr.getAttribute('data-wi-reason') || '',
+                        tr.getAttribute('data-wi-kind') || 'project',
+                        tr.getAttribute('data-wi-start') || '',
+                        tr.getAttribute('data-wi-end') || '',
+                        tr.getAttribute('data-wi-sprint') || '',
+                        false,
+                        tr.getAttribute('data-wi-assignee') || ''
+                    );
+                    return;
+                } else if (rowKind === 'workitemKind') {
+                    openWorkItemKindEditModal(
+                        tr.getAttribute('data-kind-pk') || '',
+                        tr.getAttribute('data-kind-code') || '',
+                        tr.getAttribute('data-kind-name') || '',
+                        tr.getAttribute('data-kind-icon') || '📌',
+                        tr.getAttribute('data-kind-color') || 'blue',
+                        tr.getAttribute('data-kind-sort') || '40',
+                        tr.getAttribute('data-kind-desc') || '',
+                        tr.getAttribute('data-tab-suffix') || 'workitems'
+                    );
+                    return;
+                } else if (rowKind === 'workitemType') {
+                    openWorkItemTypeEditModal(
+                        tr.getAttribute('data-type-pk') || '',
+                        tr.getAttribute('data-type-code') || '',
+                        tr.getAttribute('data-type-name') || '',
+                        tr.getAttribute('data-type-cat') || '',
+                        tr.getAttribute('data-type-desc') || '',
+                        tr.getAttribute('data-type-pt') || '',
+                        tr.getAttribute('data-type-kind') || 'project'
+                    );
+                    return;
+                } else if (rowKind === 'employee') {
+                    openEmployeeEditModal(
+                        tr.getAttribute('data-emp-pk') || '',
+                        tr.getAttribute('data-emp-code') || '',
+                        tr.getAttribute('data-emp-name') || '',
+                        tr.getAttribute('data-emp-acc') || '',
+                        tr.getAttribute('data-emp-mail') || '',
+                        tr.getAttribute('data-emp-title') || '',
+                        tr.getAttribute('data-emp-dept-pk') || '1',
+                        tr.getAttribute('data-emp-role') || 'participant',
+                        tr.getAttribute('data-emp-active') || 'true',
+                        tr.getAttribute('data-emp-ismgr') || 'false',
+                        tr.getAttribute('data-emp-mgrpk') || ''
+                    );
+                    return;
+                } else if (rowKind === 'department') {
+                    openDepartmentEditModal(
+                        tr.getAttribute('data-dept-pk') || '',
+                        tr.getAttribute('data-dept-code') || '',
+                        tr.getAttribute('data-dept-name') || '',
+                        tr.getAttribute('data-dept-mgr') || '',
+                        tr.getAttribute('data-dept-note') || ''
+                    );
+                    return;
+                } else if (rowKind === 'session') {
+                    const sPk = tr.getAttribute('data-session-pk') || '';
+                    if (sPk) {
+                        openSessionSetupEditModal(sPk);
+                        return;
+                    }
+                }
+            }
+            openRowDetailReadonlyModal(tr);
+        }
+
         function initTableRowContextMenu() {
             if (!spContextMenuEl) {
                 spContextMenuEl = document.createElement('div');
@@ -8577,21 +9043,58 @@ public class portalController : Controller
                 openRowContextMenuForRow(tr, td, evt.clientX, evt.clientY);
             });
 
+            // 滑鼠左鍵單擊選取列，並關閉已開啟的右鍵選單
             document.addEventListener('click', function (evt) {
+                const rawTarget = evt.target;
+                const target = (rawTarget && rawTarget.nodeType === 1) ? rawTarget : (rawTarget ? rawTarget.parentElement : null);
                 if (spContextMenuEl && spContextMenuEl.classList.contains('visible')) {
-                    const rawTarget = evt.target;
-                    const target = (rawTarget && rawTarget.nodeType === 1) ? rawTarget : (rawTarget ? rawTarget.parentElement : null);
                     if (target && target.closest && target.closest('#spRowContextMenu')) {
                         return;
                     }
                     closeRowContextMenu();
                 }
+                if (target && target.closest && !target.closest('input, textarea, select, button, a, #spRecordEditModal')) {
+                    const tr = target.closest('table tbody tr');
+                    if (tr) {
+                        if (spActiveContextRow && spActiveContextRow !== tr) {
+                            spActiveContextRow.classList.remove('sp-context-active-row');
+                        }
+                        spActiveContextRow = tr;
+                        tr.classList.add('sp-context-active-row');
+                    }
+                }
+            });
+
+            // 滑鼠左鍵雙擊 (Double-Click) 表格列直接彈出單筆編輯或明細 Modal 視窗
+            document.addEventListener('dblclick', function (evt) {
+                const rawTarget = evt.target;
+                const target = (rawTarget && rawTarget.nodeType === 1) ? rawTarget : (rawTarget ? rawTarget.parentElement : null);
+                if (!target || !target.closest) return;
+                if (target.closest('input, textarea, select, button, a, #spRecordEditModal, #spRowContextMenu')) return;
+                const tr = target.closest('table tbody tr');
+                if (!tr) return;
+                if (spActiveContextRow && spActiveContextRow !== tr) {
+                    spActiveContextRow.classList.remove('sp-context-active-row');
+                }
+                spActiveContextRow = tr;
+                tr.classList.add('sp-context-active-row');
+                triggerDefaultRowEditOrView(tr);
             });
 
             document.addEventListener('keydown', function (evt) {
                 if (evt.key === 'Escape') {
                     closeRowContextMenu();
                     closeRecordEditModal();
+                    return;
+                }
+                const activeEl = document.activeElement;
+                const isEditingInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT' || activeEl.isContentEditable);
+                const isModalOpen = spRecordEditModalOverlayEl && spRecordEditModalOverlayEl.classList.contains('visible');
+                if (!isEditingInput && !isModalOpen && spActiveContextRow && document.body.contains(spActiveContextRow)) {
+                    if (evt.key === 'Enter' || evt.key === 'F2') {
+                        evt.preventDefault();
+                        triggerDefaultRowEditOrView(spActiveContextRow);
+                    }
                 }
             });
 
@@ -8673,11 +9176,11 @@ public class portalController : Controller
                 spContextMenuEl.appendChild(headerDiv);
 
                 if (isCurrentUserAdmin) {
-                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此工項設定（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
-                        openWorkItemEditModal(wiPk, wiCode, wiTitle, wiTypePk, wiPt, wiStatus, wiReason, wiKind, wiStart, wiEnd, wiSprint, false);
+                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此工項設定與負責員工指派（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
+                        openWorkItemEditModal(wiPk, wiCode, wiTitle, wiTypePk, wiPt, wiStatus, wiReason, wiKind, wiStart, wiEnd, wiSprint, false, wiAssignee);
                     }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('👥', '修改此工項之賦予員工與配額（彈出 Modal 視窗）', 'Modal 指派', '', function () {
+                    spContextMenuEl.appendChild(createCtxMenuItem('👥', '修改此工項之多人分攤配額（彈出 Modal 視窗）', 'Modal 指派', '', function () {
                         openWorkItemAssignModal(wiPk, wiCode, wiTitle, wiPt, wiAssignee);
                     }));
 
@@ -8686,7 +9189,7 @@ public class portalController : Controller
                     }));
 
                     spContextMenuEl.appendChild(createCtxMenuItem('⏰', '設為已到期並彈出 Modal 編輯（測試自動扣點寄信）', '到期測試', '', function () {
-                        openWorkItemEditModal(wiPk, wiCode, wiTitle, wiTypePk, wiPt, wiStatus, wiReason, wiKind, wiStart, wiEnd, wiSprint, true);
+                        openWorkItemEditModal(wiPk, wiCode, wiTitle, wiTypePk, wiPt, wiStatus, wiReason, wiKind, wiStart, wiEnd, wiSprint, true, wiAssignee);
                     }));
 
                     spContextMenuEl.appendChild(createCtxDivider());
@@ -10434,8 +10937,14 @@ public class portalController : Controller
             <button type=""button"" onclick=""refreshStandaloneSessionNow(this)"" class=""btn btn-outline"" style=""padding:6px 12px;font-size:12.5px;background:rgba(255,255,255,0.15);color:#fff;border-color:rgba(255,255,255,0.35);"">
                 🔄 重新整理本頁
             </button>
+            <a href=""/help?topic=topic-voting-standalone"" target=""_blank"" class=""btn btn-outline"" style=""padding:6px 12px;font-size:12.5px;background:#0d9488;color:#fff;border-color:#5eead4;font-weight:800;"" title=""開啟系統線上說明與獨立盲投操作畫面手冊"">
+                📖 線上說明
+            </a>
             <a href=""/voting/session/leave?sessionPk=" + activeSessionPk + @"&tabInstanceId=" + h(assignedTabInstanceId) + @"&redirectLobby=true"" onclick=""onExplicitLeaveSessionClick()"" class=""btn btn-danger"" style=""padding:6px 12px;font-size:12.5px;"">
                 🚪 結束參與並返回大廳 (移回待參與)
+            </a>
+            <a href=""/logout"" onclick=""onExplicitLeaveSessionClick()"" class=""btn btn-outline"" style=""padding:6px 12px;font-size:12.5px;background:#dc2626;color:#fff;border-color:#f87171;font-weight:800;"" title=""安全登出目前帳號、釋放本議程鎖定並返回員工登入頁面"">
+                🚪 登出系統
             </a>
         </div>
     </header>
@@ -10622,7 +11131,13 @@ public class portalController : Controller
                         <input type=""hidden"" name=""cardValue"" id=""inputCardLabel"" value=""{(string.IsNullOrEmpty(myVotedCardLabel) ? "5" : h(myVotedCardLabel))}"" />
 
                         <div class=""form-row"">
-                            <label>1. 點選撲克牌面（依本議程允許點數範圍 {sessionMinPt:0.##} ~ {sessionMaxPt:0.##} pt 過濾）：<span class=""caption-help-icon"" data-tip=""點擊下方撲克牌選擇您預估的 Story Point。翻牌前所有人僅看得到您『已蓋牌』而看不到點數；在主持人翻牌前您可隨時改牌重投。"">ⓘ</span></label>
+                            <div style=""display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:6px;"">
+                                <label style=""margin:0;"">1. 點選撲克牌面（依本議程允許點數範圍 {sessionMinPt:0.##} ~ {sessionMaxPt:0.##} pt 過濾｜<strong>雙擊牌面可直接出牌</strong>）：<span class=""caption-help-icon"" data-tip=""點擊下方撲克牌選擇您預估的 Story Point，或直接雙擊撲克牌一鍵送出。翻牌前所有人僅看得到您『已蓋牌』而看不到點數；在主持人翻牌前您可隨時改牌重投。"">ⓘ</span></label>
+                                <label style=""display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#1e40af;background:#eff6ff;border:1px solid #93c5fd;padding:3px 9px;border-radius:999px;cursor:pointer;margin:0;"">
+                                    <input type=""checkbox"" id=""cbQuickSingleClickCast"" style=""width:auto;margin:0;"" {(!isCommentMandatory ? "checked" : "")} />
+                                    <span>⚡ 點選牌面即直接送出盲投</span>
+                                </label>
+                            </div>
                             <div class=""deck-bar"">");
 
                 foreach (string rawToken in deckCards)
@@ -10640,7 +11155,7 @@ public class portalController : Controller
                     bool isSelected = (!string.IsNullOrEmpty(myVotedCardLabel) && myVotedCardLabel == cLabel)
                                       || (string.IsNullOrEmpty(myVotedCardLabel) && cLabel == "5");
                     sb.Append($@"
-                                <button type=""button"" class=""deck-card-btn {(isSelected ? "selected" : "")}"" onclick=""selectCard('{h(cLabel)}', this)"" title=""{h(cLabel)}：{h(cMeaning)}"">
+                                <button type=""button"" class=""deck-card-btn {(isSelected ? "selected" : "")}"" onclick=""selectCard('{h(cLabel)}', this, false)"" ondblclick=""selectCard('{h(cLabel)}', this, true)"" title=""{h(cLabel)}：{h(cMeaning)}（單擊選牌／雙擊直接送出）"">
                                     {h(cLabel)}
                                     <span>{h(cMeaning)}</span>
                                 </button>");
@@ -10712,16 +11227,19 @@ public class portalController : Controller
                         <button type=""submit"" name=""submitAction"" value=""nextRound"" class=""btn btn-primary"" onclick=""document.getElementById('controlActionType').value='nextRound'"">
                             🔄 2. 開啟下一回合重新盲投 (Next Round)
                         </button>
+                        <button type=""submit"" name=""submitAction"" value=""finalize"" class=""btn btn-success"" onclick=""document.getElementById('inputFinalStoryPoint').value='{suggestedFinalPt.ToString(CultureInfo.InvariantCulture)}'; document.getElementById('controlActionType').value='finalize';"">
+                            🏆 3. 一鍵採用推薦點數 ({suggestedFinalPt:0.##} pt) 拍板定案
+                        </button>
                     </div>
                     <div style=""background:#f8fafc;border:1px solid #cbd5e1;padding:12px;border-radius:8px;"">
                         <div style=""font-weight:700;margin-bottom:8px;color:#15803d;"">
-                            ✅ 3. 達成共識拍板定案（自動回寫工項之最終 Story Point｜依「{h(consensusRuleText)}」推薦值：<strong>{suggestedFinalPt:0.##} pt</strong>）
+                            ✅ 達成共識拍板定案（自動回寫工項之最終 Story Point｜依「{h(consensusRuleText)}」推薦值：<strong>{suggestedFinalPt:0.##} pt</strong>）
                         </div>
                         {(hasFinalizedPoint ? $@"<div style=""background:#dcfce7;border:1px solid #86efac;color:#166534;padding:9px 12px;border-radius:8px;margin-bottom:10px;font-size:13px;font-weight:700;"">🏆 本議程已完成拍板定案：最終核定點數 <strong>{activeSessionRow["finalStoryPoint"]} pt</strong> ｜ 定案決議說明：<strong>{(!string.IsNullOrWhiteSpace(savedFinalDecisionNote) ? h(savedFinalDecisionNote) : "（未填寫決議說明）")}</strong></div>" : "")}
                         <div style=""display:grid;grid-template-columns:140px 1fr auto;gap:8px;align-items:end;"">
                             <div>
                                 <label>最終定案點數<span class=""caption-help-icon"" data-tip=""團隊達成共識後拍板的最終 Story Point，定案後將自動回寫至對應工項。"">ⓘ</span></label>
-                                <input type=""number"" step=""0.5"" min=""{sessionMinPt:0.##}"" max=""{sessionMaxPt:0.##}"" name=""finalStoryPoint"" value=""{(activeSessionRow["finalStoryPoint"] != DBNull.Value ? activeSessionRow["finalStoryPoint"] : suggestedFinalPt)}"" />
+                                <input type=""number"" step=""0.5"" min=""{sessionMinPt:0.##}"" max=""{sessionMaxPt:0.##}"" name=""finalStoryPoint"" id=""inputFinalStoryPoint"" value=""{(activeSessionRow["finalStoryPoint"] != DBNull.Value ? activeSessionRow["finalStoryPoint"] : suggestedFinalPt)}"" />
                             </div>
                             <div>
                                 <label>定案決議說明<span class=""caption-help-icon"" data-tip=""記錄團隊最終拍板此點數的決議理由與驗收前提假設。"">ⓘ</span></label>
@@ -10899,6 +11417,14 @@ public class portalController : Controller
 
                 guardChannel.onmessage = function (ev) {
                     const msg = ev.data || {};
+                    if (msg.type === 'USER_LOGGED_OUT') {
+                        window.__isInternalSessionNavigation = true;
+                        try {
+                            localStorage.removeItem('sp_active_session_lock_' + currentEmployeePk + '_' + currentVotingSessionPk);
+                        } catch (e) { }
+                        window.location.href = '/login?msg=' + encodeURIComponent('您已安全登出系統，請重新登入。');
+                        return;
+                    }
                     if (Number(msg.employeePk) !== Number(currentEmployeePk)) return;
                     if ((msg.type === 'DUPLICATE_ENTRY_ATTEMPT' || msg.type === 'FOCUS_EXISTING_SESSION') && Number(msg.sessionPk) === Number(currentVotingSessionPk)) {
                         const b = document.getElementById('duplicateAttemptBanner');
@@ -10973,13 +11499,27 @@ public class portalController : Controller
             return true;
         }
 
-        function selectCard(label, btnEl) {
+        function selectCard(label, btnEl, forceSubmit) {
             const input = document.getElementById('inputCardLabel');
             const text = document.getElementById('selectedCardText');
             if (input) input.value = label;
             if (text) text.textContent = label;
             document.querySelectorAll('.deck-card-btn').forEach(b => b.classList.remove('selected'));
             if (btnEl) btnEl.classList.add('selected');
+            const quickCb = document.getElementById('cbQuickSingleClickCast');
+            const shouldAutoSubmit = forceSubmit || (quickCb && quickCb.checked);
+            if (shouldAutoSubmit) {
+                const formEl = document.getElementById('formCastVote');
+                const commentEl = document.getElementById('inputVoteComment');
+                if (commentEl && commentEl.required && !commentEl.value.trim()) {
+                    commentEl.focus();
+                    return;
+                }
+                if (formEl) {
+                    if (typeof formEl.requestSubmit === 'function') formEl.requestSubmit();
+                    else formEl.submit();
+                }
+            }
         }
 
         // 5. 表格標題排序与鎖定 (Sticky Header)
@@ -11336,6 +11876,1117 @@ public class portalController : Controller
     </script>
 </body>
 </html>");
+
+        return sb.ToString();
+    }
+
+    // =========================================================================
+    // 8. 系統線上說明與操作畫面搜尋中心 (Online Help Center with Search & Operation Screens)
+    // =========================================================================
+
+    /// <summary>
+    /// 建構獨立線上說明專頁 (/help)，支援未登入或已登入狀態直接開啟、關鍵字即時搜尋、分類過濾與實機操作畫面放大檢視
+    /// </summary>
+    private string buildStandaloneOnlineHelpPageHtml(
+        bool isAuthenticated,
+        bool isAdmin,
+        string? initialSearchQuery,
+        string? initialCategory,
+        string? initialTopic)
+    {
+        string userBanner = isAuthenticated
+            ? $@"<span>👤 {h(getCurrentEmployeeName())} ({h(getCurrentLoginAccount())}) ｜ 部門：{h(getCurrentDepartmentName())}</span>
+                 <a href='/?tab=voting' class='btn btn-primary' style='padding:6px 14px;font-size:12.5px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:800;'>🃏 返回系統主畫面</a>
+                 <a href='/logout' class='btn btn-danger' style='padding:6px 12px;font-size:12.5px;background:#dc2626;color:#fff;text-decoration:none;border-radius:8px;font-weight:800;'>🚪 登出系統</a>"
+            : @"<a href='/login' class='btn btn-primary' style='padding:6px 14px;font-size:12.5px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:800;'>🔐 前往員工帳號登入頁</a>";
+
+        string innerHtml = buildOnlineHelpCenterInnerHtml(
+            isAdmin: isAuthenticated ? isAdmin : true,
+            isStandalonePage: true,
+            initialSearchQuery: initialSearchQuery,
+            initialCategory: initialCategory,
+            initialTopic: initialTopic);
+
+        return $@"<!DOCTYPE html>
+<html lang=""zh-Hant"">
+<head>
+    <meta charset=""utf-8"" />
+    <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
+    <title>線上說明與操作畫面搜尋手冊 - Azure 多人參與 Story Point 估算與工項權重管理系統</title>
+    <style>
+        :root {{ --bg:#f1f5f9; --text:#0f172a; --muted:#64748b; --border:#cbd5e1; }}
+        * {{ box-sizing:border-box; }}
+        body {{ margin:0; font-family:'Microsoft JhengHei UI','Segoe UI',sans-serif; background:var(--bg); color:var(--text); }}
+        .topbar {{ background:#0f172a; color:#fff; padding:12px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; position:sticky; top:0; z-index:990; box-shadow:0 4px 14px rgba(15,23,42,0.22); }}
+        .topbar-title {{ display:flex; align-items:center; gap:12px; font-size:18px; font-weight:800; }}
+        .topbar-user {{ display:flex; align-items:center; gap:10px; font-size:13px; flex-wrap:wrap; }}
+        .container {{ max-width:1440px; margin:0 auto; padding:20px 24px 48px 24px; }}
+        .badge {{ padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; display:inline-block; }}
+        .badge-admin {{ background:#fef3c7; color:#b45309; border:1px solid #fde68a; }}
+        .badge-user {{ background:#dbeafe; color:#1d4ed8; border:1px solid #93c5fd; }}
+        .badge-finalized {{ background:#dcfce7; color:#166534; border:1px solid #86efac; }}
+        .btn {{ display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:700; border:1px solid transparent; cursor:pointer; text-decoration:none; }}
+        .btn-primary {{ background:#2563eb; color:#fff; }}
+        .btn-outline {{ background:#fff; border-color:#cbd5e1; color:#334155; }}
+        .btn-danger {{ background:#dc2626; color:#fff; }}
+        .help-hero-banner {{ background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 65%,#1d4ed8 100%); color:#ffffff; border-radius:14px; padding:22px 24px; margin-bottom:18px; box-shadow:0 10px 28px rgba(15,23,42,0.22); border:1px solid #3b82f6; }}
+        .help-search-grid {{ display:grid; grid-template-columns:1.6fr 0.7fr 0.7fr auto; gap:10px; margin-top:14px; align-items:center; }}
+        @media (max-width:960px) {{ .help-search-grid {{ grid-template-columns:1fr; }} }}
+        .help-search-input-wrap {{ position:relative; display:flex; align-items:center; }}
+        .help-search-input {{ width:100% !important; padding:11px 14px 11px 38px !important; border-radius:10px !important; border:2px solid #60a5fa !important; background:#ffffff !important; color:#0f172a !important; font-size:14.5px !important; font-weight:700 !important; box-shadow:0 4px 14px rgba(0,0,0,0.18); }}
+        .help-search-input:focus {{ outline:none; border-color:#f59e0b !important; box-shadow:0 0 0 3px rgba(245,158,11,0.35); }}
+        .help-quick-tag {{ display:inline-flex; align-items:center; gap:4px; padding:4px 11px; border-radius:999px; background:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.3); color:#f8fafc; font-size:12px; font-weight:700; cursor:pointer; transition:all .15s; user-select:none; }}
+        .help-quick-tag:hover, .help-quick-tag.active-tag {{ background:#f59e0b; border-color:#fbbf24; color:#0f172a; transform:translateY(-1px); }}
+        .help-layout-grid {{ display:grid; grid-template-columns:280px 1fr; gap:18px; align-items:start; }}
+        @media (max-width:1080px) {{ .help-layout-grid {{ grid-template-columns:1fr; }} }}
+        .help-toc-sidebar {{ position:sticky; top:68px; background:#ffffff; border:1px solid #cbd5e1; border-radius:12px; padding:14px; box-shadow:0 2px 8px rgba(15,23,42,0.05); max-height:calc(100vh - 88px); overflow-y:auto; }}
+        .help-toc-item {{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border-radius:8px; color:#1e293b; font-size:12.5px; font-weight:700; text-decoration:none; cursor:pointer; transition:all .15s; margin-bottom:3px; border-left:3px solid transparent; }}
+        .help-toc-item:hover {{ background:#eff6ff; color:#1d4ed8; border-left-color:#3b82f6; }}
+        .help-toc-item.active-toc {{ background:#dbeafe; color:#1e3a8a; border-left-color:#1d4ed8; font-weight:800; }}
+        .help-toc-item.toc-filtered-out {{ opacity:0.35; }}
+        .help-topic-card {{ background:#ffffff; border:1.5px solid #cbd5e1; border-radius:14px; padding:20px; margin-bottom:20px; box-shadow:0 4px 12px rgba(15,23,42,0.05); transition:border-color .2s, box-shadow .2s; scroll-margin-top:74px; }}
+        .help-topic-card:hover {{ border-color:#60a5fa; box-shadow:0 8px 22px rgba(37,99,235,0.1); }}
+        .help-topic-header {{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; border-bottom:2px solid #f1f5f9; padding-bottom:12px; margin-bottom:16px; }}
+        .help-topic-body-grid {{ display:grid; grid-template-columns:1fr 1.18fr; gap:18px; align-items:start; }}
+        @media (max-width:980px) {{ .help-topic-body-grid {{ grid-template-columns:1fr; }} }}
+        .help-step-list {{ display:flex; flex-direction:column; gap:10px; margin:10px 0; }}
+        .help-step-item {{ display:flex; align-items:flex-start; gap:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #2563eb; border-radius:9px; padding:10px 12px; font-size:13px; line-height:1.55; color:#1e293b; }}
+        .help-step-num {{ display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; background:#2563eb; color:#ffffff; font-size:12.5px; font-weight:800; flex-shrink:0; margin-top:1px; box-shadow:0 2px 6px rgba(37,99,235,0.3); }}
+        .help-browser-frame {{ border:2px solid #334155; border-radius:12px; overflow:hidden; background:#0f172a; box-shadow:0 10px 26px rgba(15,23,42,0.22); }}
+        .help-browser-bar {{ background:#1e293b; padding:7px 12px; display:flex; align-items:center; justify-content:space-between; gap:8px; border-bottom:1px solid #334155; color:#cbd5e1; font-size:11.5px; }}
+        .help-browser-dots {{ display:flex; gap:5px; align-items:center; }}
+        .help-browser-dot {{ width:10px; height:10px; border-radius:50%; display:inline-block; }}
+        .help-browser-url {{ flex:1; background:#0f172a; color:#93c5fd; padding:3px 10px; border-radius:6px; font-family:Consolas,monospace; font-size:11.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border:1px solid #334155; }}
+        .help-screenshot-box {{ position:relative; background:#0f172a; cursor:zoom-in; overflow:hidden; border-bottom:1px solid #334155; }}
+        .help-screenshot-box img {{ width:100%; height:auto; display:block; transition:transform .25s ease; }}
+        .help-screenshot-box:hover img {{ transform:scale(1.015); }}
+        .help-screenshot-zoom-hint {{ position:absolute; right:10px; bottom:10px; background:rgba(15,23,42,0.88); color:#ffffff; border:1px solid #60a5fa; border-radius:8px; padding:5px 10px; font-size:11.5px; font-weight:700; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.4); }}
+        .help-callout-legend {{ background:#f8fafc; padding:10px 12px; display:grid; grid-template-columns:repeat(auto-fit,minmax(195px,1fr)); gap:7px; border-top:1px solid #cbd5e1; }}
+        .help-callout-chip {{ display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:#1e293b; background:#ffffff; border:1px solid #cbd5e1; border-radius:7px; padding:5px 8px; }}
+        .help-callout-pin {{ display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:#dc2626; color:#ffffff; font-size:11px; font-weight:800; flex-shrink:0; }}
+        .help-ui-diagram {{ background:#f1f5f9; padding:10px 12px; border-top:1px dashed #cbd5e1; font-size:12px; color:#334155; }}
+        mark.help-highlight {{ background:#fef08a; color:#854d0e; padding:1px 4px; border-radius:4px; font-weight:800; box-shadow:0 0 0 1px #facc15; }}
+        .help-faq-item {{ border:1px solid #cbd5e1; border-radius:10px; padding:12px 16px; margin-bottom:10px; background:#f8fafc; }}
+        .help-faq-q {{ font-size:14px; font-weight:800; color:#1e3a8a; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; }}
+        .help-faq-a {{ margin-top:8px; padding-top:8px; border-top:1px dashed #cbd5e1; font-size:13px; color:#334155; line-height:1.6; }}
+        select {{ width:100%; padding:10px 12px; border-radius:9px; border:1.5px solid #93c5fd; font-size:13.5px; font-weight:700; font-family:inherit; background:#fff; color:#0f172a; }}
+    </style>
+</head>
+<body>
+    <div class=""topbar"">
+        <div class=""topbar-title"">
+            <span>📖 Azure 多人參與 Story Point 系統 — 線上說明與操作畫面搜尋中心</span>
+            <span style=""font-size:12px;background:#1e293b;padding:4px 10px;border-radius:6px;color:#5eead4;"">全文關鍵字即時檢索 ｜ 12 幅實機操作畫面詳解</span>
+        </div>
+        <div class=""topbar-user"">
+            {userBanner}
+        </div>
+    </div>
+    <div class=""container"">
+        {innerHtml}
+    </div>
+</body>
+</html>";
+    }
+
+    /// <summary>
+    /// 產生線上說明中心核心 HTML 結構（供主儀表板 #pane-help 頁籤與 /help 獨立專頁共用）
+    /// 包含：
+    /// 1. 關鍵字即時搜尋列（支援多關鍵字、分類篩選、角色篩選、熱門搜尋標籤與關鍵字黃底高亮標示）
+    /// 2. 左側章節目錄導覽樹 (TOC) 與即時符合筆數統計
+    /// 3. 12 大核心主題（每項皆包含「操作步驟 ①②③④」與「搭配實機操作畫面截圖 + 編號標註 + 互動模擬元件 + 點擊放大 Lightbox」）
+    /// 4. 常見問題快速解答 (FAQ)
+    /// </summary>
+    private string buildOnlineHelpCenterInnerHtml(
+        bool isAdmin,
+        bool isStandalonePage,
+        string? initialSearchQuery = null,
+        string? initialCategory = null,
+        string? initialTopic = null)
+    {
+        var sb = new StringBuilder();
+        string safeInitQ = h(initialSearchQuery ?? "");
+        string safeInitCat = h(initialCategory ?? "");
+        string safeInitTopic = h(initialTopic ?? "");
+
+        var topics = new[]
+        {
+            new
+            {
+                Id = "topic-auth",
+                Num = "01",
+                Category = "auth",
+                CategoryName = "🔐 登入驗證與帳密安全",
+                RoleScope = "all",
+                RoleBadge = "<span class='badge badge-user'>🙋 全體員工適用</span>",
+                Title = "員工帳號密碼強制登入驗證與全系統安全登出",
+                Keywords = "登入 密碼 驗證 login 登出 logout 角色 admin participant 權限隔離 顯示密碼 Cookie 釋放鎖定",
+                RouteUrl = "http://localhost:5088/login",
+                ImageFile = "/help/images/screen_01_login.png",
+                ActionHtml = isStandalonePage
+                    ? "<a href='/login' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>🔐 前往登入頁</a>"
+                    : "<button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12px;' onclick=\"openHelpScreenLightbox('/help/images/screen_01_login.png','主題 01：員工帳號密碼強制登入驗證與全系統安全登出')\">🔍 放大操作畫面</button>",
+                Summary = "系統採強制身分驗證與嚴格角色資料隔離（管理者 Admin 可管理全公司資料；一般參與者 Participant 僅可參與盲投及查看屬於自己的工項與個人分數）。未登入時存取任何頁面皆自動導向 /login 驗證。",
+                Steps = new[]
+                {
+                    "在登入畫面輸入您的「<strong>員工登入帳號 (loginAccount)</strong>」（例如 <code>admin</code> 或員工個人帳號）。",
+                    "輸入「<strong>登入密碼 (plainPassword)</strong>」，可點擊右側「<strong>👁️ 顯示 / 🙈 隱藏</strong>」按鈕確認輸入字元無誤。",
+                    "點擊「<strong>🔐 驗證身分並登入系統</strong>」，系統透過預存程序 <code>storyPoint.spVerifyEmployeeLogin</code> 檢核 SHA-256 密碼雜湊與啟用狀態。",
+                    "作業完畢後，於畫面右上角、置頂懸浮導覽列或獨立盲投頁頂部點擊紅色「<strong>🚪 登出系統</strong>」，自動釋放盲投 Session 鎖定、清除 Cookie 並廣播通知所有分頁安全登出。"
+                },
+                Callouts = new[]
+                {
+                    "① 輸入員工登入帳號 (loginAccount)",
+                    "② 輸入密碼並支援 👁️ 顯示/隱藏切換",
+                    "③ 點擊「驗證身分並登入系統」按鈕",
+                    "④ 頂部常駐紅色「🚪 登出系統」安全清除憑證"
+                },
+                UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
+                    <span class='badge' style='background:#1e293b;color:#fff;'>畫面元件示意：</span>
+                    <span style='background:#fff;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-weight:700;'>👤 員工登入帳號：[ ________ ]</span>
+                    <span style='background:#fff;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-weight:700;'>🔑 登入密碼：[ •••••••• ] <span style='background:#e2e8f0;padding:1px 5px;border-radius:4px;'>👁️ 顯示</span></span>
+                    <span style='background:#2563eb;color:#fff;padding:3px 9px;border-radius:6px;font-weight:800;'>🔐 驗證身分並登入系統</span>
+                    <span style='background:#dc2626;color:#fff;padding:3px 9px;border-radius:6px;font-weight:800;'>🚪 登出系統</span>
+                </div>"
+            },
+            new
+            {
+                Id = "topic-my-account",
+                Num = "02",
+                Category = "auth",
+                CategoryName = "🔐 登入驗證與帳密安全",
+                RoleScope = "all",
+                RoleBadge = "<span class='badge badge-user'>🙋 全體員工適用</span>",
+                Title = "自助修改個人登入帳號與密碼（免重新登入即時生效）",
+                Keywords = "修改帳密 修改密碼 修改帳號 個人帳密 loginAccount passwordHash spUpdateEmployeeSelfCredential 免重新登入",
+                RouteUrl = "http://localhost:5088/?tab=myAccount",
+                ImageFile = "/help/images/screen_11_my_account.png",
+                ActionHtml = isStandalonePage
+                    ? "<a href='/?tab=myAccount' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>⚡ 前往修改我的帳密畫面</a>"
+                    : "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('myAccount')\">⚡ 立即切換至「🔑 修改我的帳密」畫面</button>",
+                Summary = "不論是管理者 (Admin) 或一般參與者 (Participant)，每個人皆可隨時自助修改自己本人的「登入帳號 (loginAccount)」與「登入密碼」，系統內建帳號唯一性防呆檢核並自動刷新當前登入 Cookie。",
+                Steps = new[]
+                {
+                    "點擊畫面右上角藍色「<strong>🔑 修改我的帳密</strong>」按鈕，或頂部主選單「<strong>🔑 修改帳密</strong>」。",
+                    "於「<strong>👤 我的登入帳號 (newLoginAccount)</strong>」確認或輸入欲變更的新登入帳號（系統會自動檢核避免與其他同仁重複）。",
+                    "於「<strong>🔒 新登入密碼</strong>」與「<strong>✅ 確認新登入密碼</strong>」輸入新密碼（若僅修改登入帳號，密碼欄可留空），支援點擊「<strong>👁️ 顯示</strong>」檢視明文。",
+                    "點擊「<strong>💾 儲存修改我的登入帳號與密碼</strong>」，後端呼叫 <code>storyPoint.spUpdateEmployeeSelfCredential</code> 並即時更新瀏覽器登入憑證，無須重新登入即可繼續操作。"
+                },
+                Callouts = new[]
+                {
+                    "① 頂部工具列/主選單點擊「🔑 修改我的帳密」",
+                    "② 修改個人登入帳號 (內建防重複檢核)",
+                    "③ 輸入新密碼與確認新密碼 (支援 👁️ 顯示)",
+                    "④ 點擊「💾 儲存修改」即時更新 Cookie 免重登"
+                },
+                UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
+                    <span class='badge' style='background:#1e293b;color:#fff;'>畫面元件示意：</span>
+                    <span style='background:#2563eb;color:#fff;padding:3px 9px;border-radius:6px;font-weight:800;'>🔑 修改我的帳密</span>
+                    <span style='background:#fff;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-weight:700;'>👤 我的登入帳號：[ admin ]</span>
+                    <span style='background:#fff;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-weight:700;'>🔒 新密碼 + ✅ 確認新密碼</span>
+                    <span style='background:#1d4ed8;color:#fff;padding:3px 9px;border-radius:6px;font-weight:800;'>💾 儲存修改我的登入帳號與密碼</span>
+                </div>"
+            },
+            new
+            {
+                Id = "topic-voting-lobby",
+                Num = "03",
+                Category = "voting",
+                CategoryName = "🃏 多人即時盲投與回合設定",
+                RoleScope = "all",
+                RoleBadge = "<span class='badge badge-user'>🙋 全體員工適用</span>",
+                Title = "多人即時盲投大廳：「📂 待參與」與「🟢 參與中」分類、邊欄收合與進入獨立網頁",
+                Keywords = "盲投大廳 待參與 參與中 已拍板定案 資料夾收合 邊欄收合 重新整理 快速發起盲投 Planning Poker",
+                RouteUrl = "http://localhost:5088/?tab=voting",
+                ImageFile = "/help/images/screen_02_voting_lobby.png",
+                ActionHtml = isStandalonePage
+                    ? "<a href='/?tab=voting' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>⚡ 前往即時盲投大廳</a>"
+                    : "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('voting')\">⚡ 立即切換至「🃏 即時盲投大廳」畫面</button>",
+                Summary = "盲投大廳依登入者個人狀態將進行中議程自動分為「📂 待參與」與「🟢 參與中」兩大區塊（歷史已完成議程歸入預設收合之「📁 已拍板定案議程」），由個人從「待參與」點選才開啟專屬獨立網頁進入「參與中」。",
+                Steps = new[]
+                {
+                    "在左側「<strong>📌 投票議程清單</strong>」或右側大廳總覽檢視屬於您的「<strong>📂 1. 待參與</strong>」議程清單（支援點擊 <code>▾ 詳情</code> 展開檢視點數範圍、共識規則與受邀名單）。",
+                    "點選任一待參與議程的「<strong>🚀 點選進入『參與中』獨立網頁</strong>」按鈕，系統會在獨立瀏覽器分頁開啟專屬盲投桌面 <code>/voting/session?sessionPk=X</code>。",
+                    "進入後，該筆議程在大廳會立即移入「<strong>🟢 2. 參與中 (獨立網頁進行中)</strong>」區塊并啟動防重複進入鎖定。",
+                    "左側邊欄支援點擊「<strong>◀ 縮起邊欄</strong>」放大右側視野、「<strong>🔄 重新整理</strong>」即時同步最新議程，管理員亦可點擊「<strong>⚡ 快速發起盲投議程 (Modal)</strong>」一鍵建立新議程。"
+                },
+                Callouts = new[]
+                {
+                    "① 左側議程清單分「📂 待參與 / 🟢 參與中 / 📁 已定案」",
+                    "② 點擊「🚀 點選進入『參與中』獨立網頁」開始盲投",
+                    "③ 已開啟之議程自動歸入「🟢 參與中」並防重複進入",
+                    "④ 支援「◀ 縮起邊欄」、「🔄 重新整理」與「⚡ 快速發起盲投」"
+                },
+                UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
+                    <span class='badge' style='background:#1e293b;color:#fff;'>畫面元件示意：</span>
+                    <span style='background:#fef3c7;color:#92400e;border:1px solid #f59e0b;padding:3px 8px;border-radius:6px;font-weight:800;'>📂 1. 待參與 (點選進入參與中)</span>
+                    <span style='background:#2563eb;color:#fff;padding:3px 9px;border-radius:6px;font-weight:800;'>🚀 點選進入「參與中」獨立網頁 ➔</span>
+                    <span style='background:#dcfce7;color:#166534;border:1px solid #4ade80;padding:3px 8px;border-radius:6px;font-weight:800;'>🟢 2. 參與中 (禁重複進入)</span>
+                </div>"
+            },
+            new
+            {
+                Id = "topic-voting-standalone",
+                Num = "04",
+                Category = "voting",
+                CategoryName = "🃏 多人即時盲投與回合設定",
+                RoleScope = "all",
+                RoleBadge = "<span class='badge badge-user'>🙋 全體員工適用</span>",
+                Title = "獨立盲投 Session 網頁：撲克牌中文意義、全員投完自動翻牌、開啟下一輪與拍板定案",
+                Keywords = "獨立網頁 出牌 撲克牌 費氏數列 疑問牌 ? 休息牌 ☕ 自動翻牌 下一回合 討論紀錄 拍板定案 定案決議說明 多網頁並行 禁止重複進入",
+                RouteUrl = "http://localhost:5088/voting/session?sessionPk=1",
+                ImageFile = "/help/images/screen_03_voting_standalone.png",
+                ActionHtml = isStandalonePage
+                    ? "<a href='/?tab=voting' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>🃏 前往盲投大廳選擇議程</a>"
+                    : "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('voting')\">🃏 前往盲投大廳進入獨立盲投網頁</button>",
+                Summary = "整個盲投估算過程在專屬獨立網頁進行。支援同一人同時開啟多個獨立網頁參與「不同」Session，但嚴格禁止對「同一個」Session 重複開啟第二個網頁。當全員完成出牌時，所有人的畫面即刻自動同步翻開撲克牌！",
+                Steps = new[]
+                {
+                    "<strong>盲投出牌階段 (voting)</strong>：於撲克牌選擇區點選牌面（每張牌皆標示中文複雜度意義，如 <code>3: 標準一般</code>、<code>8: 高複雜度</code>、<code>?: 需求不明/需討論</code>、<code>☕: 暫停休息</code>），支援勾選「<strong>⚡ 點選牌面即直接送出盲投</strong>」或雙擊牌面快速出牌；翻牌前他人座位僅顯示 <code>🎴 已出牌(蓋牌)</code>。",
+                    "<strong>全員投完即刻自動翻牌 (revealed)</strong>：當所有必投參與者皆完成投票時，<code>storyPoint.spCastVote</code> 自動將狀態切換為已翻牌，透過 SignalR 與 2 秒輪詢讓所有人畫面同步翻開撲克牌並顯示平均、最低、最高、分歧落差與共識推薦點數。",
+                    "<strong>主持人開啟下一回合 (Next Round)</strong>：若點數分歧過大，主持人於控制台輸入「<strong>📝 本回合討論紀錄 / 下回合聚焦目標</strong>」並點擊「<strong>🔄 2. 開啟下一回合重新盲投</strong>」，討論紀錄永久保存於右側歷次回合表並更新至桌面頂部。",
+                    "<strong>拍板定案 (Finalize) 與結束參與</strong>：達成共識後，主持人輸入「<strong>🏆 定案決議說明</strong>」並點擊「<strong>🏆 3. 一鍵採用推薦點數拍板定案</strong>」，系統自動回寫標準點數或工項點數；點擊頂部「<strong>🚪 結束參與並返回大廳</strong>」即可釋放鎖定。"
+                },
+                Callouts = new[]
+                {
+                    "① 綠色撲克牌桌座位區 (盲投蓋牌 ➔ 全員投完自動翻牌)",
+                    "② 撲克牌出牌區 (標示繁體中文複雜度意義，支援雙擊快投)",
+                    "③ 主持人控制台：輸入討論紀錄開啟下一輪或一鍵推薦點數定案",
+                    "④ 右側歷次盲投回合統計表、具名出牌明細與頂部多網頁並行導覽列"
+                },
+                UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
+                    <span class='badge' style='background:#1e293b;color:#fff;'>撲克牌與控制示意：</span>
+                    <span style='background:#fff;border:2px solid #2563eb;padding:2px 8px;border-radius:6px;font-weight:800;color:#1e3a8a;'>3 <small>(標準一般)</small></span>
+                    <span style='background:#fff;border:2px solid #2563eb;padding:2px 8px;border-radius:6px;font-weight:800;color:#1e3a8a;'>? <small>(需求不明)</small></span>
+                    <span style='background:#fff;border:2px solid #2563eb;padding:2px 8px;border-radius:6px;font-weight:800;color:#1e3a8a;'>☕ <small>(暫停休息)</small></span>
+                    <span style='background:#d97706;color:#fff;padding:3px 8px;border-radius:6px;font-weight:800;'>🔄 2. 開啟下一回合重新盲投</span>
+                    <span style='background:#16a34a;color:#fff;padding:3px 8px;border-radius:6px;font-weight:800;'>🏆 3. 一鍵採用推薦點數拍板定案</span>
+                </div>"
+            },
+            new
+            {
+                Id = "topic-round-setup",
+                Num = "05",
+                Category = "voting",
+                CategoryName = "🃏 多人即時盲投與回合設定",
+                RoleScope = "admin",
+                RoleBadge = "<span class='badge badge-admin'>👑 管理者主持適用</span>",
+                Title = "設定盲投回合（投什麼標的、高低點數上下限、誰可參與、共識演算法與快速範本）",
+                Keywords = "設定回合 盲投開始前設定 估算標的 自動建立代表類型 最低點數 最高點數 共識規則 nearestFibonacci 分歧門檻 倒數計時 受邀參與者 快速範本",
+                RouteUrl = "http://localhost:5088/?tab=roundSetup",
+                ImageFile = "/help/images/screen_04_round_setup.png",
+                ActionHtml = isStandalonePage
+                    ? "<a href='/?tab=roundSetup' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>⚙️ 前往設定盲投回合</a>"
+                    : "<div style='display:flex;gap:6px;flex-wrap:wrap;'><button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('roundSetup')\">⚡ 切換至「⚙️ 設定回合」頁面</button>" +
+                      (isAdmin ? "<button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12px;border-color:#2563eb;color:#1d4ed8;' onclick=\"openSessionSetupEditModal(0)\">🪟 直接彈出「快速發起盲投 Modal」</button>" : "") + "</div>",
+                Summary = "於盲投開始前完整設定本回合估算標的、允許出牌的最低/最高 Story Point 範圍、受邀參與成員名單、共識計算演算法與單回合思考倒數計時，並提供即時撲克牌面預覽與外鍵自動建立防呆。",
+                Steps = new[]
+                {
+                    "點擊頂部「<strong>⚙️ 設定回合</strong>」主選單，或於大廳點擊「<strong>⚡ 快速發起盲投議程 (彈出 Modal)</strong>」；可一鍵套用上方「<strong>📐 標準 Scrum 範本</strong>」、「<strong>🚀 快速閃電範本</strong>」或「<strong>🏛️ 嚴謹架構評審範本</strong>」。",
+                    "<strong>設定【1. 投什麼】</strong>：選擇「工項的代表類型 (<code>workItemType</code>)」或「個別特定工項 (<code>workItem</code>)」；若資料庫尚無項目，可直接選擇「<code>➕ 依下方盲投議程標題自動建立新代表類型/工項</code>」，系統會自動建立並綁定主鍵。",
+                    "<strong>設定【2. 點數上下限與規則】</strong>：選擇撲克牌組、設定最低點數 (<code>minStoryPoint</code>) 與最高點數 (<code>maxStoryPoint</code>)、共識計算規則（對齊費氏數列、算術平均、中位數、眾數等）與計時秒數，下方會即時預覽本回合可投出的撲克牌面。",
+                    "<strong>設定【3. 誰可以參與】</strong>：支援「全選啟用員工」、「依部門批次勾選」或「僅勾選該工項負責員工」，最後點擊「<strong>🚀 儲存回合設定並開啟盲投桌面</strong>」。"
+                },
+                Callouts = new[]
+                {
+                    "① 一鍵套用敏捷估算範本 (標準 Scrum / 快速閃電 / 嚴謹評審)",
+                    "② 選擇估算標的 (支援依議程標題自動建立新代表類型或新工項)",
+                    "③ 設定最低/最高 Story Point、共識規則與即時撲克牌面預覽",
+                    "④ 依部門或全選勾選受邀參與員工並儲存啟動盲投"
+                },
+                UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
+                    <span class='badge' style='background:#1e293b;color:#fff;'>畫面元件示意：</span>
+                    <span style='background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;padding:3px 8px;border-radius:6px;font-weight:700;'>⚡ 範本：標準 Scrum (0.5~21pt)</span>
+                    <span style='background:#fff;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-weight:700;'>📉 最低：0.5 pt ～ 📈 最高：21 pt</span>
+                    <span style='background:#fff;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-weight:700;'>🏢 依部門快速勾選參與者</span>
+                    <span style='background:#2563eb;color:#fff;padding:3px 9px;border-radius:6px;font-weight:800;'>🚀 儲存回合設定並開啟盲投桌面</span>
+                </div>"
+            },
+            new
+            {
+                Id = "topic-history",
+                Num = "06",
+                Category = "voting",
+                CategoryName = "🃏 多人即時盲投與回合設定",
+                RoleScope = "all",
+                RoleBadge = "<span class='badge badge-user'>🙋 全員適用 (依角色自動隔離)</span>",
+                Title = "事後查詢訂出 Story Point 的完整過程与點數異動稽核歷程",
+                Keywords = "估算過程 投票歷史 出牌明細 回合統計 點數異動歷程 tbPointHistory 稽核紀錄 定案決議說明",
+                RouteUrl = "http://localhost:5088/?tab=history",
+                ImageFile = "/help/images/screen_05_history.png",
+                ActionHtml = isStandalonePage
+                    ? "<a href='/?tab=history' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>📜 前往估算過程查詢</a>"
+                    : "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('history')\">⚡ 立即切換至「📜 1-3. 估算過程查詢」畫面</button>",
+                Summary = "完整保留並可隨時回溯每一場盲投議程的各回合統計、討論摘要、定案決議說明、每位參與者各回合投出的撲克牌與理由，以及工項與代表類型的 Story Point 異動稽核軌跡。",
+                Steps = new[]
+                {
+                    "由頂部選單選擇「<strong>🃏 多人估算 ➔ 📜 1-3. 估算過程查詢</strong>」進入歷史稽核頁面。",
+                    "上方「<strong>歷次投票回合統計與討論過程</strong>」表格完整列出每場議程的第 1、2... 回合狀態、出牌人數、最低/最高/平均點數、回合討論紀錄與 <code>🏆 定案決議說明</code>。",
+                    "中段「<strong>各回合參與者出牌明細</strong>」列出每一回合投出的撲克牌與估算理由（管理者可檢視全體具名紀錄；一般參與者依隱私保護僅顯示本人紀錄）。",
+                    "下方「<strong>Story Point 點數異動稽核歷程表 (tbPointHistory)</strong>」完整記錄每一次點數變更來源（如 <code>typeDefault</code> 自動帶入、<code>votingFinalize</code> 投票定案、<code>manualAdjust</code> 手動微調、<code>autoExpireDeduct</code> 到期自動扣點）及變更前後點數。"
+                },
+                Callouts = new[]
+                {
+                    "① 歷次投票回合統計表 (含最低/最高/平均點數與定案決議說明)",
+                    "② 各回合參與者具名出牌點數與估算理由明細表",
+                    "③ Story Point 點數異動稽核歷程表 (變更前後點數與原因)",
+                    "④ 支援匯出 CSV / Excel / 互動式 HTML 歷史稽核報表"
+                },
+                UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
+                    <span class='badge' style='background:#1e293b;color:#fff;'>異動來源標籤：</span>
+                    <span class='badge badge-user'>typeDefault 代表類型帶入</span>
+                    <span class='badge badge-finalized'>votingFinalize 盲投拍板定案</span>
+                    <span class='badge badge-admin'>manualAdjust 管理者手動微調</span>
+                    <span class='badge' style='background:#fee2e2;color:#b91c1c;'>autoExpireDeduct 到期自動扣點</span>
+                </div>"
+            },
+            new
+            {
+                Id = "topic-workitem",
+                Num = "07",
+                Category = "workitem",
+                CategoryName = "📋 工項、代表類型與到期扣點",
+                RoleScope = "all",
+                RoleBadge = "<span class='badge badge-user'>🙋 全員適用 (管理員增刪修 / 員工查閱本人)</span>",
+                Title = "工項管理、選擇代表類型自動帶入點數、起訖時間快速設定與到期自動扣點寄信通知",
+                Keywords = "工項管理 新增工項 代表類型自動帶入 手動微調 起訖時間 天 周 月 季 年 到期自動扣點 Email 通知 部門經理 HR 員工指派 分攤比例 allocationPercent",
+                RouteUrl = "http://localhost:5088/?tab=workitems",
+                ImageFile = "/help/images/screen_06_workitems.png",
+                ActionHtml = isStandalonePage
+                    ? "<a href='/?tab=workitems' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>📋 前往工項管理</a>"
+                    : "<div style='display:flex;gap:6px;flex-wrap:wrap;'><button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('workitems')\">⚡ 切換至「📋 2-1. 工項管理」畫面</button>" +
+                      (isAdmin ? "<button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12px;border-color:#2563eb;color:#1d4ed8;' onclick=\"openWorkItemEditModal(0)\">🪟 直接彈出「新增工項與指派 Modal」</button>" : "") + "</div>",
+                Summary = "建立工項時選擇「工項代表類型」即可自動帶入標準 Story Point（亦允許管理員依複雜度手動微調），支援單一 Modal 同時指派負責員工與分攤配額，並提供起訖時間「數量 + 天/周/月/季/年」快速計算與到期自動轉態、扣點、寄發 Email 給部門主管與 HR。",
+                Steps = new[]
+                {
+                    "在「<strong>📋 2-1. 工項與員工指派</strong>」頂部快捷指令列點擊「<strong>➕ 新增工項與指派 (彈出 Modal)</strong>」，或展開管理表單抽屜。",
+                    "選擇「<strong>🗂️ 工項類型</strong>（🏗️ 專案 / 🛠️ 維運 / ⏳ 顧問時數 / 🎓 教育訓練 / 🚀 開發產品）」與「<strong>🏷️ 工項代表類型</strong>」，系統自動將代表類型的標準點數帶入 <code>Story Point</code> 欄位（管理員亦可手動調整點數並填寫微調原因）。",
+                    "設定「<strong>📅 開始時間 (起時)</strong>」，並於「<strong>⚡ 起訖時間快速設定</strong>」輸入<strong>數量</strong>（如 <code>1</code>、<code>2</code>）與選擇<strong>單位（<code>天</code> / <code>周</code> / <code>月</code> / <code>季</code> / <code>年</code>）</strong>，系統自動算出「<strong>⏰ 結束時間 (迄時)</strong>」；下方可直接選擇負責員工與分攤比例 (<code>allocationPercent</code>)。",
+                    "<strong>到期自動轉態、扣減 Story Point 與 Email 通知</strong>：當系統時間達到工項的迄時 (<code>endDate</code>)，背景排程或點擊「<strong>⏰ 立即檢核到期工項</strong>」會自動將狀態轉為「已完成 (已到期扣點)」、將工項與負責員工/部門的有效 Story Point 扣減歸零（保留原核定點數與扣減紀錄），並透過 Email 自動寄信通知該部門所有<strong>部門主管 (<code>isDepartmentManager=1</code>)</strong> 與 <strong>HR 人資主管</strong>。"
+                },
+                Callouts = new[]
+                {
+                    "① 頂部快捷指令列：一鍵彈出新增工項 Modal 或多人配額指派 Modal",
+                    "② 選擇工項代表類型自動帶入標準 Story Point (或手動微調)",
+                    "③ 起訖時間快速設定：輸入【數量】+ 選擇【天/周/月/季/年】自動算迄時",
+                    "④ 達到迄時自動轉已完成、扣除 Story Point 並寄 Email 給部門主管與 HR"
+                },
+                UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
+                    <span class='badge' style='background:#1e293b;color:#fff;'>起訖與到期機制示意：</span>
+                    <span style='background:#fff;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-weight:700;'>⚡ 快速設定：數量 [ 1 ] + 單位 [ 月 ▼ ] ➔ 自動算迄時</span>
+                    <span style='background:#fef3c7;color:#92400e;border:1px solid #f59e0b;padding:3px 8px;border-radius:6px;font-weight:800;'>⏰ 達迄時 ➔ 狀態轉 done + 點數扣減歸零 + 📧 寄信通知部門主管與 HR</span>
+                </div>"
+            },
+            new
+            {
+                Id = "topic-context-modal",
+                Num = "08",
+                Category = "table",
+                CategoryName = "🖱️ 表格右鍵 Modal、排序鎖定與報表",
+                RoleScope = "all",
+                RoleBadge = "<span class='badge badge-user'>🙋 全體員工適用</span>",
+                Title = "全系統表格即時篩選、純滑鼠右鍵快捷選單與雙擊彈出置中單筆編輯 Modal（不捲動網頁）",
+                Keywords = "滑鼠右鍵 右鍵選單 contextmenu 雙擊編輯 Modal 視窗 單筆編輯 不捲動網頁 快捷鍵 Enter F2 表格篩選 複製紀錄",
+                RouteUrl = "http://localhost:5088/?tab=workitems",
+                ImageFile = "/help/images/screen_07_context_modal.png",
+                ActionHtml = isStandalonePage
+                    ? "<a href='/?tab=workitems' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>🖱️ 前往工項表格體驗右鍵與雙擊 Modal</a>"
+                    : "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('workitems')\">⚡ 前往表格體驗「滑鼠右鍵選單 / 雙擊彈出 Modal」</button>",
+                Summary = "全系統所有資料表格皆直接置頂呈現，全面取消列內下拉按鈕，改採「滑鼠左鍵單擊選取、左鍵雙擊（或按 Enter/F2）直接彈出置中單筆編輯 Modal、滑鼠右鍵彈出專屬操作選單」，編輯時絕不上下捲動網頁位置！",
+                Steps = new[]
+                {
+                    "<strong>表格工具列即時篩選</strong>：每張表格上方皆提供「<code>🏷️ 欄位選擇</code>」+「<code>🎯 欄位既有值下拉選單</code>」+「<code>🔍 關鍵字快速篩選</code>」，輸入或點選後即時過濾並顯示 <code>顯示 X / Y 筆</code>。",
+                    "<strong>滑鼠左鍵雙擊 / Enter / F2 快速編輯</strong>：在任一筆資料列雙擊滑鼠左鍵（或單擊選取後按鍵盤 <code>Enter</code> / <code>F2</code>），立即原地彈出置中的「<strong>🪟 單筆編輯 Modal 視窗</strong>」（含起訖時間數量+單位快速設定與員工配額指派），完全不捲動背景網頁。",
+                    "<strong>滑鼠右鍵快捷選單 (<code>contextmenu</code>)</strong>：在任一筆資料列按滑鼠右鍵，自動高亮選取該列並於游標處彈出操作選單（依表格類型提供：單筆編輯 Modal、修改賦予員工與配額 Modal、發起多人盲投 Modal、設為已到期測試扣點寄信、以此儲存格值篩選表格、複製本列文字、刪除紀錄）。",
+                    "<strong>PowerShell GUI 同步體驗</strong>：在 <code>ps/ui/uiMain.ps1</code> 各頁籤的 <code>DataGridView</code> 中，同樣支援滑鼠右鍵快捷選單與雙擊列直接彈出 WinForms Modal 視窗進行單筆編輯。"
+                },
+                Callouts = new[]
+                {
+                    "① 表格上方通用工具列：指定欄位、欄位既有值下拉與關鍵字即時篩選",
+                    "② 在資料列按【滑鼠右鍵】彈出專屬快捷操作選單 (#spRowContextMenu)",
+                    "③ 點選右鍵編輯或【滑鼠左鍵雙擊列】原地彈出置中單筆編輯 Modal",
+                    "④ 在 Modal 內直接完成修改與儲存，背景網頁保持原捲動位置不動"
+                },
+                UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
+                    <span class='badge' style='background:#1e293b;color:#fff;'>表格互動操作示意：</span>
+                    <span style='background:#dbeafe;color:#1e3a8a;border:1px solid #3b82f6;padding:3px 8px;border-radius:6px;font-weight:800;'>🖱️ 左鍵雙擊 / Enter / F2 ➔ 彈出單筆編輯 Modal</span>
+                    <span style='background:#0f172a;color:#fff;padding:3px 8px;border-radius:6px;font-weight:800;'>🖱️ 滑鼠右鍵 ➔ ✏️ 單筆編輯 ｜ 👥 指派員工 ｜ 🃏 發起盲投 ｜ 🔍 以此值篩選 ｜ 🗑️ 刪除</span>
+                </div>"
+            },
+            new
+            {
+                Id = "topic-types-kinds",
+                Num = "09",
+                Category = "workitem",
+                CategoryName = "📋 工項、代表類型與到期扣點",
+                RoleScope = "all",
+                RoleBadge = "<span class='badge badge-user'>🙋 全員可查閱 / 👑 管理員可增刪修</span>",
+                Title = "工項代表類型標準點數管理與工項類型（專案/維運/顧問時數/教育訓練/開發產品）CRUD",
+                Keywords = "工項代表類型 標準點數 同步既有工項 工項類型 專案 維運 顧問時數 教育訓練 開發產品 tbWorkItemType tbWorkItemKind",
+                RouteUrl = "http://localhost:5088/?tab=types",
+                ImageFile = "/help/images/screen_08_types.png",
+                ActionHtml = isStandalonePage
+                    ? "<a href='/?tab=types' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>🏷️ 前往工項代表類型</a>"
+                    : "<div style='display:flex;gap:6px;flex-wrap:wrap;'><button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('types')\">⚡ 切換至「🏷️ 2-2. 工項代表類型」畫面</button>" +
+                      (isAdmin ? "<button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12px;border-color:#2563eb;color:#1d4ed8;' onclick=\"openWorkItemTypeEditModal(0)\">🪟 彈出「新增代表類型 Modal」</button>" : "") + "</div>",
+                Summary = "管理已透過盲投定案或核定標準 Story Point 的「工項代表類型 (tbWorkItemType)」供建立工項時自動帶入點數；同時提供「工項類型主檔 (tbWorkItemKind)」完整增刪修功能。",
+                Steps = new[]
+                {
+                    "切換至「<strong>🏷️ 2-2. 工項代表類型</strong>」頁籤，表格直接置頂列出所有代表類型的代碼、名稱、預設工項類型、複雜度驗收標準與標準 Story Point。",
+                    "管理員點擊頂部「<strong>➕ 新增工項代表類型 (彈出 Modal)</strong>」或在表格列按右鍵/雙擊編輯；若勾選「<strong>同步更新目前未完成且未曾手動微調之既有工項點數</strong>」，儲存時會自動更新關聯工項與員工分攤點數。",
+                    "點擊頂部「<strong>🗂️ 新增工項類型 (Modal)</strong>」或展開「工項類型增刪修管理」抽屜，可管理內建 5 大工項類型（<code>🏗️ 專案</code>、<code>🛠️ 維運</code>、<code>⏳ 顧問時數</code>、<code>🎓 教育訓練</code>、<code>🚀 開發產品</code>）或新增自訂工項類型、圖示與標籤配色。",
+                    "針對尚未定案的代表類型，可在表格列按滑鼠右鍵選擇「<strong>🃏 針對此代表類型發起多人盲投估算</strong>」直接開啟盲投回合設定 Modal。"
+                },
+                Callouts = new[]
+                {
+                    "① 置頂快捷指令列：新增工項代表類型 Modal 與新增工項類型 Modal",
+                    "② 工項代表類型一覽表：顯示標準 Story Point、估算狀態與套用工項數",
+                    "③ 支援勾選「同步更新未完成且未微調之既有工項點數」",
+                    "④ 工項類型主檔 (tbWorkItemKind) 完整支援新增、修改與安全刪除轉移"
+                },
+                UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
+                    <span class='badge' style='background:#1e293b;color:#fff;'>內建工項類型：</span>
+                    <span class='badge' style='background:#dbeafe;color:#1d4ed8;'>🏗️ 專案</span>
+                    <span class='badge' style='background:#fef3c7;color:#b45309;'>🛠️ 維運</span>
+                    <span class='badge' style='background:#f3e8ff;color:#6d28d9;'>⏳ 顧問時數</span>
+                    <span class='badge' style='background:#dcfce7;color:#15803d;'>🎓 教育訓練</span>
+                    <span class='badge' style='background:#ffe4e6;color:#be123c;'>🚀 開發產品</span>
+                </div>"
+            },
+            new
+            {
+                Id = "topic-stats-export",
+                Num = "10",
+                Category = "table",
+                CategoryName = "🖱️ 表格右鍵 Modal、排序鎖定與報表",
+                RoleScope = "all",
+                RoleBadge = "<span class='badge badge-user'>🙋 全員適用 (管理員看全公司 / 員工看個人)</span>",
+                Title = "員工與部門總 Story Point 統計、表頭排序與凍結鎖定、三格式報表匯出 (CSV / Excel / 互動 HTML)",
+                Keywords = "統計報表 部門總點數 員工總點數 表頭排序 欄位鎖定 Sticky Header 凍結欄位 匯出 CSV 匯出 Excel 互動 HTML 報表 群組彙總",
+                RouteUrl = "http://localhost:5088/?tab=stats",
+                ImageFile = "/help/images/screen_09_stats_table.png",
+                ActionHtml = isStandalonePage
+                    ? "<a href='/?tab=stats' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>📊 前往統計報表</a>"
+                    : "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('stats')\">⚡ 立即切換至「📊 3-1. 員工與部門統計」畫面</button>",
+                Summary = "即時彙總各部門與每位員工身上的待處理、進行中、已完成及總 Story Point 負載（含上一層主管與到期通知收件人）；全站表格皆具備表頭點擊排序、欄位凍結鎖定與三種格式報表匯出。",
+                Steps = new[]
+                {
+                    "<strong>部門與員工點數統計</strong>：切換至「<strong>📊 3-1. 員工與部門統計</strong>」（一般參與者顯示「我的個人分數統計」），即時查看各部門在職人數、總點數、人均負載，以及每位員工的上一層主管與分攤總點數。",
+                    "<strong>表頭排序 (<code>⇅ / ▲ / ▼</code>)</strong>：點擊全系統任一表格的 <code>&lt;th&gt;</code> 表頭標題，即可切換升冪 (<code>▲</code>)、降冪 (<code>▼</code>) 或原始順序 (<code>⇅</code>)，自動識別 Story Point 點數、件數、日期與中文編號（按住 <code>Shift</code> 點擊支援多欄位階層排序）。",
+                    "<strong>欄位凍結鎖定 (<code>📌 ➔ 🔒</code>) 與 Sticky 表頭</strong>：點擊表頭右側圖釘按鈕 <code>📌</code> 將其變為 <code>🔒</code>，該欄位整欄即固定於表格最左側，水平捲動時保持凍結不動；表格上方工具列亦可切換頂部表頭列垂直捲動鎖定。",
+                    "<strong>三種格式報表匯出 (CSV / Excel / 互動 HTML)</strong>：點擊「<code>📥 匯出 CSV</code>」、「<code>📊 匯出 Excel (.xlsx)</code>」或「<code>🌐 匯出互動 HTML</code>」，其中互動 HTML 報表可獨立離線開啟並內建排序、多條件篩選與動態群組彙總統計表。"
+                },
+                Callouts = new[]
+                {
+                    "① 部門總 Story Point 彙總表與員工個人 Story Point 統計表",
+                    "② 點擊表頭文字或 ⇅ 切換升冪 ▲ / 降冪 ▼ 智慧型別排序",
+                    "③ 點擊表頭右側 📌 切換為 🔒，將該欄凍結固定於表格左側",
+                    "④ 支援匯出 CSV、原生 Excel (.xlsx) 與可群組彙總之互動式 HTML 報表"
+                },
+                UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
+                    <span class='badge' style='background:#1e293b;color:#fff;'>表頭與匯出控制示意：</span>
+                    <span style='background:#dbeafe;color:#1e3a8a;border:1px solid #3b82f6;padding:3px 8px;border-radius:6px;font-weight:800;'>員工姓名 ▲ 🔒 (已鎖定於左側)</span>
+                    <span style='background:#f8fafc;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-weight:700;'>總點數 ⇅ 📌</span>
+                    <span style='background:#f0fdf4;color:#166534;border:1px solid #86efac;padding:3px 8px;border-radius:6px;font-weight:800;'>📊 匯出 Excel (.xlsx)</span>
+                    <span style='background:#eff6ff;color:#1e40af;border:1px solid #93c5fd;padding:3px 8px;border-radius:6px;font-weight:800;'>🌐 匯出互動 HTML (含群組彙總)</span>
+                </div>"
+            },
+            new
+            {
+                Id = "topic-org-employees",
+                Num = "11",
+                Category = "org",
+                CategoryName = "👥 組織主管階層、批次匯入與系統 Log",
+                RoleScope = "admin",
+                RoleBadge = "<span class='badge badge-admin'>👑 管理者適用</span>",
+                Title = "組織與員工帳密管理：同部門多位部門主管設定、樹狀遞迴階層（呈現上一層主管）與 CSV/Excel 批次匯入",
+                Keywords = "員工管理 部門管理 部門主管 isDepartmentManager 樹狀階層 上一層主管 managerEmployeePk 批次匯入 CSV 範本 Excel 範本 啟用停用",
+                RouteUrl = "http://localhost:5088/?tab=employees",
+                ImageFile = "/help/images/screen_10_employees_org.png",
+                ActionHtml = isStandalonePage
+                    ? "<a href='/?tab=employees' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>👥 前往員工與組織管理</a>"
+                    : (isAdmin
+                        ? "<div style='display:flex;gap:6px;flex-wrap:wrap;'><button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('employees')\">⚡ 切換至「👥 4-1. 員工與組織管理」畫面</button><button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12px;border-color:#2563eb;color:#1d4ed8;' onclick=\"openEmployeeEditModal(0)\">🪟 彈出「新增員工帳號 Modal」</button></div>"
+                        : "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('myAccount')\">🔑 前往個人帳號設定</button>"),
+                Summary = "完整管理全公司部門與員工帳號（增、刪、修、查、啟用/停用），支援標記「是否為部門主管 (isDepartmentManager，同部門可設多位主管)」與「上一層主管 (managerEmployeePk)」樹狀遞迴階層，並提供 CSV 與 Excel 雙格式批次匯入。",
+                Steps = new[]
+                {
+                    "在「<strong>👥 4-1. 員工與組織管理</strong>」頂部點擊「<strong>➕ 新增員工帳號 (彈出 Modal)</strong>」或「<strong>🏢 新增/修改部門 (Modal)</strong>」，亦可於員工列表直接雙擊或按右鍵單筆編輯。",
+                    "<strong>部門主管與上一層主管設定</strong>：可勾選「<strong>⭐ 設為部門主管 (isDepartmentManager=1)</strong>」（同一個部門支援設定多位主管，工項到期時同部門所有主管與 HR 主管皆會收到通知信），並設定「<strong>🌲 上一層主管 (managerEmployeePk)</strong>」；員工列表與統計表僅精簡呈現每位員工的「上一層主管姓名」。",
+                    "<strong>組織樹狀圖檢視</strong>：點擊頂部「<strong>🌳 組織與部門主管樹狀階層檢視</strong>」抽屜按鈕，可展開檢視 L1 頂層主管 ➔ L2 各部門主管 ➔ L3 部門成員的視覺化卡片，並可點擊卡片上「<code>🏢 修改部門</code>」直接彈出部門編輯 Modal。",
+                    "<strong>CSV / Excel 批次匯入員工</strong>：點擊「<strong>📤 批次匯入員工 (CSV / Excel)</strong>」抽屜，可下載標準 CSV 或 Excel (<code>.xlsx</code>) 範本，上傳檔案或貼上文字即可批次新增/更新員工與自動建立部門。"
+                },
+                Callouts = new[]
+                {
+                    "① 頂部快捷指令列：新增員工 Modal、修改部門 Modal、組織樹與批次匯入抽屜",
+                    "② 支援同部門設定多位部門主管 (isDepartmentManager) 並指定上一層主管",
+                    "③ 員工一覧表精簡顯示「上一層主管」與到期通知對象清單",
+                    "④ 支援上傳 CSV 或 Excel (.xlsx) 批次匯入員工名單與自動建立部門"
+                },
+                UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
+                    <span class='badge' style='background:#1e293b;color:#fff;'>組織階層與匯入示意：</span>
+                    <span style='background:#fef3c7;color:#92400e;border:1px solid #f59e0b;padding:3px 8px;border-radius:6px;font-weight:800;'>⭐ 部門主管 (同部門可多位，到期皆通知)</span>
+                    <span style='background:#eff6ff;color:#1e40af;border:1px solid #93c5fd;padding:3px 8px;border-radius:6px;font-weight:800;'>🌲 列表僅呈現「上一層主管」</span>
+                    <span style='background:#dcfce7;color:#166534;border:1px solid #86efac;padding:3px 8px;border-radius:6px;font-weight:800;'>📤 支援 CSV 與 Excel (.xlsx) 批次匯入</span>
+                </div>"
+            },
+            new
+            {
+                Id = "topic-logs-powershell",
+                Num = "12",
+                Category = "org",
+                CategoryName = "👥 組織主管階層、批次匯入與系統 Log",
+                RoleScope = "admin",
+                RoleBadge = "<span class='badge badge-admin'>👑 管理者與維運適用</span>",
+                Title = "系統防崩潰保護、錯誤 Log 查詢中心 (tbLog) 與 PowerShell 多 Tab GUI 管理工具",
+                Keywords = "系統 Log 錯誤 Log tbLog 防崩潰 不當機 StackTrace 錯誤測試 PowerShell uiMain.ps1 Console 模組 DPAPI 加密連線",
+                RouteUrl = "http://localhost:5088/?tab=logs",
+                ImageFile = "/help/images/screen_12_logs.png",
+                ActionHtml = isStandalonePage
+                    ? "<a href='/?tab=logs' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>🛡️ 前往系統 Log 查詢中心</a>"
+                    : (isAdmin
+                        ? "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('logs')\">⚡ 立即切換至「🛡️ 5-1. 系統 Log 查詢」畫面</button>"
+                        : "<span class='badge badge-admin'>🔒 系統 Log 僅限管理者帳號存取</span>"),
+                Summary = "採用三層式防崩潰保護架構（SQL TRY-CATCH + Controller 攔截 + 全域 Exception Middleware）確保發生任何錯誤絕不當機，並同步提供管理者系統 Log 查詢中心與 Windows PowerShell 多 Tab GUI 桌面管理工具。",
+                Steps = new[]
+                {
+                    "<strong>查詢與過濾系統 Log</strong>：管理者點擊頂部「<strong>🛡️ 系統 Log</strong>」進入查詢中心，可透過「關鍵字」、「Log 嚴重層級（<code>1-錯誤</code>、<code>2-警告</code>、<code>3-資訊</code>、<code>4-除錯</code>）」、「來源模組」或點擊「<strong>❌ 只看錯誤異常</strong>」快速定位問題；長篇錯誤可點擊 <code>🔍 點擊展開 StackTrace 錯誤堆疊明細</code>。",
+                    "<strong>管理者一鍵防崩潰測試</strong>：於上方測試面板選擇「情境 A：Controller 例外」、「情境 B：SQL 預存程序參數異常」或「情境 C：全域 Middleware 例外」並點擊「<strong>⚡ 立即觸發測試錯誤</strong>」，即可驗證系統攔截錯誤不當機且完整寫入 <code>storyPoint.tbLog</code> 與本機 CSV。",
+                    "<strong>啟動 PowerShell 多 Tab 圖形化管理工具</strong>：於終端機執行 <code>pwsh -NoProfile -File c:\\temp\\storyPoint\\ps\\ui\\uiMain.ps1 -uiMode full</code>，通過員工帳號登入驗證後即可使用桌面版多頁籤介面（含盲投、代表類型、工項、員工、報表與<strong>📖 線上說明與搜尋</strong>頁籤）。",
+                    "<strong>正式環境連線加密</strong>：執行 <code>pwsh -NoProfile -File c:\\temp\\storyPoint\\ps\\setEncryptedConfig.ps1</code> 可將 SQL 連線字串以 Windows DPAPI 加密寫入 <code>config.json</code>。"
+                },
+                Callouts = new[]
+                {
+                    "① 系統 Log KPI 指標卡 (總筆數、❌ 錯誤數、⚠️ 警告數、⏱️ 平均耗時)",
+                    "② 管理者一鍵防崩潰與錯誤攔截模擬測試面板 (情境 A / B / C)",
+                    "③ 多維度即時篩選工具列 (關鍵字、嚴重層級、來源模組、只看錯誤)",
+                    "④ 緊湊置頂 Log 表格與可展開之 StackTrace 錯誤堆疊明細"
+                },
+                UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
+                    <span class='badge' style='background:#1e293b;color:#fff;'>防護與桌面工具：</span>
+                    <span class='badge' style='background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;'>🛡️ 三層防崩潰保護 (絕不出現 HTTP 500)</span>
+                    <span style='background:#0f172a;color:#38bdf8;padding:3px 8px;border-radius:6px;font-family:Consolas,monospace;font-size:11.5px;'>pwsh -File ps\ui\uiMain.ps1 -uiMode full</span>
+                </div>"
+            }
+        };
+
+        var faqs = new[]
+        {
+            new
+            {
+                Q = "Q1. 為什麼我用一般員工（參與者 participant）帳號登入後，看不到其他同事的工項或點數？",
+                A = "這是系統內建的「<strong>個人資料隱私保護與角色資料隔離機制</strong>」。一般參與者 (<code>participant</code>) 登入後，在「我的工項查詢」與「我的分數統計」中僅會顯示賦予給您本人的工項與個人配額點數；唯有具備管理者 (<code>admin</code>) 權限的帳號才能查閱全公司所有員工與各部門的完整工項與統計。",
+                Keywords = "看不到 別人的工項 權限 參與者 participant 隱私 資料隔離"
+            },
+            new
+            {
+                Q = "Q2. 為什麼盲投大廳的進行中議程分成「📂 待參與」與「🟢 參與中」？為什麼同一個議程無法開第二個分頁？",
+                A = "為了支援同一人能以多個獨立瀏覽器分頁並行參與「不同」的盲投議程，並防止同一場議程重複開啟造成選票狀態互相覆蓋：尚未開啟獨立網頁的議程皆位於「<strong>📂 待參與</strong>」；當您點擊進入獨立盲投網頁 (<code>/voting/session?sessionPk=X</code>) 後，該議程即移入「<strong>🟢 參與中</strong>」並啟動伺服器端與瀏覽器雙重鎖定，禁止重複開啟同一場 Session。點擊獨立網頁頂部「<strong>🚪 結束參與並返回大廳</strong>」或關閉分頁即可釋放鎖定並移回待參與。",
+                Keywords = "待參與 參與中 重複進入 第二個分頁 獨立網頁 鎖定 session"
+            },
+            new
+            {
+                Q = "Q3. 盲投出牌時，什麼時候會自動翻牌？需要主持人手動按翻牌嗎？",
+                A = "議程預設啟用「<strong>⚡ 全員完成投票即刻自動翻牌 (<code>autoRevealWhenAllVoted = 1</code>)</strong>」。只要本回合所有受邀必投參與者皆完成出牌，資料庫預存程序 <code>storyPoint.spCastVote</code> 會立即自動將回合與議程狀態切換為 <code>revealed</code>（已翻牌揭曉），並透過 SignalR 與前端 2 秒輪詢讓所有人的畫面自動同步翻開撲克牌！若有人臨時缺席，主持人亦可隨時點擊控制台「<strong>👀 1. 立即翻牌揭曉</strong>」提前翻牌。",
+                Keywords = "自動翻牌 翻牌揭曉 全員投完 SignalR revealed"
+            },
+            new
+            {
+                Q = "Q4. 撲克牌面上的「?」與「☕」以及各數字代表什麼意思？",
+                A = "每張撲克牌下方皆直接標示繁體中文意義：<code>?</code> 代表「<strong>需求不明 / 需討論</strong>」（資訊不足無法估算，建議補充說明後重投）；<code>☕</code> 代表「<strong>暫停休息 / 稍後議</strong>」；數值牌面則代表相對複雜度：<code>0 (無需工時)</code>、<code>0.5 (極小微調)</code>、<code>1 (極簡變更)</code>、<code>2 (小型工項)</code>、<code>3 (標準一般)</code>、<code>5 (中等複雜)</code>、<code>8 (高複雜度)</code>、<code>13 (大型跨模組)</code>、<code>20/21 (極大工項)</code>、<code>40 (巨型需拆解)</code>、<code>100 (史詩級拆解)</code>。",
+                Keywords = "撲克牌 牌面意義 疑問牌 ? 休息牌 ☕ 費氏數列 點數意義"
+            },
+            new
+            {
+                Q = "Q5. 如何在不捲動網頁的情況下快速修改表格中的某筆工項、員工或部門資料？",
+                A = "在全系統任何資料表格 (<code>&lt;table&gt;</code>) 的任一列上，直接「<strong>雙擊滑鼠左鍵 (Double Click)</strong>」、或按「<strong>滑鼠右鍵 (Right Click)</strong>」點選選單中的「<code>✏️ 單筆編輯...（彈出 Modal 視窗）</code>」（亦可單擊選取列後按鍵盤 <code>Enter</code> 或 <code>F2</code>），系統會直接原地彈出置中的 Modal 對話框進行編輯與儲存，絕不會將網頁捲動到最上方。",
+                Keywords = "滑鼠右鍵 雙擊 Modal 視窗 不捲動 單筆編輯 表格修改 Enter F2"
+            },
+            new
+            {
+                Q = "Q6. 工項的「起訖時間快速設定」怎麼用？到期後系統會自動做什麼？",
+                A = "新增或單筆編輯工項時，設定好「開始時間（起時）」後，在「<strong>起訖時間快速設定</strong>」輸入<strong>數量</strong>（預設 1）並選擇<strong>單位（天 / 周 / 月 / 季 / 年）</strong>，系統會自動計算並填入「結束時間（迄時）」。當系統時間到達或超過工項的迄時 (<code>endDate</code>)，系統會自動將工項轉為「<strong>已完成 (已到期扣點)</strong>」、將該工項與負責員工/部門身上的有效 Story Point 扣減歸零（完整保留原點數與扣點紀錄），並自動寄發 Email 通知該部門所有<strong>部門主管</strong>與 <strong>HR 人資主管</strong>。",
+                Keywords = "起訖時間 快速設定 天 周 月 季 年 到期 自動扣點 Email 寄信 部門主管 HR"
+            },
+            new
+            {
+                Q = "Q7. 如何鎖定（凍結）表格的特定欄位或排序表格資料？",
+                A = "點擊任何表格表頭 (<code>&lt;th&gt;</code>) 的標題文字或 <code>⇅</code> 圖示，即可切換升冪 (<code>▲</code>) 或降冪 (<code>▼</code>) 排序；點擊表頭右側的圖釘按鈕 <code>📌</code> 將其切換為 <code>🔒</code>，該欄位（含表頭與所有資料列）就會凍結固定在表格最左側，水平捲動時不會移動。可同時鎖定多個欄位，或點擊表格上方工具列「<code>🔄 重設排序與解鎖</code>」一鍵恢復。",
+                Keywords = "表頭排序 欄位鎖定 凍結 圖釘 📌 🔒 Sticky Header 水平捲動"
+            },
+            new
+            {
+                Q = "Q8. 每個員工都可以自己修改登入帳號與密碼嗎？",
+                A = "是的！不論是管理者或一般參與者，登入後皆可隨時點擊畫面右上角或主選單的「<strong>🔑 修改我的帳密</strong>」，修改自己本人的登入帳號 (<code>loginAccount</code>) 與登入密碼。儲存後系統會自動更新資料庫與當前瀏覽器登入 Cookie，無須重新登入即可繼續使用。",
+                Keywords = "修改我的帳密 修改密碼 修改登入帳號 個人密碼"
+            }
+        };
+
+        // 1. 頂部搜尋英雄橫幅 (Hero Search Banner)
+        sb.Append($@"
+        <div class='help-hero-banner'>
+            <div style='display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;'>
+                <div>
+                    <h2 style='margin:0;font-size:21px;font-weight:800;display:flex;align-items:center;gap:10px;'>
+                        <span>📖 系統線上說明與操作畫面搜尋手冊</span>
+                        <span class='badge' style='background:#0d9488;color:#fff;font-size:12px;'>支援全文關鍵字即時檢索 + 12 幅實機操作畫面詳解</span>
+                    </h2>
+                    <div style='font-size:13px;color:#cbd5e1;margin-top:5px;'>
+                        輸入任何功能關鍵字（如：<strong>盲投</strong>、<strong>待參與</strong>、<strong>自動翻牌</strong>、<strong>滑鼠右鍵</strong>、<strong>Modal</strong>、<strong>到期扣點</strong>、<strong>部門主管</strong>、<strong>排序鎖定</strong>、<strong>修改帳密</strong>），系統將即時過濾操作畫面與步驟並以黃底高亮標示關鍵字。
+                    </div>
+                </div>
+                <div style='display:flex;gap:8px;flex-wrap:wrap;'>
+                    {(isStandalonePage
+                        ? "<a href='/?tab=voting' class='btn btn-outline' style='background:rgba(255,255,255,0.15);color:#fff;border-color:rgba(255,255,255,0.35);font-size:12.5px;padding:7px 12px;'>🃏 返回系統主畫面</a>"
+                        : "<a href='/help' target='_blank' class='btn btn-outline' style='background:rgba(255,255,255,0.15);color:#fff;border-color:rgba(255,255,255,0.35);font-size:12.5px;padding:7px 12px;'>🗗 以獨立視窗開啟線上說明 (/help)</a>")}
+                </div>
+            </div>
+
+            <!-- 搜尋輸入框與分類篩選列 -->
+            <div class='help-search-grid'>
+                <div class='help-search-input-wrap'>
+                    <span style='position:absolute;left:12px;font-size:17px;pointer-events:none;'>🔍</span>
+                    <input type='text' id='helpSearchInput' class='help-search-input' value='{safeInitQ}' placeholder='請輸入關鍵字搜尋說明與操作畫面（支援多關鍵字空白分隔，例如：盲投 自動翻牌 / 右鍵 Modal / 到期 寄信）...' oninput='filterOnlineHelpTopics()' autocomplete='off' />
+                </div>
+                <div>
+                    <select id='helpCategorySelect' onchange='filterOnlineHelpTopics()' title='依功能模組分類篩選線上說明'>
+                        <option value=''>📂 全部章節分類 (12 主題 + FAQ)</option>
+                        <option value='auth' {(safeInitCat == "auth" ? "selected" : "")}>🔐 登入驗證、登出與個人帳密 (2)</option>
+                        <option value='voting' {(safeInitCat == "voting" ? "selected" : "")}>🃏 多人即時盲投、獨立網頁與回合設定 (4)</option>
+                        <option value='workitem' {(safeInitCat == "workitem" ? "selected" : "")}>📋 工項管理、代表類型與到期扣點寄信 (2)</option>
+                        <option value='table' {(safeInitCat == "table" ? "selected" : "")}>🖱️ 表格右鍵 Modal、表頭排序鎖定與統計報表 (2)</option>
+                        <option value='org' {(safeInitCat == "org" ? "selected" : "")}>👥 組織部門主管階層、批次匯入與系統 Log (2)</option>
+                        <option value='faq' {(safeInitCat == "faq" ? "selected" : "")}>❓ 常見問題快速解答 FAQ (8)</option>
+                    </select>
+                </div>
+                <div>
+                    <select id='helpRoleSelect' onchange='filterOnlineHelpTopics()' title='依適用角色篩選線上說明'>
+                        <option value=''>👥 全部角色適用說明</option>
+                        <option value='all'>🙋 全體員工 (參與者 + 管理者) 必讀</option>
+                        <option value='admin'>👑 管理者 (Admin) 專屬主持與管理</option>
+                    </select>
+                </div>
+                <div>
+                    <button type='button' class='btn btn-outline' style='background:#f8fafc;color:#0f172a;font-weight:800;padding:10px 14px;white-space:nowrap;' onclick='resetOnlineHelpFilter()'>🔄 清除搜尋條件</button>
+                </div>
+            </div>
+
+            <!-- 熱門搜尋關鍵字快速標籤 -->
+            <div style='display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:12px;'>
+                <span style='font-size:12px;font-weight:800;color:#93c5fd;'>🔥 熱門搜尋關鍵字：</span>
+                <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('待參與 參與中')"">📂 待參與 vs 參與中</span>
+                <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('自動翻牌')"">⚡ 全員投完自動翻牌</span>
+                <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('撲克牌 疑問牌')"">🃏 撲克牌面中文意義 (? / ☕)</span>
+                <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('滑鼠右鍵 Modal')"">🖱️ 滑鼠右鍵與雙擊彈出 Modal</span>
+                <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('起訖時間 到期自動扣點')"">⏰ 起訖時間與到期扣點寄信</span>
+                <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('部門主管 上一層主管')"">🌳 多位部門主管與上一層主管</span>
+                <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('表頭排序 欄位鎖定')"">📌 表頭排序與凍結鎖定</span>
+                <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('修改帳密')"">🔑 修改個人登入帳號與密碼</span>
+                <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('批次匯入 互動 HTML')"">📊 CSV/Excel 匯入與互動 HTML 報表</span>
+                <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('防崩潰 系統 Log')"">🛡️ 防崩潰保護與系統 Log</span>
+                <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('登出系統')"">🚪 全站安全登出</span>
+            </div>
+        </div>");
+
+        // 2. 搜尋狀態提示橫幅
+        sb.Append(@"
+        <div id='helpSearchStatusBar' style='background:#eff6ff;border:1.5px solid #93c5fd;border-radius:10px;padding:10px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:13.5px;font-weight:700;color:#1e3a8a;'>
+            <span id='helpSearchStatusText'>📊 目前顯示全部 <strong>12</strong> 個核心操作主題（皆搭配實機操作畫面與步驟標註）及 <strong>8</strong> 則常見問題 FAQ。點擊任一操作畫面圖片可放大全螢幕檢視！</span>
+            <span style='font-size:12px;color:#475569;'>💡 提示：點擊操作畫面圖片可開啟高解析度放大檢視視窗 (Lightbox)</span>
+        </div>");
+
+        // 3. 左右雙欄佈局：左側章節目錄樹 (TOC) + 右側圖文操作畫面卡片
+        sb.Append(@"<div class='help-layout-grid'>");
+
+        // 左側目錄側邊欄
+        sb.Append(@"
+            <div class='help-toc-sidebar'>
+                <div style='font-size:13.5px;font-weight:800;color:#0f172a;padding-bottom:8px;margin-bottom:8px;border-bottom:2px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;'>
+                    <span>📑 線上說明章節目錄</span>
+                    <span id='helpTocMatchCountBadge' class='badge badge-user' style='font-size:11px;'>12 主題</span>
+                </div>");
+
+        foreach (var t in topics)
+        {
+            sb.Append($@"
+                <a class='help-toc-item' id='toc-{t.Id}' data-target-topic='{t.Id}' onclick=""jumpToHelpTopic('{t.Id}')"">
+                    <span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'><strong>{t.Num}.</strong> {h(t.Title)}</span>
+                    <span class='toc-match-dot' style='font-size:11px;color:#2563eb;flex-shrink:0;'>▶</span>
+                </a>");
+        }
+
+        sb.Append(@"
+                <div style='margin-top:8px;padding-top:8px;border-top:1px dashed #cbd5e1;'>
+                    <a class='help-toc-item' id='toc-help-faq-section' onclick=""jumpToHelpTopic('help-faq-section')"">
+                        <span>❓ <strong>常見問題快速解答 (FAQ)</strong></span>
+                        <span style='font-size:11px;color:#2563eb;'>▶</span>
+                    </a>
+                </div>
+            </div>");
+
+        // 右側主內容區
+        sb.Append(@"<div id='helpMainContentContainer'>");
+
+        // 無符合搜尋結果時的友善提示框
+        sb.Append(@"
+            <div id='helpNoResultBox' style='display:none;background:#ffffff;border:2px dashed #93c5fd;border-radius:14px;padding:32px 24px;text-align:center;margin-bottom:20px;'>
+                <div style='font-size:36px;margin-bottom:8px;'>🔍</div>
+                <h3 style='margin:0 0 8px 0;color:#1e3a8a;'>找不到符合目前搜尋關鍵字的說明主題</h3>
+                <p style='color:#475569;font-size:13.5px;margin:0 0 16px 0;'>請嘗試簡化關鍵字，或點選下方熱門主題關鍵字快速查看對應的操作畫面：</p>
+                <div style='display:flex;justify-content:center;gap:8px;flex-wrap:wrap;'>
+                    <button type='button' class='btn btn-primary' onclick='resetOnlineHelpFilter()'>🔄 顯示全部 12 個操作畫面主題</button>
+                    <button type='button' class='btn btn-outline' onclick=""applyHelpQuickKeyword('盲投')"">🃏 搜尋「盲投」</button>
+                    <button type='button' class='btn btn-outline' onclick=""applyHelpQuickKeyword('右鍵 Modal')"">🖱️ 搜尋「右鍵 Modal」</button>
+                    <button type='button' class='btn btn-outline' onclick=""applyHelpQuickKeyword('工項 到期')"">⏰ 搜尋「工項 到期」</button>
+                </div>
+            </div>");
+
+        // 逐一渲染 12 大操作畫面主題卡片
+        foreach (var t in topics)
+        {
+            string stepHtml = "";
+            for (int i = 0; i < t.Steps.Length; i++)
+            {
+                stepHtml += $@"
+                    <div class='help-step-item'>
+                        <span class='help-step-num'>{i + 1}</span>
+                        <div class='help-searchable-text'>{t.Steps[i]}</div>
+                    </div>";
+            }
+
+            string calloutHtml = "";
+            foreach (string c in t.Callouts)
+            {
+                string pinNum = c.Length > 0 ? c[..1] : "•";
+                string pinText = c.Length > 1 ? c[1..].Trim() : c;
+                calloutHtml += $@"
+                    <div class='help-callout-chip'>
+                        <span class='help-callout-pin'>{h(pinNum)}</span>
+                        <span class='help-searchable-text'>{h(pinText)}</span>
+                    </div>";
+            }
+
+            string searchAttr = $"{t.Num} {t.CategoryName} {t.Title} {t.Keywords} {t.Summary} {string.Join(" ", t.Steps)} {string.Join(" ", t.Callouts)}".ToLowerInvariant();
+
+            sb.Append($@"
+            <div class='help-topic-card' id='{t.Id}' data-category='{t.Category}' data-role='{t.RoleScope}' data-search-blob='{h(searchAttr)}'>
+                <div class='help-topic-header'>
+                    <div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>
+                        <span class='badge' style='background:#1e3a8a;color:#fff;font-size:12.5px;padding:4px 10px;'>主題 {t.Num}</span>
+                        <span class='badge' style='background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;'>{t.CategoryName}</span>
+                        {t.RoleBadge}
+                        <h3 class='help-searchable-text' style='margin:0;font-size:17px;font-weight:800;color:#0f172a;'>{h(t.Title)}</h3>
+                    </div>
+                    <div>
+                        {t.ActionHtml}
+                    </div>
+                </div>
+
+                <div class='help-topic-body-grid'>
+                    <!-- 左側：功能重點與步驟詳解 -->
+                    <div>
+                        <div class='help-searchable-text' style='font-size:13.5px;color:#334155;line-height:1.6;background:#eff6ff;border:1px solid #bfdbfe;border-radius:9px;padding:10px 13px;margin-bottom:12px;'>
+                            💡 <strong>功能核心說明：</strong>{h(t.Summary)}
+                        </div>
+                        <div style='font-size:13px;font-weight:800;color:#1e3a8a;margin-bottom:6px;'>📋 操作步驟詳解（對照右側實機操作畫面編號 ①～④）：</div>
+                        <div class='help-step-list'>
+                            {stepHtml}
+                        </div>
+                        <div style='margin-top:10px;font-size:12px;color:#64748b;display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>
+                            <span>🏷️ <strong>搜尋關鍵字標籤：</strong></span>
+                            <code class='help-searchable-text' style='background:#f1f5f9;padding:2px 7px;border-radius:5px;color:#475569;'>{h(t.Keywords)}</code>
+                        </div>
+                    </div>
+
+                    <!-- 右側：搭配實機操作畫面與標註指引 -->
+                    <div>
+                        <div class='help-browser-frame'>
+                            <div class='help-browser-bar'>
+                                <div class='help-browser-dots'>
+                                    <span class='help-browser-dot' style='background:#ef4444;'></span>
+                                    <span class='help-browser-dot' style='background:#f59e0b;'></span>
+                                    <span class='help-browser-dot' style='background:#22c55e;'></span>
+                                    <span style='margin-left:4px;font-weight:700;color:#e2e8f0;'>🖥️ 實機操作畫面</span>
+                                </div>
+                                <div class='help-browser-url'>{h(t.RouteUrl)}</div>
+                                <button type='button' class='btn btn-outline' style='padding:2px 8px;font-size:11px;background:#2563eb;color:#fff;border-color:#60a5fa;' onclick=""openHelpScreenLightbox('{t.ImageFile}', '主題 {t.Num}：{h(t.Title)}')"">🔍 放大畫面</button>
+                            </div>
+                            <div class='help-screenshot-box' onclick=""openHelpScreenLightbox('{t.ImageFile}', '主題 {t.Num}：{h(t.Title)}')"">
+                                <img src='{t.ImageFile}' alt='主題 {t.Num} 實機操作畫面 - {h(t.Title)}' loading='lazy' onerror=""this.style.display='none';this.nextElementSibling.style.display='flex';"" />
+                                <div style='display:none;min-height:220px;align-items:center;justify-content:center;flex-direction:column;gap:8px;padding:24px;color:#cbd5e1;text-align:center;'>
+                                    <div style='font-size:28px;'>🖥️</div>
+                                    <div style='font-weight:700;'>主題 {t.Num} 實機操作畫面預覽 ({h(t.Title)})</div>
+                                </div>
+                                <div class='help-screenshot-zoom-hint'>🔍 點擊放大檢視實機操作畫面</div>
+                            </div>
+                            <div class='help-callout-legend'>
+                                {calloutHtml}
+                            </div>
+                            <div class='help-ui-diagram'>
+                                {t.UiDiagramHtml}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>");
+        }
+
+        // 4. 常見問題快速解答 (FAQ) 區塊
+        sb.Append(@"
+            <div class='help-topic-card' id='help-faq-section' data-category='faq' data-role='all' data-search-blob='常見問題 faq 問答 權限 盲投 待參與 參與中 自動翻牌 右鍵 modal 到期扣點 排序 鎖定 修改帳密'>
+                <div class='help-topic-header'>
+                    <div style='display:flex;align-items:center;gap:8px;'>
+                        <span class='badge' style='background:#0d9488;color:#fff;font-size:12.5px;padding:4px 10px;'>常見問題 FAQ</span>
+                        <h3 style='margin:0;font-size:17px;font-weight:800;color:#0f172a;'>❓ 常見問題與排解快速解答（支援關鍵字即時檢索）</h3>
+                    </div>
+                </div>");
+
+        foreach (var faq in faqs)
+        {
+            string faqBlob = $"{faq.Q} {faq.A} {faq.Keywords}".ToLowerInvariant();
+            sb.Append($@"
+                <div class='help-faq-item' data-faq-blob='{h(faqBlob)}'>
+                    <div class='help-faq-q help-searchable-text'>{faq.Q}</div>
+                    <div class='help-faq-a help-searchable-text'>{faq.A}</div>
+                </div>");
+        }
+
+        sb.Append(@"
+            </div>
+        </div>
+        </div>"); // end help-layout-grid
+
+        // 5. 實機操作畫面全螢幕放大檢視 Lightbox Modal
+        sb.Append(@"
+        <div id='spHelpScreenLightbox' class='sp-modal-overlay' style='display:none;position:fixed;inset:0;z-index:100020;background:rgba(15,23,42,0.82);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:20px;' onclick='if(event.target===this) closeHelpScreenLightbox();'>
+            <div style='background:#0f172a;border:2px solid #60a5fa;border-radius:14px;max-width:1360px;width:96vw;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,0.65);'>
+                <div style='display:flex;align-items:center;justify-content:space-between;padding:12px 18px;background:#1e293b;border-bottom:1px solid #334155;color:#fff;'>
+                    <div id='spHelpLightboxTitle' style='font-size:15.5px;font-weight:800;color:#93c5fd;'>🖥️ 實機操作畫面放大檢視</div>
+                    <div style='display:flex;gap:8px;align-items:center;'>
+                        <button type='button' class='btn btn-outline' style='padding:5px 12px;font-size:12px;background:#334155;color:#fff;border-color:#64748b;' onclick='stepHelpLightbox(-1)'>◀ 上一張操作畫面</button>
+                        <button type='button' class='btn btn-outline' style='padding:5px 12px;font-size:12px;background:#334155;color:#fff;border-color:#64748b;' onclick='stepHelpLightbox(1)'>下一張操作畫面 ▶</button>
+                        <button type='button' class='btn btn-danger' style='padding:5px 12px;font-size:12px;' onclick='closeHelpScreenLightbox()'>✖ 關閉放大檢視 (Esc)</button>
+                    </div>
+                </div>
+                <div style='padding:14px;overflow:auto;flex:1;text-align:center;background:#0f172a;'>
+                    <img id='spHelpLightboxImg' src='' alt='實機操作畫面放大預覽' style='max-width:100%;height:auto;border-radius:8px;border:1px solid #475569;box-shadow:0 12px 32px rgba(0,0,0,0.5);' />
+                </div>
+            </div>
+        </div>");
+
+        // 6. 線上說明搜尋、關鍵字高亮標示與操作畫面放大互動腳本
+        sb.Append($@"
+        <script>
+            const helpScreensList = [
+                {{ src: '/help/images/screen_01_login.png', title: '主題 01：員工帳號密碼強制登入驗證與全系統安全登出' }},
+                {{ src: '/help/images/screen_11_my_account.png', title: '主題 02：自助修改個人登入帳號與密碼（免重新登入即時生效）' }},
+                {{ src: '/help/images/screen_02_voting_lobby.png', title: '主題 03：多人即時盲投大廳：「📂 待參與」與「🟢 參與中」分類与進入獨立網頁' }},
+                {{ src: '/help/images/screen_03_voting_standalone.png', title: '主題 04：獨立盲投 Session 網頁：撲克牌中文意義、全員投完自動翻牌與拍板定案' }},
+                {{ src: '/help/images/screen_04_round_setup.png', title: '主題 05：設定盲投回合（投什麼標的、高低點數上下限、誰可參與、共識演算法）' }},
+                {{ src: '/help/images/screen_05_history.png', title: '主題 06：事後查詢訂出 Story Point 的完整過程與點數異動稽核歷程' }},
+                {{ src: '/help/images/screen_06_workitems.png', title: '主題 07：工項管理、選擇代表類型自動帶點、起訖時間快速設定與到期自動扣點寄信' }},
+                {{ src: '/help/images/screen_07_context_modal.png', title: '主題 08：全系統表格即時篩選、純滑鼠右鍵選單與雙擊彈出置中單筆編輯 Modal' }},
+                {{ src: '/help/images/screen_08_types.png', title: '主題 09：工項代表類型標準點數管理與工項類型 CRUD' }},
+                {{ src: '/help/images/screen_09_stats_table.png', title: '主題 10：員工與部門總點數統計、表頭排序與凍結鎖定、CSV/Excel/互動 HTML 匯出' }},
+                {{ src: '/help/images/screen_10_employees_org.png', title: '主題 11：組織與員工帳密管理：多位部門主管、上一層主管樹狀階層與批次匯入' }},
+                {{ src: '/help/images/screen_12_logs.png', title: '主題 12：系統防崩潰保護、錯誤 Log 查詢中心與 PowerShell 多 Tab GUI 工具' }}
+            ];
+            let currentHelpLightboxIdx = 0;
+
+            function openHelpScreenLightbox(imgSrc, titleText) {{
+                const box = document.getElementById('spHelpScreenLightbox');
+                const img = document.getElementById('spHelpLightboxImg');
+                const titleEl = document.getElementById('spHelpLightboxTitle');
+                if (!box || !img) return;
+                const foundIdx = helpScreensList.findIndex(x => x.src === imgSrc);
+                if (foundIdx >= 0) currentHelpLightboxIdx = foundIdx;
+                img.src = imgSrc;
+                if (titleEl) titleEl.textContent = '🖥️ ' + (titleText || '實機操作畫面放大檢視');
+                box.style.display = 'flex';
+                box.classList.add('open');
+            }}
+
+            function closeHelpScreenLightbox() {{
+                const box = document.getElementById('spHelpScreenLightbox');
+                if (!box) return;
+                box.style.display = 'none';
+                box.classList.remove('open');
+            }}
+
+            function stepHelpLightbox(delta) {{
+                if (!helpScreensList.length) return;
+                currentHelpLightboxIdx = (currentHelpLightboxIdx + delta + helpScreensList.length) % helpScreensList.length;
+                const item = helpScreensList[currentHelpLightboxIdx];
+                openHelpScreenLightbox(item.src, item.title);
+            }}
+
+            function clearHelpHighlights(rootEl) {{
+                if (!rootEl) return;
+                rootEl.querySelectorAll('.help-searchable-text').forEach(el => {{
+                    if (el.dataset.origHtml !== undefined) {{
+                        el.innerHTML = el.dataset.origHtml;
+                    }} else {{
+                        el.dataset.origHtml = el.innerHTML;
+                    }}
+                }});
+            }}
+
+            function highlightHelpKeywordsInElement(el, tokens) {{
+                if (!el || !tokens || !tokens.length) return;
+                if (el.dataset.origHtml === undefined) {{
+                    el.dataset.origHtml = el.innerHTML;
+                }}
+                let html = el.dataset.origHtml;
+                tokens.forEach(tok => {{
+                    if (!tok) return;
+                    const escaped = tok.replace(/[.*+?^${{}}()|[\]\\]/g, '\\$&');
+                    // 僅替換 HTML 標籤外的純文字區段
+                    const reg = new RegExp('(' + escaped + ')(?![^<]*>)', 'gi');
+                    html = html.replace(reg, '<mark class=""help-highlight"">$1</mark>');
+                }});
+                el.innerHTML = html;
+            }}
+
+            function filterOnlineHelpTopics() {{
+                const kwInput = document.getElementById('helpSearchInput');
+                const catSelect = document.getElementById('helpCategorySelect');
+                const roleSelect = document.getElementById('helpRoleSelect');
+                const rawQuery = (kwInput ? kwInput.value : '').trim();
+                const lowerQuery = rawQuery.toLowerCase();
+                const tokens = lowerQuery ? lowerQuery.split(/\s+/).filter(Boolean) : [];
+                const catVal = catSelect ? catSelect.value : '';
+                const roleVal = roleSelect ? roleSelect.value : '';
+
+                const container = document.getElementById('helpMainContentContainer');
+                clearHelpHighlights(container);
+
+                let matchedTopicCount = 0;
+                let matchedFaqCount = 0;
+
+                document.querySelectorAll('.help-topic-card').forEach(card => {{
+                    const isFaqCard = card.id === 'help-faq-section';
+                    const cardCat = card.getAttribute('data-category') || '';
+                    const cardRole = card.getAttribute('data-role') || 'all';
+                    const blob = (card.getAttribute('data-search-blob') || '').toLowerCase();
+
+                    const catMatch = !catVal || cardCat === catVal;
+                    const roleMatch = !roleVal || cardRole === roleVal || (roleVal === 'admin' && cardRole === 'all');
+
+                    if (isFaqCard) {{
+                        let anyFaqVisible = false;
+                        card.querySelectorAll('.help-faq-item').forEach(faqEl => {{
+                            const faqBlob = (faqEl.getAttribute('data-faq-blob') || '').toLowerCase();
+                            const kwMatch = tokens.length === 0 || tokens.every(t => faqBlob.indexOf(t) >= 0);
+                            const showFaq = catMatch && kwMatch;
+                            faqEl.style.display = showFaq ? '' : 'none';
+                            if (showFaq) {{
+                                anyFaqVisible = true;
+                                matchedFaqCount++;
+                                if (tokens.length > 0) {{
+                                    faqEl.querySelectorAll('.help-searchable-text').forEach(st => highlightHelpKeywordsInElement(st, tokens));
+                                }}
+                            }}
+                        }});
+                        card.style.display = anyFaqVisible ? '' : 'none';
+                        return;
+                    }}
+
+                    const kwMatch = tokens.length === 0 || tokens.every(t => blob.indexOf(t) >= 0);
+                    const visible = catMatch && roleMatch && kwMatch;
+                    card.style.display = visible ? '' : 'none';
+
+                    const tocItem = document.getElementById('toc-' + card.id);
+                    if (tocItem) {{
+                        tocItem.classList.toggle('toc-filtered-out', !visible);
+                    }}
+
+                    if (visible) {{
+                        matchedTopicCount++;
+                        if (tokens.length > 0) {{
+                            card.querySelectorAll('.help-searchable-text').forEach(st => highlightHelpKeywordsInElement(st, tokens));
+                        }}
+                    }}
+                }});
+
+                const noResultBox = document.getElementById('helpNoResultBox');
+                if (noResultBox) {{
+                    noResultBox.style.display = (matchedTopicCount === 0 && matchedFaqCount === 0) ? 'block' : 'none';
+                }}
+
+                const tocBadge = document.getElementById('helpTocMatchCountBadge');
+                if (tocBadge) {{
+                    tocBadge.textContent = matchedTopicCount + ' 主題';
+                }}
+
+                const statusText = document.getElementById('helpSearchStatusText');
+                if (statusText) {{
+                    if (rawQuery || catVal || roleVal) {{
+                        statusText.innerHTML = '🔍 搜尋結果：共找到 <strong>' + matchedTopicCount + '</strong> 個相符的操作畫面主題與 <strong>' + matchedFaqCount + '</strong> 則常見問題' +
+                            (rawQuery ? '（關鍵字「<mark class=""help-highlight"">' + rawQuery.replace(/</g, '&lt;') + '</mark>」已於步驟與畫面圖解中高亮標示）' : '');
+                    }} else {{
+                        statusText.innerHTML = '📊 目前顯示全部 <strong>12</strong> 個核心操作主題（皆搭配實機操作畫面與步驟標註）及 <strong>8</strong> 則常見問題 FAQ。點擊任一操作畫面圖片可放大全螢幕檢視！';
+                    }}
+                }}
+
+                document.querySelectorAll('.help-quick-tag').forEach(tag => {{
+                    tag.classList.toggle('active-tag', rawQuery && tag.textContent.indexOf(rawQuery) >= 0);
+                }});
+            }}
+
+            function applyHelpQuickKeyword(kw) {{
+                const kwInput = document.getElementById('helpSearchInput');
+                const catSelect = document.getElementById('helpCategorySelect');
+                if (catSelect) catSelect.value = '';
+                if (kwInput) {{
+                    kwInput.value = kw;
+                    filterOnlineHelpTopics();
+                    kwInput.focus();
+                }}
+            }}
+
+            function resetOnlineHelpFilter() {{
+                const kwInput = document.getElementById('helpSearchInput');
+                const catSelect = document.getElementById('helpCategorySelect');
+                const roleSelect = document.getElementById('helpRoleSelect');
+                if (kwInput) kwInput.value = '';
+                if (catSelect) catSelect.value = '';
+                if (roleSelect) roleSelect.value = '';
+                filterOnlineHelpTopics();
+            }}
+
+            function jumpToHelpTopic(topicId) {{
+                const target = document.getElementById(topicId);
+                if (!target) return;
+                if (target.style.display === 'none') {{
+                    resetOnlineHelpFilter();
+                }}
+                document.querySelectorAll('.help-toc-item').forEach(el => el.classList.remove('active-toc'));
+                const tocEl = document.getElementById('toc-' + topicId);
+                if (tocEl) tocEl.classList.add('active-toc');
+                target.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                target.classList.remove('sp-form-flash');
+                void target.offsetWidth;
+                target.classList.add('sp-form-flash');
+            }}
+
+            document.addEventListener('keydown', function (e) {{
+                if (e.key === 'Escape') {{
+                    closeHelpScreenLightbox();
+                }}
+            }});
+
+            (function initOnlineHelpOnLoad() {{
+                const initQ = '{safeInitQ}';
+                const initCat = '{safeInitCat}';
+                const initTopic = '{safeInitTopic}';
+                if (initQ || initCat) {{
+                    filterOnlineHelpTopics();
+                }}
+                if (initTopic) {{
+                    setTimeout(function () {{ jumpToHelpTopic(initTopic); }}, 120);
+                }}
+            }})();
+        </script>");
 
         return sb.ToString();
     }

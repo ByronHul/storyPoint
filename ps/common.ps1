@@ -823,6 +823,19 @@ function enableGridHeaderSortAndLock {
                 }
             }
         }.GetNewClosure())
+
+        $grid.add_celldoubleclick({
+            param($sender, $e)
+            if ($e.rowindex -ge 0 -and $e.columnindex -ge 0) {
+                $sender.clearselection()
+                $sender.rows[$e.rowindex].selected = $true
+                $bound = $sender.rows[$e.rowindex].databounditem
+                if ($null -ne $bound -and $null -ne $bound.row) {
+                    $ctxState.currentRowItem = $bound.row
+                    $miEdit.performclick()
+                }
+            }
+        }.GetNewClosure())
     }
 }
 
