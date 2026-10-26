@@ -397,6 +397,8 @@ public class portalController : Controller
     [AllowAnonymous]
     public IActionResult onlineHelpPage([FromQuery] string? q = null, [FromQuery] string? cat = null, [FromQuery] string? topic = null)
     {
+        Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+        Response.Headers["Pragma"] = "no-cache";
         bool isAuth = User?.Identity?.IsAuthenticated == true && getCurrentEmployeePk() > 0;
         bool isAdmin = isAuth && isAdminUser();
         string html = buildStandaloneOnlineHelpPageHtml(isAuth, isAdmin, q, cat, topic);
@@ -411,6 +413,8 @@ public class portalController : Controller
     [Authorize]
     public async Task<IActionResult> index([FromQuery] string? tab = null, [FromQuery] int? sessionPk = null, [FromQuery] string? msg = null, [FromQuery] string? err = null)
     {
+        Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+        Response.Headers["Pragma"] = "no-cache";
         // 當使用者直接開啟網站根網址 (/) 而未帶入頁籤參數，或尚未通過嚴格登入驗證時，一律強制導向 /login 帳號登入頁
         int currentEmpPk = getCurrentEmployeePk();
         string currentAcc = getCurrentLoginAccount();
@@ -649,6 +653,7 @@ public class portalController : Controller
     // =========================================================================
 
     [HttpPost("voting/create")]
+    [HttpPost("voting/session/create")]
     [Authorize]
     public async Task<IActionResult> createVotingSession(
         [FromForm] int? votingSessionPk,
@@ -862,9 +867,10 @@ public class portalController : Controller
     }
 
     [HttpPost("voting/control")]
+    [HttpPost("voting/revote")]
     [Authorize]
     public async Task<IActionResult> controlVotingSession(
-        [FromForm] int votingSessionPk,
+        [FromForm] int votingSessionPk = 0,
         [FromForm] string? controlAction = null,
         [FromForm] string? submitAction = null,
         [FromForm] string? actionType = null,
@@ -873,18 +879,26 @@ public class portalController : Controller
         [FromForm] string? finalDecisionNote = null,
         [FromForm] bool syncExistingOpenWorkItem = false,
         [FromForm] bool fromStandalone = false,
-        [FromForm] string? tabInstanceId = null)
+        [FromForm] string? tabInstanceId = null,
+        [FromForm] string? targetKind = null,
+        [FromForm] int? workItemTypePk = null,
+        [FromForm] int? workItemPk = null,
+        [FromForm] string? returnTab = null)
     {
         if (!isAdminUser())
         {
-            return Redirect($"/voting/session?sessionPk={votingSessionPk}&tabInstanceId={Uri.EscapeDataString(tabInstanceId ?? "")}&err=" + Uri.EscapeDataString("僅管理者可執行翻牌揭曉、開啟下一回合或拍板定案。"));
+            if (fromStandalone && votingSessionPk > 0)
+            {
+                return Redirect($"/voting/session?sessionPk={votingSessionPk}&tabInstanceId={Uri.EscapeDataString(tabInstanceId ?? "")}&err=" + Uri.EscapeDataString("僅管理者可執行翻牌揭曉、重新投票、開啟下一回合或拍板定案。"));
+            }
+            return Redirect($"/?tab={Uri.EscapeDataString(string.IsNullOrWhiteSpace(returnTab) ? "voting" : returnTab)}&err=" + Uri.EscapeDataString("僅管理者可執行翻牌揭曉、重新投票、開啟下一回合或拍板定案。"));
         }
 
         string resolvedAction = !string.IsNullOrWhiteSpace(submitAction)
             ? submitAction.Trim()
             : (!string.IsNullOrWhiteSpace(controlAction)
                 ? controlAction.Trim()
-                : (!string.IsNullOrWhiteSpace(actionType) ? actionType.Trim() : "reveal"));
+                : (!string.IsNullOrWhiteSpace(actionType) ? actionType.Trim() : "revote"));
 
         string? cleanDiscussionNote = string.IsNullOrWhiteSpace(roundDiscussionNote)
             ? null
@@ -896,17 +910,34 @@ public class portalController : Controller
 
         try
         {
-            await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spControlVotingSession", new Dictionary<string, object?>
+            var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spControlVotingSession", new Dictionary<string, object?>
             {
-                ["votingSessionPk"] = votingSessionPk,
+                ["votingSessionPk"] = votingSessionPk > 0 ? votingSessionPk : null,
                 ["controlAction"] = resolvedAction,
                 ["roundDiscussionNote"] = cleanDiscussionNote,
                 ["finalStoryPoint"] = finalStoryPoint,
                 ["finalDecisionNote"] = effectiveDecisionNote,
                 ["syncExistingOpenWorkItem"] = syncExistingOpenWorkItem,
                 ["operatorEmployeePk"] = getCurrentEmployeePk(),
-                ["operatorAccount"] = getCurrentLoginAccount()
+                ["operatorAccount"] = getCurrentLoginAccount(),
+                ["targetKindParam"] = string.IsNullOrWhiteSpace(targetKind) ? null : targetKind.Trim(),
+                ["workItemTypePkParam"] = (workItemTypePk.HasValue && workItemTypePk.Value > 0) ? workItemTypePk.Value : null,
+                ["workItemPkParam"] = (workItemPk.HasValue && workItemPk.Value > 0) ? workItemPk.Value : null
             });
+
+            int effectiveSessionPk = votingSessionPk;
+            string effectiveSessionTitle = "";
+            int effectiveRoundNum = 1;
+            if (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0)
+            {
+                var r0 = ds.Tables[0].Rows[0];
+                if (r0.Table.Columns.Contains("votingSessionPk") && r0["votingSessionPk"] != DBNull.Value)
+                    effectiveSessionPk = Convert.ToInt32(r0["votingSessionPk"]);
+                if (r0.Table.Columns.Contains("sessionTitle") && r0["sessionTitle"] != DBNull.Value)
+                    effectiveSessionTitle = r0["sessionTitle"]?.ToString() ?? "";
+                if (r0.Table.Columns.Contains("currentRoundNumber") && r0["currentRoundNumber"] != DBNull.Value)
+                    effectiveRoundNum = Convert.ToInt32(r0["currentRoundNumber"]);
+            }
 
             string actionText = resolvedAction switch
             {
@@ -916,6 +947,12 @@ public class portalController : Controller
                 "nextRound" => !string.IsNullOrEmpty(cleanDiscussionNote)
                     ? $"已將本回合討論紀錄（「{cleanDiscussionNote}」）寫入回合紀錄，並成功開啟下一回合重新盲投！"
                     : "已開啟下一回合重新盲投！",
+                "revote" => !string.IsNullOrEmpty(effectiveSessionTitle)
+                    ? $"🔄 已針對「{effectiveSessionTitle}」啟動重新投票（目前為第 {effectiveRoundNum} 回合盲投進行中），估算狀態已重設為投票估算中！"
+                    : $"🔄 已成功啟動重新投票（第 {effectiveRoundNum} 回合盲投進行中）！",
+                "resetRound" => !string.IsNullOrEmpty(effectiveSessionTitle)
+                    ? $"🔁 已清空「{effectiveSessionTitle}」本回合（第 {effectiveRoundNum} 回合）既有出牌紀錄並重啟重新投票！"
+                    : "🔁 已清空本回合既有出牌紀錄並重啟重新投票！",
                 "finalize" => !string.IsNullOrEmpty(effectiveDecisionNote)
                     ? $"已拍板定案最終 Story Point 為 {finalStoryPoint:0.##} 點（定案決議說明：「{effectiveDecisionNote}」），並自動更新目標點數與歷程！"
                     : $"已拍板定案最終 Story Point 為 {finalStoryPoint:0.##} 點，並自動更新目標點數與歷程！",
@@ -924,23 +961,38 @@ public class portalController : Controller
 
             await _hubContext.Clients.All.SendAsync("onVotingSessionUpdated", new
             {
-                votingSessionPk = votingSessionPk,
+                votingSessionPk = effectiveSessionPk,
                 eventName = resolvedAction,
+                sessionStatus = (resolvedAction == "revote" || resolvedAction == "resetRound" || resolvedAction == "nextRound") ? "voting" : null,
                 messageText = actionText,
                 timestamp = DateTime.Now.ToString("HH:mm:ss")
             });
 
-            var (_, assignedTabId, _) = sqlDataService.tryEnterOrRefreshVotingSessionLease(
-                getCurrentEmployeePk(),
-                getCurrentEmployeeName(),
-                votingSessionPk,
-                tabInstanceId);
-            string tokenParam = !string.IsNullOrEmpty(assignedTabId) ? $"&tabInstanceId={Uri.EscapeDataString(assignedTabId)}" : "";
-            return Redirect($"/voting/session?sessionPk={votingSessionPk}{tokenParam}&msg=" + Uri.EscapeDataString(actionText));
+            if (fromStandalone || !string.IsNullOrWhiteSpace(tabInstanceId))
+            {
+                var (_, assignedTabId, _) = sqlDataService.tryEnterOrRefreshVotingSessionLease(
+                    getCurrentEmployeePk(),
+                    getCurrentEmployeeName(),
+                    effectiveSessionPk,
+                    tabInstanceId);
+                string tokenParam = !string.IsNullOrEmpty(assignedTabId) ? $"&tabInstanceId={Uri.EscapeDataString(assignedTabId)}" : "";
+                return Redirect($"/voting/session?sessionPk={effectiveSessionPk}{tokenParam}&msg=" + Uri.EscapeDataString(actionText));
+            }
+
+            if (!string.IsNullOrWhiteSpace(returnTab))
+            {
+                return Redirect($"/?tab={Uri.EscapeDataString(returnTab.Trim())}&sessionPk={effectiveSessionPk}&msg=" + Uri.EscapeDataString(actionText));
+            }
+
+            return Redirect($"/voting/session?sessionPk={effectiveSessionPk}&msg=" + Uri.EscapeDataString(actionText));
         }
         catch (Exception ex)
         {
             await logPortalExceptionAsync("portalController.controlVotingSession", ex);
+            if (!fromStandalone && string.IsNullOrWhiteSpace(tabInstanceId) && !string.IsNullOrWhiteSpace(returnTab))
+            {
+                return Redirect($"/?tab={Uri.EscapeDataString(returnTab.Trim())}&err=" + Uri.EscapeDataString("控制投票議程時發生異常（已自動記錄至系統 Log）：" + ex.Message));
+            }
             return Redirect($"/voting/session?sessionPk={votingSessionPk}&tabInstanceId={Uri.EscapeDataString(tabInstanceId ?? "")}&err=" + Uri.EscapeDataString("控制投票議程時發生異常（已自動記錄至系統 Log）：" + ex.Message));
         }
     }
@@ -4494,6 +4546,7 @@ public class portalController : Controller
                             {(isFinalized ? "🔍 檢視此定案 Session 獨立頁" : (isAlreadyOpen ? "🟢 參與中 (獨立網頁進行中・禁重複進入)" : "🚀 點選進入「參與中」獨立網頁"))}
                         </a>
                         {(!isFinalized ? $"<button type='button' data-session-leave-btn='{sPk}' onclick='leaveParticipatingSessionFromLobby(event, {sPk})' class='btn btn-outline' style='display:{(isAlreadyOpen ? "inline-block" : "none")};padding:4px 8px;font-size:11.5px;color:#dc2626;border-color:#fca5a5;background:#fff;' title='結束本場議程的獨立網頁參與狀態並移回「待參與」'>🚪 結束參與</button>" : "")}
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:11.5px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' onclick=\"triggerRevoteFromTarget('session', 0, {sPk}, '{jsSafeTitle}', false, 'voting')\" title='針對此議程啟動重新投票（開啟新一輪盲投）'>🔄 重新投票</button>" : "")}
                         {(isAdmin && !isFinalized ? $"<button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:11.5px;' onclick='openRoundSetupForSession({sPk})'>⚙️ 修改回合設定</button>" : "")}
                     </div>
                 </div>
@@ -4659,6 +4712,7 @@ public class portalController : Controller
                             {(isOpenNow ? "🟢 參與中 (獨立網頁進行中・禁重複進入)" : "🚀 點選進入「參與中」獨立網頁")}
                         </a>
                         <button type=""button"" data-session-leave-btn=""{sPk}"" onclick=""leaveParticipatingSessionFromLobby(event, {sPk})"" class=""btn btn-outline"" style=""display:{(isOpenNow ? "inline-block" : "none")};padding:8px 10px;font-size:12px;color:#dc2626;border-color:#fca5a5;background:#fff;"" title=""結束本場議程的獨立網頁參與狀態並移回「待參與」"">🚪 結束參與</button>
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:8px 10px;font-size:12px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' onclick=\"triggerRevoteFromTarget('session', 0, {sPk}, '{jsCardTitle}', false, 'voting')\" title='針對此議程啟動重新投票'>🔄 重新投票</button>" : "")}
                         {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:8px 10px;font-size:12px;' onclick='openRoundSetupForSession({sPk})'>⚙️ 設定</button>" : "")}
                     </div>
                 </div>");
@@ -4756,13 +4810,18 @@ public class portalController : Controller
                 int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
                 sb.Append($"<option value='{sPk}'>✏️ 修改進行中議程：{h(sRow["sessionCode"])} - {h(sRow["sessionTitle"])}</option>");
             }
+            foreach (DataRow sRow in finalizedSessions)
+            {
+                int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
+                sb.Append($"<option value='{sPk}'>🔄 重新投票已定案議程：{h(sRow["sessionCode"])} - {h(sRow["sessionTitle"])}</option>");
+            }
             sb.Append(@"
                             </select>
                         </div>
                         <div style='display:flex;align-items:end;'>
-                            <label style='display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;background:#fff;border:1px solid #cbd5e1;border-radius:7px;width:100%;margin:0;' data-tip='若為修改既有進行中議程，勾選此項將同時清空本回合已投出的撲克牌紀錄，讓全體參與者重新盲投' title='若為修改既有進行中議程，勾選此項將同時清空本回合已投出的撲克牌紀錄，讓全體參與者重新盲投'>
+                            <label style='display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;background:#fff;border:1px solid #cbd5e1;border-radius:7px;width:100%;margin:0;' data-tip='若為修改既有或已定案議程，勾選此項將同時清空出牌紀錄並重啟盲投回合，讓全體參與者重新投票' title='若為修改既有或已定案議程，勾選此項將同時清空出牌紀錄並重啟盲投回合，讓全體參與者重新投票'>
                                 <input type='checkbox' name='resetCurrentRoundVotes' id='setupResetVotes' value='true' />
-                                <span>修改既有議程時，一併清空本回合出牌重新盲投 <span class='sp-tip-icon'>ⓘ</span></span>
+                                <span>🔄 重新投票：修改既有／已定案議程時，一併重啟盲投重新投票 <span class='sp-tip-icon'>ⓘ</span></span>
                             </label>
                         </div>
                     </div>
@@ -5071,6 +5130,7 @@ public class portalController : Controller
             string sStatus = sRow["sessionStatus"].ToString() ?? "";
             string badgeCls = sStatus == "voting" ? "badge-voting" : (sStatus == "revealed" ? "badge-revealed" : "badge-finalized");
             string finalPt = sRow["finalStoryPoint"] != DBNull.Value ? $"{sRow["finalStoryPoint"]} pt" : "尚未定案";
+            string jsHistTitle = escapeJsString($"{sRow["sessionCode"]} - {sRow["sessionTitle"]}");
 
             sb.Append($@"
             <div style=""border:1px solid #cbd5e1;border-radius:10px;padding:16px;margin-bottom:18px;background:#f8fafc;"">
@@ -5079,8 +5139,9 @@ public class portalController : Controller
                         <span class=""badge {badgeCls}"">{h(sRow["sessionStatusText"])}</span>
                         <strong style=""font-size:16px;margin-left:6px;"">{h(sRow["sessionCode"])} - {h(sRow["sessionTitle"])}</strong>
                     </div>
-                    <div style=""font-size:14px;"">
-                        最終核定 Story Point：<strong style=""color:#16a34a;font-size:18px;"">{finalPt}</strong> ｜ 總回合數：<strong>{sRow["totalRoundCount"]} 回合</strong> ｜ 主持管理者：{h(sRow["hostEmployeeName"])}
+                    <div style=""font-size:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;"">
+                        <span>最終核定 Story Point：<strong style=""color:#16a34a;font-size:18px;"">{finalPt}</strong> ｜ 總回合數：<strong>{sRow["totalRoundCount"]} 回合</strong> ｜ 主持管理者：{h(sRow["hostEmployeeName"])}</span>
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' onclick=\"triggerRevoteFromTarget('session', 0, {sPk}, '{jsHistTitle}', false, 'voting')\">🔄 重新投票</button>" : "")}
                     </div>
                 </div>
                 <div style=""font-size:13px;color:#334155;margin-bottom:10px;"">
@@ -5695,6 +5756,9 @@ public class portalController : Controller
             string wStatusStr = wRow["executionStatus"]?.ToString() ?? "todo";
             string wReasonStr = wRow["adjustmentReason"]?.ToString() ?? "";
             string wAssigneeStr = wRow["assigneeSummary"]?.ToString() ?? "";
+            int wiLastSessPk = wRow.Table.Columns.Contains("lastVotingSessionPk") && wRow["lastVotingSessionPk"] != DBNull.Value
+                ? Convert.ToInt32(wRow["lastVotingSessionPk"])
+                : 0;
             string wiSearchBlob = $"{wCodeStr} {wTitleStr} {wDescStr} {wSprintStr} {wKind} {wKindText} {wRow["typeCode"]} {wTypeNameStr} {wAssigneeStr} {wReasonStr} {notifRecipients}".ToLowerInvariant();
 
             sb.Append($@"<tr class='wi-row sp-context-row'
@@ -5716,7 +5780,8 @@ public class portalController : Controller
                 data-wi-end='{h(endIsoJs)}'
                 data-wi-expired='{(isExpiredProc ? "1" : "0")}'
                 data-wi-assignee='{h(wAssigneeStr)}'
-                title='💡 按滑鼠右鍵選擇此筆工項並開啟操作選單（彈出 Modal 單筆編輯、修改指派員工、發起盲投、刪除）'>
+                data-wi-last-session-pk='{wiLastSessPk}'
+                title='💡 按滑鼠右鍵選擇此筆工項並開啟操作選單（彈出 Modal 單筆編輯、修改指派員工、重新投票、發起盲投、刪除）'>
                 <td data-sort-value='{h(wCodeStr)}'>
                     <div><strong>{h(wCodeStr)}</strong></div>
                     <div style='font-size:11px;color:#64748b;margin-top:2px;'>{h(wSprintStr)}</div>
@@ -5818,7 +5883,7 @@ public class portalController : Controller
             <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                 <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
                     <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
-                        💡 <strong>操作提示：</strong>於代表類型列<strong>滑鼠雙擊 (Double-Click)</strong> 直接彈出單筆編輯 Modal；<strong>按滑鼠右鍵</strong>開啟快捷選單執行<strong>單筆編輯、發起盲投、刪除、以此欄值篩選</strong>（選取列後亦可按 <code>Enter</code> / <code>F2</code> 編輯）！
+                        💡 <strong>操作提示：</strong>於代表類型列<strong>滑鼠雙擊 (Double-Click)</strong> 直接彈出單筆編輯 Modal；<strong>按滑鼠右鍵</strong>開啟快捷選單執行<strong>單筆編輯、重新投票、發起盲投、刪除、以此欄值篩選</strong>（選取列後亦可按 <code>Enter</code> / <code>F2</code> 編輯）！
                     </div>
                     <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick='resetWorkItemTypeFilter()'>🔄 清除全部篩選條件</button>
                 </div>
@@ -5846,6 +5911,7 @@ public class portalController : Controller
                         <select id='filterTypeStatus' onchange='filterWorkItemTypeTable()'>
                             <option value=''>全部估算狀態</option>
                             <option value='finalized'>✅ 已核定標準 Story Point</option>
+                            <option value='voting'>🃏 投票估算中</option>
                             <option value='pending'>⏳ 待投票定案</option>
                         </select>
                     </div>
@@ -5866,6 +5932,11 @@ public class portalController : Controller
             string tNameStr = tRow["typeName"]?.ToString() ?? "";
             string tCatStr = tRow["categoryName"]?.ToString() ?? "";
             string tDescStr = tRow["description"]?.ToString() ?? "";
+            string tEstStatus = tRow.Table.Columns.Contains("estimationStatus") ? (tRow["estimationStatus"]?.ToString() ?? "pending") : "pending";
+            int tLastSessPk = tRow.Table.Columns.Contains("lastVotingSessionPk") && tRow["lastVotingSessionPk"] != DBNull.Value
+                ? Convert.ToInt32(tRow["lastVotingSessionPk"])
+                : 0;
+            string tEstBadgeCls = tEstStatus == "finalized" ? "badge-finalized" : (tEstStatus == "voting" ? "badge-voting" : "badge-revealed");
             string tSearchBlob = $"{tCodeStr} {tNameStr} {dKind} {dKindText} {tCatStr} {tDescStr} {ptJs}".ToLowerInvariant();
 
             sb.Append($@"<tr class='type-row sp-context-row'
@@ -5879,7 +5950,9 @@ public class portalController : Controller
                 data-type-pt='{h(ptJs)}'
                 data-type-kind='{h(dKind)}'
                 data-type-status='{(hasStdPt ? "finalized" : "pending")}'
-                title='💡 按滑鼠右鍵選擇此筆代表類型並開啟操作選單（彈出 Modal 單筆編輯、發起盲投、刪除）'>
+                data-type-est-status='{h(tEstStatus)}'
+                data-type-last-session-pk='{tLastSessPk}'
+                title='💡 按滑鼠右鍵選擇此筆代表類型並開啟操作選單（彈出 Modal 單筆編輯、重新投票、發起盲投、刪除）'>
                 <td data-sort-value='{h(tCodeStr)}'>
                     <strong>{h(tCodeStr)}</strong>
                 </td>
@@ -5888,7 +5961,7 @@ public class portalController : Controller
                 <td>{h(tCatStr)}</td>
                 <td>{h(tDescStr)}</td>
                 <td data-sort-value='{(hasStdPt ? ptJs : "-1")}'>{stdPt}</td>
-                <td><span class='badge badge-finalized'>{h(tRow["estimationStatusText"])}</span></td>
+                <td><span class='badge {tEstBadgeCls}'>{h(tRow["estimationStatusText"])}</span></td>
                 <td>{tRow["linkedWorkItemCount"]} 個工項</td>
             </tr>");
         }
@@ -8365,7 +8438,10 @@ public class portalController : Controller
                     </div>
                     <div class=""sp-modal-footer"">
                         <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
-                        <button type=""submit"" class=""btn btn-primary"">${isCreate ? '➕ 建立工項並完成指派' : '💾 儲存此筆工項與指派修改'}</button>
+                        <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
+                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""closeRecordEditModal(); triggerRevoteFromTarget('workItem', '${escapeModalHtml(pk)}', 0, '${escapeModalHtml(code)} - ${escapeModalHtml(title)}', false, 'voting');"">🔄 重新投票</button>` : ''}
+                            <button type=""submit"" class=""btn btn-primary"">${isCreate ? '➕ 建立工項並完成指派' : '💾 儲存此筆工項與指派修改'}</button>
+                        </div>
                     </div>
                 </form>
             `;
@@ -8605,7 +8681,10 @@ public class portalController : Controller
                     </div>
                     <div class=""sp-modal-footer"">
                         <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
-                        <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆代表類型</button>
+                        <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
+                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""closeRecordEditModal(); triggerRevoteFromTarget('workItemType', '${escapeModalHtml(pk)}', 0, '${escapeModalHtml(code)} - ${escapeModalHtml(name)}', false, 'voting');"">🔄 重新投票</button>` : ''}
+                            <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆代表類型</button>
+                        </div>
                     </div>
                 </form>
             `;
