@@ -4011,16 +4011,28 @@ public class portalController : Controller
         .help-search-input:focus {{ outline:none; border-color:#f59e0b !important; box-shadow:0 0 0 3px rgba(245,158,11,0.35); }}
         .help-quick-tag {{ display:inline-flex; align-items:center; gap:4px; padding:4px 11px; border-radius:999px; background:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.3); color:#f8fafc; font-size:12px; font-weight:700; cursor:pointer; transition:all .15s; user-select:none; }}
         .help-quick-tag:hover, .help-quick-tag.active-tag {{ background:#f59e0b; border-color:#fbbf24; color:#0f172a; transform:translateY(-1px); }}
-        .help-layout-grid {{ display:grid; grid-template-columns:280px 1fr; gap:18px; align-items:start; }}
+        .help-layout-grid {{ display:grid; grid-template-columns:280px 1fr; gap:18px; align-items:start; transition:all .2s ease; }}
+        .help-layout-grid.toc-sidebar-collapsed {{ grid-template-columns:1fr; }}
+        .help-layout-grid.toc-sidebar-collapsed .help-toc-sidebar {{ display:none; }}
         @media (max-width:1080px) {{ .help-layout-grid {{ grid-template-columns:1fr; }} }}
         .help-toc-sidebar {{ position:sticky; top:62px; background:#ffffff; border:1px solid #cbd5e1; border-radius:12px; padding:14px; box-shadow:0 2px 8px rgba(15,23,42,0.05); max-height:calc(100vh - 84px); overflow-y:auto; }}
-        .help-toc-item {{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border-radius:8px; color:#1e293b; font-size:12.5px; font-weight:700; text-decoration:none; cursor:pointer; transition:all .15s; margin-bottom:3px; border-left:3px solid transparent; }}
+        .help-toc-sidebar.toc-list-collapsed #helpTocListBody {{ display:none; }}
+        .help-toc-cat-group {{ margin-bottom:6px; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden; background:#f8fafc; }}
+        .help-toc-cat-header {{ display:flex; align-items:center; justify-content:space-between; padding:6px 10px; font-size:12px; font-weight:800; color:#1e3a8a; background:#eff6ff; cursor:pointer; user-select:none; border-bottom:1px solid #dbeafe; }}
+        .help-toc-cat-header:hover {{ background:#dbeafe; }}
+        .help-toc-cat-group.cat-collapsed .help-toc-cat-header {{ border-bottom:none; background:#f1f5f9; color:#334155; }}
+        .help-toc-cat-group.cat-collapsed .help-toc-cat-items {{ display:none; }}
+        .help-toc-cat-items {{ padding:4px; background:#ffffff; }}
+        .help-toc-item {{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 9px; border-radius:7px; color:#1e293b; font-size:12.5px; font-weight:700; text-decoration:none; cursor:pointer; transition:all .15s; margin-bottom:2px; border-left:3px solid transparent; }}
         .help-toc-item:hover {{ background:#eff6ff; color:#1d4ed8; border-left-color:#3b82f6; }}
         .help-toc-item.active-toc {{ background:#dbeafe; color:#1e3a8a; border-left-color:#1d4ed8; font-weight:800; }}
-        .help-toc-item.toc-filtered-out {{ opacity:0.35; }}
+        .help-toc-item.toc-filtered-out {{ opacity:0.35; display:none; }}
         .help-topic-card {{ background:#ffffff; border:1.5px solid #cbd5e1; border-radius:14px; padding:20px; margin-bottom:20px; box-shadow:0 4px 12px rgba(15,23,42,0.05); transition:border-color .2s, box-shadow .2s; scroll-margin-top:70px; }}
         .help-topic-card:hover {{ border-color:#60a5fa; box-shadow:0 8px 22px rgba(37,99,235,0.1); }}
-        .help-topic-header {{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; border-bottom:2px solid #f1f5f9; padding-bottom:12px; margin-bottom:16px; }}
+        .help-topic-header {{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; border-bottom:2px solid #f1f5f9; padding-bottom:12px; margin-bottom:16px; cursor:pointer; }}
+        .help-topic-card.topic-collapsed .help-topic-header {{ border-bottom:none; padding-bottom:0; margin-bottom:0; }}
+        .help-topic-card.topic-collapsed .help-topic-body-grid {{ display:none; }}
+        .help-faq-item.faq-collapsed .help-faq-a {{ display:none; }}
         .help-topic-body-grid {{ display:grid; grid-template-columns:1fr 1.18fr; gap:18px; align-items:start; }}
         @media (max-width:980px) {{ .help-topic-body-grid {{ grid-template-columns:1fr; }} }}
         .help-step-list {{ display:flex; flex-direction:column; gap:10px; margin:10px 0; }}
@@ -12090,16 +12102,28 @@ public class portalController : Controller
         .help-search-input:focus {{ outline:none; border-color:#f59e0b !important; box-shadow:0 0 0 3px rgba(245,158,11,0.35); }}
         .help-quick-tag {{ display:inline-flex; align-items:center; gap:4px; padding:4px 11px; border-radius:999px; background:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.3); color:#f8fafc; font-size:12px; font-weight:700; cursor:pointer; transition:all .15s; user-select:none; }}
         .help-quick-tag:hover, .help-quick-tag.active-tag {{ background:#f59e0b; border-color:#fbbf24; color:#0f172a; transform:translateY(-1px); }}
-        .help-layout-grid {{ display:grid; grid-template-columns:280px 1fr; gap:18px; align-items:start; }}
+        .help-layout-grid {{ display:grid; grid-template-columns:280px 1fr; gap:18px; align-items:start; transition:all .2s ease; }}
+        .help-layout-grid.toc-sidebar-collapsed {{ grid-template-columns:1fr; }}
+        .help-layout-grid.toc-sidebar-collapsed .help-toc-sidebar {{ display:none; }}
         @media (max-width:1080px) {{ .help-layout-grid {{ grid-template-columns:1fr; }} }}
         .help-toc-sidebar {{ position:sticky; top:68px; background:#ffffff; border:1px solid #cbd5e1; border-radius:12px; padding:14px; box-shadow:0 2px 8px rgba(15,23,42,0.05); max-height:calc(100vh - 88px); overflow-y:auto; }}
-        .help-toc-item {{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border-radius:8px; color:#1e293b; font-size:12.5px; font-weight:700; text-decoration:none; cursor:pointer; transition:all .15s; margin-bottom:3px; border-left:3px solid transparent; }}
+        .help-toc-sidebar.toc-list-collapsed #helpTocListBody {{ display:none; }}
+        .help-toc-cat-group {{ margin-bottom:6px; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden; background:#f8fafc; }}
+        .help-toc-cat-header {{ display:flex; align-items:center; justify-content:space-between; padding:6px 10px; font-size:12px; font-weight:800; color:#1e3a8a; background:#eff6ff; cursor:pointer; user-select:none; border-bottom:1px solid #dbeafe; }}
+        .help-toc-cat-header:hover {{ background:#dbeafe; }}
+        .help-toc-cat-group.cat-collapsed .help-toc-cat-header {{ border-bottom:none; background:#f1f5f9; color:#334155; }}
+        .help-toc-cat-group.cat-collapsed .help-toc-cat-items {{ display:none; }}
+        .help-toc-cat-items {{ padding:4px; background:#ffffff; }}
+        .help-toc-item {{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 9px; border-radius:7px; color:#1e293b; font-size:12.5px; font-weight:700; text-decoration:none; cursor:pointer; transition:all .15s; margin-bottom:2px; border-left:3px solid transparent; }}
         .help-toc-item:hover {{ background:#eff6ff; color:#1d4ed8; border-left-color:#3b82f6; }}
         .help-toc-item.active-toc {{ background:#dbeafe; color:#1e3a8a; border-left-color:#1d4ed8; font-weight:800; }}
-        .help-toc-item.toc-filtered-out {{ opacity:0.35; }}
+        .help-toc-item.toc-filtered-out {{ opacity:0.35; display:none; }}
         .help-topic-card {{ background:#ffffff; border:1.5px solid #cbd5e1; border-radius:14px; padding:20px; margin-bottom:20px; box-shadow:0 4px 12px rgba(15,23,42,0.05); transition:border-color .2s, box-shadow .2s; scroll-margin-top:74px; }}
         .help-topic-card:hover {{ border-color:#60a5fa; box-shadow:0 8px 22px rgba(37,99,235,0.1); }}
-        .help-topic-header {{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; border-bottom:2px solid #f1f5f9; padding-bottom:12px; margin-bottom:16px; }}
+        .help-topic-header {{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; border-bottom:2px solid #f1f5f9; padding-bottom:12px; margin-bottom:16px; cursor:pointer; }}
+        .help-topic-card.topic-collapsed .help-topic-header {{ border-bottom:none; padding-bottom:0; margin-bottom:0; }}
+        .help-topic-card.topic-collapsed .help-topic-body-grid {{ display:none; }}
+        .help-faq-item.faq-collapsed .help-faq-a {{ display:none; }}
         .help-topic-body-grid {{ display:grid; grid-template-columns:1fr 1.18fr; gap:18px; align-items:start; }}
         @media (max-width:980px) {{ .help-topic-body-grid {{ grid-template-columns:1fr; }} }}
         .help-step-list {{ display:flex; flex-direction:column; gap:10px; margin:10px 0; }}
@@ -12801,39 +12825,79 @@ public class portalController : Controller
             </div>
         </div>");
 
-        // 2. 搜尋狀態提示橫幅
+        // 2. 搜尋狀態提示橫幅與全域展開/縮合控制列
         sb.Append(@"
-        <div id='helpSearchStatusBar' style='background:#eff6ff;border:1.5px solid #93c5fd;border-radius:10px;padding:10px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:13.5px;font-weight:700;color:#1e3a8a;'>
-            <span id='helpSearchStatusText'>📊 目前顯示全部 <strong>13</strong> 個核心說明與操作主題（含 Story Point 概念與複雜度評估 + 12 幅實機操作畫面）及 <strong>10</strong> 則常見問題 FAQ。點擊任一操作畫面圖片可放大全螢幕檢視！</span>
-            <span style='font-size:12px;color:#475569;'>💡 提示：點擊操作畫面圖片可開啟高解析度放大檢視視窗 (Lightbox)</span>
+        <div id='helpSearchStatusBar' style='background:#eff6ff;border:1.5px solid #93c5fd;border-radius:10px;padding:10px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;font-size:13.5px;font-weight:700;color:#1e3a8a;'>
+            <div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>
+                <button type='button' id='btnToggleHelpTocSidebar' class='btn btn-outline' style='padding:4px 10px;font-size:12px;background:#ffffff;color:#1e3a8a;border-color:#60a5fa;font-weight:800;' onclick='toggleHelpTocSidebar()' title='縮合或展開左側線上說明章節目錄側邊欄'>◀ 縮合左側章節目錄</button>
+                <span id='helpSearchStatusText'>📊 目前顯示全部 <strong>13</strong> 個核心說明與操作主題（含 Story Point 概念與複雜度評估 + 12 幅實機操作畫面）及 <strong>10</strong> 則常見問題 FAQ。</span>
+            </div>
+            <div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>
+                <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;background:#ffffff;color:#334155;border-color:#cbd5e1;' onclick='setAllHelpTopicsCollapsed(false)'>🔽 全部展開主題</button>
+                <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;background:#ffffff;color:#334155;border-color:#cbd5e1;' onclick='setAllHelpTopicsCollapsed(true)'>🔼 全部縮合主題</button>
+            </div>
         </div>");
 
         // 3. 左右雙欄佈局：左側章節目錄樹 (TOC) + 右側圖文操作畫面卡片
-        sb.Append(@"<div class='help-layout-grid'>");
+        sb.Append(@"<div class='help-layout-grid' id='helpLayoutGrid'>");
 
-        // 左側目錄側邊欄
+        // 左側目錄側邊欄（支援整體側欄縮合、列表上下縮合、以及各分類資料夾展開/縮合）
         sb.Append(@"
-            <div class='help-toc-sidebar'>
-                <div style='font-size:13.5px;font-weight:800;color:#0f172a;padding-bottom:8px;margin-bottom:8px;border-bottom:2px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;'>
-                    <span>📑 線上說明章節目錄</span>
-                    <span id='helpTocMatchCountBadge' class='badge badge-user' style='font-size:11px;'>13 主題</span>
-                </div>");
+            <div class='help-toc-sidebar' id='helpTocSidebar'>
+                <div style='font-size:13.5px;font-weight:800;color:#0f172a;padding-bottom:8px;margin-bottom:8px;border-bottom:2px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:6px;'>
+                    <span style='cursor:pointer;display:flex;align-items:center;gap:5px;' onclick='toggleHelpTocListBody()' title='點擊可上下縮合或展開章節目錄清單'>
+                        <span id='helpTocListArrow' style='color:#2563eb;font-size:12px;'>▼</span>
+                        <span>📑 線上說明章節目錄</span>
+                    </span>
+                    <div style='display:flex;align-items:center;gap:4px;'>
+                        <span id='helpTocMatchCountBadge' class='badge badge-user' style='font-size:11px;padding:2px 7px;'>13 主題</span>
+                        <button type='button' id='btnToggleTocListBody' class='btn btn-outline' style='padding:2px 6px;font-size:11px;' onclick='toggleHelpTocListBody()' title='上下縮合或展開目錄列表'>🔼 縮合</button>
+                        <button type='button' class='btn btn-outline' style='padding:2px 6px;font-size:11px;color:#1d4ed8;border-color:#93c5fd;' onclick='toggleHelpTocSidebar()' title='將左側目錄側邊欄往左隱藏，放大右側閱讀空間'>◀ 隱藏</button>
+                    </div>
+                </div>
+                <div id='helpTocListBody'>
+                    <div style='display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px;padding:4px 6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;font-size:11.5px;'>
+                        <span style='color:#475569;font-weight:700;'>📂 分類目錄控制：</span>
+                        <div style='display:flex;gap:4px;'>
+                            <button type='button' class='btn btn-outline' style='padding:1px 6px;font-size:11px;' onclick='setAllHelpTocCategoriesCollapsed(false)'>➕ 全展開</button>
+                            <button type='button' class='btn btn-outline' style='padding:1px 6px;font-size:11px;' onclick='setAllHelpTocCategoriesCollapsed(true)'>➖ 全縮合</button>
+                        </div>
+                    </div>");
 
-        foreach (var t in topics)
+        foreach (var catGrp in topics.GroupBy(x => new { x.Category, x.CategoryName }))
         {
+            string catKey = catGrp.Key.Category;
+            string catTitle = catGrp.Key.CategoryName;
+            int catCount = catGrp.Count();
             sb.Append($@"
-                <a class='help-toc-item' id='toc-{t.Id}' data-target-topic='{t.Id}' onclick=""jumpToHelpTopic('{t.Id}')"">
-                    <span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'><strong>{t.Num}.</strong> {h(t.Title)}</span>
-                    <span class='toc-match-dot' style='font-size:11px;color:#2563eb;flex-shrink:0;'>▶</span>
-                </a>");
+                    <div class='help-toc-cat-group' id='toc-cat-group-{h(catKey)}' data-cat-key='{h(catKey)}'>
+                        <div class='help-toc-cat-header' onclick=""toggleHelpTocCategoryGroup('{h(catKey)}')"" title='點擊縮合或展開此分類章節'>
+                            <span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'><span class='toc-cat-arrow' id='toc-cat-arrow-{h(catKey)}'>▼</span> {h(catTitle)}</span>
+                            <span class='badge' style='background:#ffffff;color:#1e3a8a;border:1px solid #bfdbfe;font-size:10.5px;padding:1px 6px;flex-shrink:0;'>{catCount}</span>
+                        </div>
+                        <div class='help-toc-cat-items'>");
+
+            foreach (var t in catGrp)
+            {
+                sb.Append($@"
+                            <a class='help-toc-item' id='toc-{t.Id}' data-target-topic='{t.Id}' onclick=""jumpToHelpTopic('{t.Id}')"" title='{h(t.Num + ". " + t.Title)}'>
+                                <span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'><strong>{t.Num}.</strong> {h(t.Title)}</span>
+                                <span class='toc-match-dot' style='font-size:11px;color:#2563eb;flex-shrink:0;'>▶</span>
+                            </a>");
+            }
+
+            sb.Append(@"
+                        </div>
+                    </div>");
         }
 
         sb.Append(@"
-                <div style='margin-top:8px;padding-top:8px;border-top:1px dashed #cbd5e1;'>
-                    <a class='help-toc-item' id='toc-help-faq-section' onclick=""jumpToHelpTopic('help-faq-section')"">
-                        <span>❓ <strong>常見問題快速解答 (FAQ)</strong></span>
-                        <span style='font-size:11px;color:#2563eb;'>▶</span>
-                    </a>
+                    <div style='margin-top:8px;padding-top:8px;border-top:1px dashed #cbd5e1;'>
+                        <a class='help-toc-item' id='toc-help-faq-section' onclick=""jumpToHelpTopic('help-faq-section')"">
+                            <span>❓ <strong>常見問題快速解答 (FAQ)</strong></span>
+                            <span style='font-size:11px;color:#2563eb;'>▶</span>
+                        </a>
+                    </div>
                 </div>
             </div>");
 
@@ -12847,14 +12911,14 @@ public class portalController : Controller
                 <h3 style='margin:0 0 8px 0;color:#1e3a8a;'>找不到符合目前搜尋關鍵字的說明主題</h3>
                 <p style='color:#475569;font-size:13.5px;margin:0 0 16px 0;'>請嘗試簡化關鍵字，或點選下方熱門主題關鍵字快速查看對應的操作畫面：</p>
                 <div style='display:flex;justify-content:center;gap:8px;flex-wrap:wrap;'>
-                    <button type='button' class='btn btn-primary' onclick='resetOnlineHelpFilter()'>🔄 顯示全部 12 個操作畫面主題</button>
+                    <button type='button' class='btn btn-primary' onclick='resetOnlineHelpFilter()'>🔄 顯示全部 13 個操作畫面主題</button>
+                    <button type='button' class='btn btn-outline' onclick=""applyHelpQuickKeyword('Story Point 概念')"">💡 搜尋「Story Point 概念」</button>
                     <button type='button' class='btn btn-outline' onclick=""applyHelpQuickKeyword('盲投')"">🃏 搜尋「盲投」</button>
                     <button type='button' class='btn btn-outline' onclick=""applyHelpQuickKeyword('右鍵 Modal')"">🖱️ 搜尋「右鍵 Modal」</button>
-                    <button type='button' class='btn btn-outline' onclick=""applyHelpQuickKeyword('工項 到期')"">⏰ 搜尋「工項 到期」</button>
                 </div>
             </div>");
 
-        // 逐一渲染 12 大操作畫面主題卡片
+        // 逐一渲染 13 大操作畫面主題卡片（支援點擊標題或按鈕縮合/展開）
         foreach (var t in topics)
         {
             string stepHtml = "";
@@ -12883,15 +12947,17 @@ public class portalController : Controller
 
             sb.Append($@"
             <div class='help-topic-card' id='{t.Id}' data-category='{t.Category}' data-role='{t.RoleScope}' data-search-blob='{h(searchAttr)}'>
-                <div class='help-topic-header'>
+                <div class='help-topic-header' onclick=""toggleHelpTopicCard('{t.Id}', event)"" title='點擊標題列可縮合或展開本主題內容'>
                     <div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>
+                        <span class='topic-collapse-arrow' id='topic-arrow-{t.Id}' style='color:#2563eb;font-weight:900;font-size:13px;'>▼</span>
                         <span class='badge' style='background:#1e3a8a;color:#fff;font-size:12.5px;padding:4px 10px;'>主題 {t.Num}</span>
                         <span class='badge' style='background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;'>{t.CategoryName}</span>
                         {t.RoleBadge}
                         <h3 class='help-searchable-text' style='margin:0;font-size:17px;font-weight:800;color:#0f172a;'>{h(t.Title)}</h3>
                     </div>
-                    <div>
+                    <div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;' onclick='event.stopPropagation();'>
                         {t.ActionHtml}
+                        <button type='button' id='btnToggleTopic-{t.Id}' class='btn btn-outline' style='padding:5px 10px;font-size:12px;' onclick=""toggleHelpTopicCard('{t.Id}', event)"">🔼 縮合內容</button>
                     </div>
                 </div>
 
@@ -12947,24 +13013,34 @@ public class portalController : Controller
         // 4. 常見問題快速解答 (FAQ) 區塊
         sb.Append(@"
             <div class='help-topic-card' id='help-faq-section' data-category='faq' data-role='all' data-search-blob='常見問題 faq 問答 權限 盲投 待參與 參與中 自動翻牌 右鍵 modal 到期扣點 排序 鎖定 修改帳密'>
-                <div class='help-topic-header'>
-                    <div style='display:flex;align-items:center;gap:8px;'>
+                <div class='help-topic-header' onclick=""toggleHelpTopicCard('help-faq-section', event)"">
+                    <div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>
+                        <span class='topic-collapse-arrow' id='topic-arrow-help-faq-section' style='color:#0d9488;font-weight:900;font-size:13px;'>▼</span>
                         <span class='badge' style='background:#0d9488;color:#fff;font-size:12.5px;padding:4px 10px;'>常見問題 FAQ</span>
-                        <h3 style='margin:0;font-size:17px;font-weight:800;color:#0f172a;'>❓ 常見問題與排解快速解答（支援關鍵字即時檢索）</h3>
+                        <h3 style='margin:0;font-size:17px;font-weight:800;color:#0f172a;'>❓ 常見問題與排解快速解答（點擊問題標題可展開/縮合解答）</h3>
                     </div>
-                </div>");
+                    <div style='display:flex;gap:6px;flex-wrap:wrap;' onclick='event.stopPropagation();'>
+                        <button type='button' class='btn btn-outline' style='padding:4px 9px;font-size:11.5px;' onclick='setAllHelpFaqsCollapsed(false)'>➕ 展開全部 FAQ</button>
+                        <button type='button' class='btn btn-outline' style='padding:4px 9px;font-size:11.5px;' onclick='setAllHelpFaqsCollapsed(true)'>➖ 縮合全部 FAQ</button>
+                    </div>
+                </div>
+                <div id='helpFaqBodyWrapper'>");
 
         foreach (var faq in faqs)
         {
             string faqBlob = $"{faq.Q} {faq.A} {faq.Keywords}".ToLowerInvariant();
             sb.Append($@"
                 <div class='help-faq-item' data-faq-blob='{h(faqBlob)}'>
-                    <div class='help-faq-q help-searchable-text'>{faq.Q}</div>
+                    <div class='help-faq-q' onclick=""toggleHelpFaqItem(this)"">
+                        <span class='help-searchable-text'>{faq.Q}</span>
+                        <span class='faq-toggle-arrow' style='font-size:12px;color:#2563eb;flex-shrink:0;'>▼ 縮合</span>
+                    </div>
                     <div class='help-faq-a help-searchable-text'>{faq.A}</div>
                 </div>");
         }
 
         sb.Append(@"
+                </div>
             </div>
         </div>
         </div>"); // end help-layout-grid
@@ -13137,12 +13213,96 @@ public class portalController : Controller
                         statusText.innerHTML = '🔍 搜尋結果：共找到 <strong>' + matchedTopicCount + '</strong> 個相符的操作畫面主題與 <strong>' + matchedFaqCount + '</strong> 則常見問題' +
                             (rawQuery ? '（關鍵字「<mark class=""help-highlight"">' + rawQuery.replace(/</g, '&lt;') + '</mark>」已於步驟與畫面圖解中高亮標示）' : '');
                     }} else {{
-                        statusText.innerHTML = '📊 目前顯示全部 <strong>12</strong> 個核心操作主題（皆搭配實機操作畫面與步驟標註）及 <strong>8</strong> 則常見問題 FAQ。點擊任一操作畫面圖片可放大全螢幕檢視！';
+                        statusText.innerHTML = '📊 目前顯示全部 <strong>13</strong> 個核心說明與操作主題（含 Story Point 概念與複雜度評估 + 12 幅實機操作畫面）及 <strong>10</strong> 則常見問題 FAQ。';
                     }}
                 }}
 
                 document.querySelectorAll('.help-quick-tag').forEach(tag => {{
                     tag.classList.toggle('active-tag', rawQuery && tag.textContent.indexOf(rawQuery) >= 0);
+                }});
+            }}
+
+            function toggleHelpTocSidebar() {{
+                const grid = document.getElementById('helpLayoutGrid');
+                const btn = document.getElementById('btnToggleHelpTocSidebar');
+                if (!grid) return;
+                const isCollapsed = grid.classList.toggle('toc-sidebar-collapsed');
+                if (btn) {{
+                    btn.innerHTML = isCollapsed ? '▶ 展開左側章節目錄' : '◀ 縮合左側章節目錄';
+                    btn.style.background = isCollapsed ? '#dbeafe' : '#ffffff';
+                }}
+            }}
+
+            function toggleHelpTocListBody() {{
+                const sidebar = document.getElementById('helpTocSidebar');
+                const arrow = document.getElementById('helpTocListArrow');
+                const btn = document.getElementById('btnToggleTocListBody');
+                if (!sidebar) return;
+                const isCollapsed = sidebar.classList.toggle('toc-list-collapsed');
+                if (arrow) arrow.textContent = isCollapsed ? '▶' : '▼';
+                if (btn) btn.textContent = isCollapsed ? '🔽 展開' : '🔼 縮合';
+            }}
+
+            function toggleHelpTocCategoryGroup(catKey) {{
+                const grp = document.getElementById('toc-cat-group-' + catKey);
+                const arrow = document.getElementById('toc-cat-arrow-' + catKey);
+                if (!grp) return;
+                const isCollapsed = grp.classList.toggle('cat-collapsed');
+                if (arrow) arrow.textContent = isCollapsed ? '▶' : '▼';
+            }}
+
+            function setAllHelpTocCategoriesCollapsed(collapsed) {{
+                document.querySelectorAll('.help-toc-cat-group').forEach(grp => {{
+                    grp.classList.toggle('cat-collapsed', !!collapsed);
+                    const arrow = grp.querySelector('.toc-cat-arrow');
+                    if (arrow) arrow.textContent = collapsed ? '▶' : '▼';
+                }});
+            }}
+
+            function toggleHelpTopicCard(topicId, evt) {{
+                const card = document.getElementById(topicId);
+                if (!card) return;
+                if (topicId === 'help-faq-section') {{
+                    const wrapper = document.getElementById('helpFaqBodyWrapper');
+                    const arrow = document.getElementById('topic-arrow-help-faq-section');
+                    if (wrapper) {{
+                        const hide = wrapper.style.display !== 'none';
+                        wrapper.style.display = hide ? 'none' : '';
+                        if (arrow) arrow.textContent = hide ? '▶' : '▼';
+                    }}
+                    return;
+                }}
+                const isCollapsed = card.classList.toggle('topic-collapsed');
+                const arrow = document.getElementById('topic-arrow-' + topicId);
+                const btn = document.getElementById('btnToggleTopic-' + topicId);
+                if (arrow) arrow.textContent = isCollapsed ? '▶' : '▼';
+                if (btn) btn.textContent = isCollapsed ? '🔽 展開內容' : '🔼 縮合內容';
+            }}
+
+            function setAllHelpTopicsCollapsed(collapsed) {{
+                document.querySelectorAll('.help-topic-card').forEach(card => {{
+                    if (card.id === 'help-faq-section') return;
+                    card.classList.toggle('topic-collapsed', !!collapsed);
+                    const arrow = document.getElementById('topic-arrow-' + card.id);
+                    const btn = document.getElementById('btnToggleTopic-' + card.id);
+                    if (arrow) arrow.textContent = collapsed ? '▶' : '▼';
+                    if (btn) btn.textContent = collapsed ? '🔽 展開內容' : '🔼 縮合內容';
+                }});
+            }}
+
+            function toggleHelpFaqItem(qEl) {{
+                if (!qEl || !qEl.parentElement) return;
+                const item = qEl.parentElement;
+                const isCollapsed = item.classList.toggle('faq-collapsed');
+                const arrow = qEl.querySelector('.faq-toggle-arrow');
+                if (arrow) arrow.textContent = isCollapsed ? '▶ 展開' : '▼ 縮合';
+            }}
+
+            function setAllHelpFaqsCollapsed(collapsed) {{
+                document.querySelectorAll('.help-faq-item').forEach(item => {{
+                    item.classList.toggle('faq-collapsed', !!collapsed);
+                    const arrow = item.querySelector('.faq-toggle-arrow');
+                    if (arrow) arrow.textContent = collapsed ? '▶ 展開' : '▼ 縮合';
                 }});
             }}
 
@@ -13172,6 +13332,9 @@ public class portalController : Controller
                 if (!target) return;
                 if (target.style.display === 'none') {{
                     resetOnlineHelpFilter();
+                }}
+                if (target.classList.contains('topic-collapsed')) {{
+                    toggleHelpTopicCard(topicId);
                 }}
                 document.querySelectorAll('.help-toc-item').forEach(el => el.classList.remove('active-toc'));
                 const tocEl = document.getElementById('toc-' + topicId);
