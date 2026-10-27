@@ -325,29 +325,33 @@ end
 go
 
 -- ============================================================================
--- 4. 預設工項類型與主要特徵設定 (storyPoint.tbWorkItemKind：專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品，支援增刪修查)
+-- 4. 工項類型與基本規範設定 (3-3 storyPoint.tbWorkItemKind：專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品，支援增刪修查與一般 SP 範圍)
 -- ============================================================================
 if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'project')
 begin
     insert into storyPoint.tbWorkItemKind (
         kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        minStoryPoint, maxStoryPoint,
         mainFeatureSummary, estimationTrait, timeAndDeliverableTrait, description, isActive
     )
     values (
         'project', N'專案', N'🏗️', 'blue', 10,
+        3.00, 21.00,
         N'階段性目標導向、跨模組需求開發與系統建置、明確里程碑與範圍界定',
         N'依功能複雜度、跨系統整合難度與未知風險綜合盲投估算 (常見 3 ~ 21 pt)',
-        N'中長期 Sprint 或專案起訖週期｜交付上線系統與驗收文件｜達迄時自動轉已完成、扣點並通知部門主管與 HR',
-        N'專案建置與功能開發工項，具備明確起訖時間，達迄時自動轉為已完成並扣除 Story Point 及寄發通知信。',
+        N'中長期專案起訖週期｜交付上線系統與驗收文件｜一般工項達迄時自動轉已完成、扣點並通知部門主管與 HR',
+        N'專案建置與功能開發工項基本規範：基本工項套用此類型時建議點數範圍為 3 ~ 21 pt；一般工項具備明確起訖時間，達迄時自動轉為已完成並扣除 Story Point 及寄發通知信。',
         1
     );
 end
 else
 begin
     update storyPoint.tbWorkItemKind
-    set mainFeatureSummary = isnull(nullif(ltrim(rtrim(mainFeatureSummary)), N''), N'階段性目標導向、跨模組需求開發與系統建置、明確里程碑與範圍界定'),
+    set minStoryPoint = case when isnull(minStoryPoint, 0.50) = 0.50 then 3.00 else minStoryPoint end,
+        maxStoryPoint = isnull(maxStoryPoint, 21.00),
+        mainFeatureSummary = isnull(nullif(ltrim(rtrim(mainFeatureSummary)), N''), N'階段性目標導向、跨模組需求開發與系統建置、明確里程碑與範圍界定'),
         estimationTrait = isnull(nullif(ltrim(rtrim(estimationTrait)), N''), N'依功能複雜度、跨系統整合難度與未知風險綜合盲投估算 (常見 3 ~ 21 pt)'),
-        timeAndDeliverableTrait = isnull(nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''), N'中長期 Sprint 或專案起訖週期｜交付上線系統與驗收文件｜達迄時自動轉已完成、扣點並通知部門主管與 HR'),
+        timeAndDeliverableTrait = isnull(nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''), N'中長期專案起訖週期｜交付上線系統與驗收文件｜一般工項達迄時自動轉已完成、扣點並通知部門主管與 HR'),
         updatedAt = sysdatetime()
     where kindCode = 'project';
 end
@@ -356,23 +360,27 @@ if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'mainten
 begin
     insert into storyPoint.tbWorkItemKind (
         kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        minStoryPoint, maxStoryPoint,
         mainFeatureSummary, estimationTrait, timeAndDeliverableTrait, description, isActive
     )
     values (
         'maintenance', N'維運', N'🛠️', 'amber', 20,
+        0.50, 5.00,
         N'常態性系統穩定度維持、例行健康巡檢、問題排查 (Troubleshooting) 與效能調校',
         N'依處理頻率、SLA 緊急程度、環境複雜度與影響範圍估算 (常見 0.5 ~ 5 pt)',
-        N'短週期或月/季例行維運期間｜交付問題修復紀錄與巡檢報告｜達迄時自動轉已完成、扣點並通知部門主管與 HR',
-        N'日常維運、例行巡檢與異常排除工項，具備起訖期間設定，達迄時自動轉態扣點並通知部門管理層與 HR。',
+        N'短週期或月/季例行維運期間｜交付問題修復紀錄與巡檢報告｜一般工項達迄時自動轉已完成、扣點並通知部門主管與 HR',
+        N'日常維運、例行巡檢與異常排除工項基本規範：基本工項套用此類型時建議點數範圍為 0.5 ~ 5 pt；一般工項具備起訖期間設定，達迄時自動轉態扣點並通知部門管理層與 HR。',
         1
     );
 end
 else
 begin
     update storyPoint.tbWorkItemKind
-    set mainFeatureSummary = isnull(nullif(ltrim(rtrim(mainFeatureSummary)), N''), N'常態性系統穩定度維持、例行健康巡檢、問題排查 (Troubleshooting) 與效能調校'),
+    set minStoryPoint = isnull(minStoryPoint, 0.50),
+        maxStoryPoint = case when isnull(maxStoryPoint, 21.00) = 21.00 then 5.00 else maxStoryPoint end,
+        mainFeatureSummary = isnull(nullif(ltrim(rtrim(mainFeatureSummary)), N''), N'常態性系統穩定度維持、例行健康巡檢、問題排查 (Troubleshooting) 與效能調校'),
         estimationTrait = isnull(nullif(ltrim(rtrim(estimationTrait)), N''), N'依處理頻率、SLA 緊急程度、環境複雜度與影響範圍估算 (常見 0.5 ~ 5 pt)'),
-        timeAndDeliverableTrait = isnull(nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''), N'短週期或月/季例行維運期間｜交付問題修復紀錄與巡檢報告｜達迄時自動轉已完成、扣點並通知部門主管與 HR'),
+        timeAndDeliverableTrait = isnull(nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''), N'短週期或月/季例行維運期間｜交付問題修復紀錄與巡檢報告｜一般工項達迄時自動轉已完成、扣點並通知部門主管與 HR'),
         updatedAt = sysdatetime()
     where kindCode = 'maintenance';
 end
@@ -381,23 +389,27 @@ if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'consult
 begin
     insert into storyPoint.tbWorkItemKind (
         kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        minStoryPoint, maxStoryPoint,
         mainFeatureSummary, estimationTrait, timeAndDeliverableTrait, description, isActive
     )
     values (
         'consultingHour', N'顧問時數', N'⏳', 'purple', 30,
+        1.00, 8.00,
         N'專業技術知識輸出、客戶架構診斷、技術顧問諮詢與專家駐點支援服務',
         N'依投入顧問人天/時數、專業技術深度與交付報告規模估算 (常見 1 ~ 8 pt)',
-        N'單次駐點或顧問合約起訖期間｜交付架構建議書、健檢報告與時數簽認單｜達迄時自動轉已完成、扣點並通知部門主管與 HR',
-        N'客戶架構諮詢、技術顧問與駐點時數工項，具備合約/顧問起訖時間，達迄時自動轉態扣點並通知部門管理層與 HR。',
+        N'單次駐點或顧問合約起訖期間｜交付架構建議書、健檢報告與時數簽認單｜一般工項達迄時自動轉已完成、扣點並通知部門主管與 HR',
+        N'客戶架構諮詢、技術顧問與駐點時數工項基本規範：基本工項套用此類型時建議點數範圍為 1 ~ 8 pt；一般工項具備合約/顧問起訖時間，達迄時自動轉態扣點並通知部門管理層與 HR。',
         1
     );
 end
 else
 begin
     update storyPoint.tbWorkItemKind
-    set mainFeatureSummary = isnull(nullif(ltrim(rtrim(mainFeatureSummary)), N''), N'專業技術知識輸出、客戶架構診斷、技術顧問諮詢與專家駐點支援服務'),
+    set minStoryPoint = case when isnull(minStoryPoint, 0.50) = 0.50 then 1.00 else minStoryPoint end,
+        maxStoryPoint = case when isnull(maxStoryPoint, 21.00) = 21.00 then 8.00 else maxStoryPoint end,
+        mainFeatureSummary = isnull(nullif(ltrim(rtrim(mainFeatureSummary)), N''), N'專業技術知識輸出、客戶架構診斷、技術顧問諮詢與專家駐點支援服務'),
         estimationTrait = isnull(nullif(ltrim(rtrim(estimationTrait)), N''), N'依投入顧問人天/時數、專業技術深度與交付報告規模估算 (常見 1 ~ 8 pt)'),
-        timeAndDeliverableTrait = isnull(nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''), N'單次駐點或顧問合約起訖期間｜交付架構建議書、健檢報告與時數簽認單｜達迄時自動轉已完成、扣點並通知部門主管與 HR'),
+        timeAndDeliverableTrait = isnull(nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''), N'單次駐點或顧問合約起訖期間｜交付架構建議書、健檢報告與時數簽認單｜一般工項達迄時自動轉已完成、扣點並通知部門主管與 HR'),
         updatedAt = sysdatetime()
     where kindCode = 'consultingHour';
 end
@@ -406,23 +418,27 @@ if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'trainin
 begin
     insert into storyPoint.tbWorkItemKind (
         kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        minStoryPoint, maxStoryPoint,
         mainFeatureSummary, estimationTrait, timeAndDeliverableTrait, description, isActive
     )
     values (
         'training', N'教育訓練', N'🎓', 'green', 40,
+        1.00, 8.00,
         N'內部技術傳承、外部客戶課程講授、實機 Lab 教材編撰與新人培訓賦能',
         N'依課程授課時數、新教材研發比例、Lab 環境準備與授課難度估算 (常見 1 ~ 8 pt)',
-        N'單日課程或培訓梯次起訖期間｜交付課程簡報、實作講義與完訓紀錄｜達迄時自動轉已完成、扣點並通知部門主管與 HR',
-        N'內部技術傳承、外部課程講授與新人教育訓練工項，具備課程/培訓起訖時間，達迄時自動轉態扣點並通知部門管理層與 HR。',
+        N'單日課程或培訓梯次起訖期間｜交付課程簡報、實作講義與完訓紀錄｜一般工項達迄時自動轉已完成、扣點並通知部門主管與 HR',
+        N'內部技術傳承、外部課程講授與新人教育訓練工項基本規範：基本工項套用此類型時建議點數範圍為 1 ~ 8 pt；一般工項具備課程/培訓起訖時間，達迄時自動轉態扣點並通知部門管理層與 HR。',
         1
     );
 end
 else
 begin
     update storyPoint.tbWorkItemKind
-    set mainFeatureSummary = isnull(nullif(ltrim(rtrim(mainFeatureSummary)), N''), N'內部技術傳承、外部客戶課程講授、實機 Lab 教材編撰與新人培訓賦能'),
+    set minStoryPoint = case when isnull(minStoryPoint, 0.50) = 0.50 then 1.00 else minStoryPoint end,
+        maxStoryPoint = case when isnull(maxStoryPoint, 21.00) = 21.00 then 8.00 else maxStoryPoint end,
+        mainFeatureSummary = isnull(nullif(ltrim(rtrim(mainFeatureSummary)), N''), N'內部技術傳承、外部客戶課程講授、實機 Lab 教材編撰與新人培訓賦能'),
         estimationTrait = isnull(nullif(ltrim(rtrim(estimationTrait)), N''), N'依課程授課時數、新教材研發比例、Lab 環境準備與授課難度估算 (常見 1 ~ 8 pt)'),
-        timeAndDeliverableTrait = isnull(nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''), N'單日課程或培訓梯次起訖期間｜交付課程簡報、實作講義與完訓紀錄｜達迄時自動轉已完成、扣點並通知部門主管與 HR'),
+        timeAndDeliverableTrait = isnull(nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''), N'單日課程或培訓梯次起訖期間｜交付課程簡報、實作講義與完訓紀錄｜一般工項達迄時自動轉已完成、扣點並通知部門主管與 HR'),
         updatedAt = sysdatetime()
     where kindCode = 'training';
 end
@@ -431,31 +447,36 @@ if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'product
 begin
     insert into storyPoint.tbWorkItemKind (
         kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        minStoryPoint, maxStoryPoint,
         mainFeatureSummary, estimationTrait, timeAndDeliverableTrait, description, isActive
     )
     values (
         'productDevelopment', N'開發產品', N'🚀', 'red', 50,
+        3.00, 21.00,
         N'自有產品核心研發、技術架構創新、標準化模組封裝與產品版本迭代 (Roadmap)',
         N'依技術創新度、通用架構擴充性、自動化測試覆蓋率與產品化標準估算 (常見 3 ~ 21 pt)',
-        N'雙週 Sprint 或產品版本起訖週期｜交付標準產品模組、API 與發行套件｜達迄時自動轉已完成、扣點並通知部門主管與 HR',
-        N'自有產品研發、核心模組創新與產品版本迭代工項，具備開發階段起訖時間，達迄時自動轉態扣點並通知部門管理層與 HR。',
+        N'雙週或產品版本起訖週期｜交付標準產品模組、API 與發行套件｜一般工項達迄時自動轉已完成、扣點並通知部門主管與 HR',
+        N'自有產品研發、核心模組創新與產品版本迭代工項基本規範：基本工項套用此類型時建議點數範圍為 3 ~ 21 pt；一般工項具備開發階段起訖時間，達迄時自動轉態扣點並通知部門管理層與 HR。',
         1
     );
 end
 else
 begin
     update storyPoint.tbWorkItemKind
-    set mainFeatureSummary = isnull(nullif(ltrim(rtrim(mainFeatureSummary)), N''), N'自有產品核心研發、技術架構創新、標準化模組封裝與產品版本迭代 (Roadmap)'),
+    set minStoryPoint = case when isnull(minStoryPoint, 0.50) = 0.50 then 3.00 else minStoryPoint end,
+        maxStoryPoint = isnull(maxStoryPoint, 21.00),
+        mainFeatureSummary = isnull(nullif(ltrim(rtrim(mainFeatureSummary)), N''), N'自有產品核心研發、技術架構創新、標準化模組封裝與產品版本迭代 (Roadmap)'),
         estimationTrait = isnull(nullif(ltrim(rtrim(estimationTrait)), N''), N'依技術創新度、通用架構擴充性、自動化測試覆蓋率與產品化標準估算 (常見 3 ~ 21 pt)'),
-        timeAndDeliverableTrait = isnull(nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''), N'雙週 Sprint 或產品版本起訖週期｜交付標準產品模組、API 與發行套件｜達迄時自動轉已完成、扣點並通知部門主管與 HR'),
+        timeAndDeliverableTrait = isnull(nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''), N'雙週或產品版本起訖週期｜交付標準產品模組、API 與發行套件｜一般工項達迄時自動轉已完成、扣點並通知部門主管與 HR'),
         updatedAt = sysdatetime()
     where kindCode = 'productDevelopment';
 end
 go
 
 -- ============================================================================
--- 4.1 確保已投出 SP 的代表工項 (如：資料庫健檢、資料庫效能調校) 於 storyPoint.tbWorkItemType 完整保存
---     (2-2 工項代表類型：編輯投出 SP 的代表工項各種屬性與屬於哪種預設工項類型)
+-- 4.1 基本工項設定 (3-2 storyPoint.tbWorkItemType：如「資料庫健檢」、「資料庫效能調校」等基本工項)
+--     基本工項沒有起訖時間，可套用 3-3 工項類型（如專案、維運、顧問時數...）以獲得基本規範與一般 SP 範圍，
+--     多人盲投主要投基本工項；一般工項（如「集保健檢」）則套用基本工項的 Story Point 並可微調
 -- ============================================================================
 declare @defaultDeckPk int = (
     select top 1 pk
@@ -464,18 +485,70 @@ declare @defaultDeckPk int = (
     order by isDefault desc, pk asc
 );
 
-if not exists (select 1 from storyPoint.tbWorkItemType where typeName = N'資料庫健檢')
+if not exists (select 1 from storyPoint.tbWorkItemType where typeName = N'資料庫健檢' or typeCode in ('TYPE_DB_HEALTH_CHECK', 'TYPE_20261023034516'))
 begin
     insert into storyPoint.tbWorkItemType (
         typeCode, typeName, categoryName, defaultWorkItemKind, description,
         standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
     )
     values (
-        'TYPE_20261023034516',
+        'TYPE_DB_HEALTH_CHECK',
         N'資料庫健檢',
         N'資料庫健檢與維運',
+        'maintenance',
+        N'透過 script 收集狀態，分析健康狀態，提供健檢報告並完成現場或線上報告（基本工項無起訖時間，供「集保健檢」等一般工項套用標準點數）',
+        3.00,
+        @defaultDeckPk,
+        'finalized',
+        1,
+        sysdatetime(),
+        sysdatetime()
+    );
+end
+else
+begin
+    update storyPoint.tbWorkItemType
+    set standardStoryPoint = isnull(standardStoryPoint, 3.00),
+        estimationStatus = case when standardStoryPoint is not null or estimationStatus = 'finalized' then 'finalized' else 'finalized' end,
+        description = isnull(nullif(ltrim(rtrim(description)), N''), N'透過 script 收集狀態，分析健康狀態，提供健檢報告並完成現場或線上報告'),
+        isActive = 1,
+        updatedAt = sysdatetime()
+    where typeName = N'資料庫健檢' or typeCode in ('TYPE_DB_HEALTH_CHECK', 'TYPE_20261023034516');
+end
+
+if not exists (select 1 from storyPoint.tbWorkItemType where typeName = N'資料庫效能調校' or typeCode in ('TYPE_DB_PERF_TUNING', 'TYPE_20261024022342'))
+begin
+    insert into storyPoint.tbWorkItemType (
+        typeCode, typeName, categoryName, defaultWorkItemKind, description,
+        standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
+    )
+    values (
+        'TYPE_DB_PERF_TUNING',
+        N'資料庫效能調校',
+        N'資料庫健檢與維運',
+        'maintenance',
+        N'執行計劃分析與調整，找出緩慢指令、建立索引或改寫 T-SQL 語法以提升資料庫整體效能',
+        5.00,
+        @defaultDeckPk,
+        'finalized',
+        1,
+        sysdatetime(),
+        sysdatetime()
+    );
+end
+
+if not exists (select 1 from storyPoint.tbWorkItemType where typeCode = 'TYPE_API_MODULE_DEV' or typeName = N'標準 API 與資料模組開發')
+begin
+    insert into storyPoint.tbWorkItemType (
+        typeCode, typeName, categoryName, defaultWorkItemKind, description,
+        standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
+    )
+    values (
+        'TYPE_API_MODULE_DEV',
+        N'標準 API 與資料模組開發',
+        N'後端與資料庫',
         'project',
-        N'透過 script 收集狀態，分析健康狀態，提供健檢報告並完成現場或線上報告',
+        N'依據專案規格開發標準 RESTful API 端點、SQL Server 預存程序、權限檢核與單元測試',
         8.00,
         @defaultDeckPk,
         'finalized',
@@ -485,25 +558,209 @@ begin
     );
 end
 
-if not exists (select 1 from storyPoint.tbWorkItemType where typeName = N'資料庫效能調校')
+if not exists (select 1 from storyPoint.tbWorkItemType where typeCode = 'TYPE_ARCH_CONSULT' or typeName = N'客戶架構診斷與技術諮詢')
 begin
     insert into storyPoint.tbWorkItemType (
         typeCode, typeName, categoryName, defaultWorkItemKind, description,
         standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
     )
     values (
-        'TYPE_20261024022342',
-        N'資料庫效能調校',
-        N'資料庫健檢與調校',
-        'maintenance',
-        N'執行計劃分析與調整，找出緩慢指令、建立索引或改寫 T-SQL 語法以提升資料庫整體效能',
-        null,
+        'TYPE_ARCH_CONSULT',
+        N'客戶架構診斷與技術諮詢',
+        N'系統架構與技術諮詢',
+        'consultingHour',
+        N'針對客戶系統架構進行問題診斷、POC 驗證與專家駐點諮詢，產出架構建議書與時數簽認單',
+        3.00,
         @defaultDeckPk,
-        'voting',
+        'finalized',
         1,
         sysdatetime(),
         sysdatetime()
     );
+end
+
+if not exists (select 1 from storyPoint.tbWorkItemType where typeCode = 'TYPE_SQL_LAB_TRAINING' or typeName = N'SQL Server 實機培訓課程')
+begin
+    insert into storyPoint.tbWorkItemType (
+        typeCode, typeName, categoryName, defaultWorkItemKind, description,
+        standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
+    )
+    values (
+        'TYPE_SQL_LAB_TRAINING',
+        N'SQL Server 實機培訓課程',
+        N'教育訓練與知識傳承',
+        'training',
+        N'編撰實機演練講義、準備 Lab 測試環境並進行單日或梯次技術培訓授課',
+        5.00,
+        @defaultDeckPk,
+        'finalized',
+        1,
+        sysdatetime(),
+        sysdatetime()
+    );
+end
+
+if not exists (select 1 from storyPoint.tbWorkItemType where typeCode = 'TYPE_PRODUCT_CORE_RND' or typeName = N'核心產品通用模組研發')
+begin
+    insert into storyPoint.tbWorkItemType (
+        typeCode, typeName, categoryName, defaultWorkItemKind, description,
+        standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
+    )
+    values (
+        'TYPE_PRODUCT_CORE_RND',
+        N'核心產品通用模組研發',
+        N'核心產品研發',
+        'productDevelopment',
+        N'配合產品 Roadmap 設計高擴充性通用核心模組、封裝標準套件並完成自動化測試',
+        13.00,
+        @defaultDeckPk,
+        'finalized',
+        1,
+        sysdatetime(),
+        sysdatetime()
+    );
+end
+
+-- 清理誤與 3-3 工項類型同名之 tbWorkItemType 紀錄或測試議程標題紀錄，並將關聯轉移至對應基本工項（如「資料庫健檢」）
+declare @dbHealthCheckTypePk int = (
+    select top 1 pk
+    from storyPoint.tbWorkItemType
+    where typeName = N'資料庫健檢'
+       or typeCode in ('TYPE_DB_HEALTH_CHECK', 'TYPE_20261023034516')
+    order by pk asc
+);
+
+if @dbHealthCheckTypePk is not null
+begin
+    update wi
+    set wi.workItemTypePk = isnull(
+            (
+                select top 1 wit2.pk
+                from storyPoint.tbWorkItemType as wit2
+                where wit2.defaultWorkItemKind = wi.workItemKind
+                  and wit2.typeCode not in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
+                  and wit2.typeName not like N'%測試%'
+                order by case when wit2.typeName = N'資料庫健檢' then 0 else 1 end asc, wit2.pk asc
+            ),
+            @dbHealthCheckTypePk
+        ),
+        wi.updatedAt = sysdatetime()
+    from storyPoint.tbWorkItem as wi
+    inner join storyPoint.tbWorkItemType as oldWit
+        on wi.workItemTypePk = oldWit.pk
+    where oldWit.typeCode in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
+       or oldWit.typeCode like 'TYPE_DEF_%'
+       or oldWit.typeName like N'%跨網頁並行測試%'
+       or oldWit.typeName like N'%測試刪除回合%';
+
+    update vs
+    set vs.workItemTypePk = @dbHealthCheckTypePk,
+        vs.updatedAt = sysdatetime()
+    from storyPoint.tbVotingSession as vs
+    inner join storyPoint.tbWorkItemType as oldWit
+        on vs.workItemTypePk = oldWit.pk
+    where oldWit.typeCode in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
+       or oldWit.typeCode like 'TYPE_DEF_%'
+       or oldWit.typeName like N'%跨網頁並行測試%'
+       or oldWit.typeName like N'%測試刪除回合%';
+
+    update ph
+    set ph.workItemTypePk = @dbHealthCheckTypePk
+    from storyPoint.tbPointHistory as ph
+    inner join storyPoint.tbWorkItemType as oldWit
+        on ph.workItemTypePk = oldWit.pk
+    where oldWit.typeCode in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
+       or oldWit.typeCode like 'TYPE_DEF_%'
+       or oldWit.typeName like N'%跨網頁並行測試%'
+       or oldWit.typeName like N'%測試刪除回合%';
+
+    delete from storyPoint.tbWorkItemType
+    where pk <> @dbHealthCheckTypePk
+      and (
+          typeCode in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
+          or typeCode like 'TYPE_DEF_%'
+          or typeName like N'%跨網頁並行測試%'
+          or typeName like N'%測試刪除回合%'
+      );
+end
+
+-- ============================================================================
+-- 4.2 一般工項設定 (3-1 storyPoint.tbWorkItem：如「集保健檢」套用基本工項「資料庫健檢」的 Story Point，
+--     可微調點數，且一般工項才具備起訖時間 startDate ~ endDate)
+-- ============================================================================
+if @dbHealthCheckTypePk is not null and not exists (select 1 from storyPoint.tbWorkItem where itemTitle = N'集保健檢' or itemCode = 'WI-2026-TDCC')
+begin
+    declare @dbHealthStdPt decimal(8,2) = (
+        select top 1 isnull(standardStoryPoint, 3.00)
+        from storyPoint.tbWorkItemType
+        where pk = @dbHealthCheckTypePk
+    );
+    declare @dbHealthKind varchar(64) = (
+        select top 1 isnull(defaultWorkItemKind, 'maintenance')
+        from storyPoint.tbWorkItemType
+        where pk = @dbHealthCheckTypePk
+    );
+    declare @creatorEmpPk int = (
+        select top 1 pk
+        from storyPoint.tbEmployee
+        where isActive = 1
+        order by case when loginAccount = 'john.yh.lin' then 0 when roleName = 'admin' then 1 else 2 end asc, pk asc
+    );
+
+    insert into storyPoint.tbWorkItem (
+        itemCode, itemTitle, itemDescription, workItemTypePk, workItemKind,
+        sprintName, priorityLevel, defaultTypePoint, storyPoint,
+        originalStoryPoint, deductedStoryPoint, isManualAdjusted, adjustmentReason,
+        estimationStatus, executionStatus, startDate, endDate, dueDate,
+        isExpiredProcessed, expiryNotificationSent, createdByEmployeePk, isActive, createdAt, updatedAt
+    )
+    values (
+        'WI-2026-TDCC',
+        N'集保健檢',
+        N'套用基本工項「資料庫健檢」標準點數執行集保核心資料庫例行健康檢查與報告交付（一般工項具備明確起訖時間，並可依實際規模微調 Story Point）',
+        @dbHealthCheckTypePk,
+        @dbHealthKind,
+        N'2026-Q4 維運與健檢',
+        'high',
+        @dbHealthStdPt,
+        @dbHealthStdPt,
+        @dbHealthStdPt,
+        0.00,
+        0,
+        N'套用基本工項「資料庫健檢」之標準 Story Point',
+        'finalized',
+        'inProgress',
+        dateadd(day, -2, cast(sysdatetime() as datetime2(0))),
+        dateadd(day, 12, cast(sysdatetime() as datetime2(0))),
+        cast(dateadd(day, 12, sysdatetime()) as date),
+        0,
+        0,
+        @creatorEmpPk,
+        1,
+        sysdatetime(),
+        sysdatetime()
+    );
+
+    declare @newTdccWiPk int = scope_identity();
+    if @newTdccWiPk is not null and @creatorEmpPk is not null
+    begin
+        insert into storyPoint.tbWorkItemAssignment (
+            workItemPk, employeePk, assignmentRole, allocationPercent,
+            allocatedStoryPoint, originalAllocatedStoryPoint, deductedAllocatedStoryPoint,
+            assignmentNote, assignedByEmployeePk
+        )
+        values (
+            @newTdccWiPk,
+            @creatorEmpPk,
+            N'主要負責',
+            100.00,
+            @dbHealthStdPt,
+            @dbHealthStdPt,
+            0.00,
+            N'負責執行集保健檢並交付健檢報告',
+            @creatorEmpPk
+        );
+    end
 end
 go
 

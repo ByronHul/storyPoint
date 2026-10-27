@@ -1948,6 +1948,7 @@ create or alter procedure storyPoint.spCreateVotingSession
     @resetCurrentRoundVotes bit = 0,
     @restartAllRounds bit = 0,
     @openNextRound bit = 0,
+    @defaultWorkItemKind varchar(64) = null,
     @operatorAccount varchar(128) = 'system'
 as
 begin
@@ -2006,43 +2007,27 @@ begin
         if @targetKind = 'workItemType'
         begin
             set @workItemPk = null;
-            declare @autoTypeName nvarchar(128) = ltrim(rtrim(replace(replace(isnull(@sessionTitle, N''), N'【代表類型估算】', N''), N'標準點數訂定', N'')));
+            declare @autoTypeName nvarchar(128) = ltrim(rtrim(replace(replace(replace(isnull(@sessionTitle, N''), N'【代表類型估算】', N''), N'【基本工項估算】', N''), N'標準點數訂定', N'')));
+            declare @resolvedKind varchar(64) = nullif(ltrim(rtrim(isnull(@defaultWorkItemKind, ''))), '');
 
-            -- 確保 storyPoint.tbWorkItemKind 的工項類型 (專案、維運、顧問時數、教育訓練、開發產品...等) 已同步至 storyPoint.tbWorkItemType
-            insert into storyPoint.tbWorkItemType (
-                typeCode, typeName, categoryName, defaultWorkItemKind, description,
-                standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
-            )
-            select
-                wik.kindCode,
-                wik.kindName,
-                wik.kindName,
-                wik.kindCode,
-                isnull(nullif(ltrim(rtrim(wik.mainFeatureSummary)), N''), isnull(wik.description, wik.kindName)),
-                null,
-                @cardDeckPk,
-                'pending',
-                wik.isActive,
-                sysdatetime(),
-                sysdatetime()
-            from storyPoint.tbWorkItemKind as wik
-            where not exists (
-                select 1
-                from storyPoint.tbWorkItemType as wit
-                where wit.typeCode = wik.kindCode
-            );
-
-            -- 若前端傳入之 @workItemTypePk 剛好對應 tbWorkItemKind.pk，優先轉譯為對應之 tbWorkItemType.pk
-            if isnull(@workItemTypePk, 0) > 0 and not exists (select 1 from storyPoint.tbWorkItemType where pk = @workItemTypePk)
+            if @resolvedKind is not null and not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = @resolvedKind)
             begin
-                select top 1 @workItemTypePk = wit.pk
-                from storyPoint.tbWorkItemKind as wik
-                inner join storyPoint.tbWorkItemType as wit
-                    on wit.typeCode = wik.kindCode
-                where wik.pk = @workItemTypePk;
+                select top 1 @resolvedKind = kindCode
+                from storyPoint.tbWorkItemKind
+                where kindName = cast(@resolvedKind as nvarchar(128));
             end
 
-            if isnull(@workItemTypePk, 0) <= 0 or not exists (select 1 from storyPoint.tbWorkItemType where pk = @workItemTypePk)
+            if isnull(@workItemTypePk, 0) > 0 and exists (select 1 from storyPoint.tbWorkItemType where pk = @workItemTypePk)
+            begin
+                if @resolvedKind is not null
+                begin
+                    update storyPoint.tbWorkItemType
+                    set defaultWorkItemKind = @resolvedKind,
+                        updatedAt = sysdatetime()
+                    where pk = @workItemTypePk;
+                end
+            end
+            else
             begin
                 set @workItemTypePk = null;
 
@@ -2050,26 +2035,58 @@ begin
                 begin
                     select top 1 @workItemTypePk = wit.pk
                     from storyPoint.tbWorkItemType as wit
-                    left join storyPoint.tbWorkItemKind as wik
-                        on wik.kindCode = wit.typeCode
                     where wit.isActive = 1
                       and (
                           wit.typeName = @autoTypeName
                           or wit.typeCode = @autoTypeName
                           or charindex(wit.typeName, @sessionTitle) > 0
-                          or (wik.kindName is not null and charindex(wik.kindName, @sessionTitle) > 0)
                       )
-                    order by isnull(wik.sortOrder, 999) asc, wit.pk asc;
+                    order by case when @resolvedKind is not null and wit.defaultWorkItemKind = @resolvedKind then 0 else 1 end asc, wit.pk asc;
+                end
+
+                if @workItemTypePk is null and @autoTypeName <> N'' and not exists (select 1 from storyPoint.tbWorkItemKind where kindName = @autoTypeName or kindCode = @autoTypeName)
+                begin
+                    declare @effectiveNewKind varchar(64) = isnull(@resolvedKind, 'project');
+                    declare @effectiveNewKindName nvarchar(128) = N'專案';
+                    select top 1 @effectiveNewKindName = kindName
+                    from storyPoint.tbWorkItemKind
+                    where kindCode = @effectiveNewKind;
+
+                    declare @autoTypeCode varchar(64) = 'BASIC-' + format(sysdatetime(), 'yyyyMMdd-HHmmss');
+                    if exists (select 1 from storyPoint.tbWorkItemType where typeCode = @autoTypeCode)
+                    begin
+                        set @autoTypeCode = @autoTypeCode + '-' + right(cast(abs(checksum(newid())) as varchar(16)), 3);
+                    end
+
+                    insert into storyPoint.tbWorkItemType (
+                        typeCode, typeName, categoryName, defaultWorkItemKind, description,
+                        standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
+                    )
+                    values (
+                        @autoTypeCode,
+                        left(@autoTypeName, 128),
+                        isnull(@effectiveNewKindName, N'專案'),
+                        @effectiveNewKind,
+                        isnull(nullif(ltrim(rtrim(@roundGoalNote)), N''), concat(N'由盲投回合設定建立之基本工項：', left(@autoTypeName, 128))),
+                        null,
+                        @cardDeckPk,
+                        'voting',
+                        1,
+                        sysdatetime(),
+                        sysdatetime()
+                    );
+                    set @workItemTypePk = scope_identity();
                 end
 
                 if @workItemTypePk is null
                 begin
                     select top 1 @workItemTypePk = wit.pk
                     from storyPoint.tbWorkItemType as wit
-                    left join storyPoint.tbWorkItemKind as wik
-                        on wik.kindCode = wit.typeCode
                     where wit.isActive = 1
-                    order by isnull(wik.sortOrder, 999) asc, wit.pk asc;
+                    order by
+                        case when @resolvedKind is not null and wit.defaultWorkItemKind = @resolvedKind then 0 else 1 end asc,
+                        case when wit.typeName = N'資料庫健檢' then 0 else 1 end asc,
+                        wit.pk asc;
                 end
             end
 
@@ -3985,7 +4002,69 @@ begin
           )
         order by e.totalAllocatedStoryPoint desc, e.departmentPk asc, e.hierarchySortKey asc, e.employeePk asc;
 
-        -- Result Set 3: 工項代表類型清單 (2-2 投出 SP 的代表工項，例如「資料庫健檢」、「資料庫效能調校」等及其屬性與所屬預設工項類型)
+        -- Result Set 3: 基本工項清單 (3-2 投出 SP 的基本工項，例如「資料庫健檢」、「資料庫效能調校」等及其屬性與所屬工項類型)
+        -- 確保基本工項 (tbWorkItemType) 不混入工項類型 (project/maintenance/consultingHour/training/productDevelopment)，並確保「資料庫健檢」基本工項存在
+        if not exists (select 1 from storyPoint.tbWorkItemType where typeCode = 'TYPE-DB-HC' or typeName = N'資料庫健檢')
+        begin
+            declare @fiboDeckForSeed int = null;
+            select top 1 @fiboDeckForSeed = pk from storyPoint.tbCardDeck where isActive = 1 order by isDefault desc, pk asc;
+            insert into storyPoint.tbWorkItemType (
+                typeCode, typeName, categoryName, defaultWorkItemKind, description,
+                standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
+            )
+            values (
+                'TYPE-DB-HC',
+                N'資料庫健檢',
+                N'資料庫與維運',
+                'maintenance',
+                N'資料庫健康巡檢、索引碎片檢查、空間與備份檢核、Wait Stats 分析及健檢報告產出（無起訖時間之基本工項，供集保健檢等一般工項套用標準點數）',
+                3.00,
+                @fiboDeckForSeed,
+                'finalized',
+                1,
+                sysdatetime(),
+                sysdatetime()
+            );
+        end
+
+        declare @cleanDbHcPk int = null;
+        select top 1 @cleanDbHcPk = pk from storyPoint.tbWorkItemType where typeCode = 'TYPE-DB-HC' or typeName = N'資料庫健檢' order by pk asc;
+
+        if @cleanDbHcPk is not null and exists (
+            select 1 from storyPoint.tbWorkItemType
+            where typeCode in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
+              and pk <> @cleanDbHcPk
+        )
+        begin
+            update storyPoint.tbWorkItem
+            set workItemTypePk = @cleanDbHcPk
+            where workItemTypePk in (
+                select pk from storyPoint.tbWorkItemType
+                where typeCode in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
+                  and pk <> @cleanDbHcPk
+            );
+
+            update storyPoint.tbVotingSession
+            set workItemTypePk = @cleanDbHcPk
+            where workItemTypePk in (
+                select pk from storyPoint.tbWorkItemType
+                where typeCode in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
+                  and pk <> @cleanDbHcPk
+            );
+
+            update storyPoint.tbPointHistory
+            set workItemTypePk = @cleanDbHcPk
+            where workItemTypePk in (
+                select pk from storyPoint.tbWorkItemType
+                where typeCode in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
+                  and pk <> @cleanDbHcPk
+            );
+
+            delete from storyPoint.tbWorkItemType
+            where typeCode in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
+              and pk <> @cleanDbHcPk;
+        end
+
         select
             wit.pk as workItemTypePk,
             wit.typeCode,
@@ -4023,6 +4102,22 @@ begin
                     else 'blue'
                 end
             ) as defaultWorkItemKindColor,
+            isnull(
+                wik.minStoryPoint,
+                case
+                    when wit.defaultWorkItemKind = 'maintenance' then 0.50
+                    when wit.defaultWorkItemKind in ('consultingHour', 'training') then 1.00
+                    else 3.00
+                end
+            ) as defaultWorkItemKindMinPoint,
+            isnull(
+                wik.maxStoryPoint,
+                case
+                    when wit.defaultWorkItemKind = 'maintenance' then 5.00
+                    when wit.defaultWorkItemKind in ('consultingHour', 'training') then 8.00
+                    else 21.00
+                end
+            ) as defaultWorkItemKindMaxPoint,
             isnull(
                 nullif(ltrim(rtrim(wik.mainFeatureSummary)), N''),
                 case
@@ -4267,11 +4362,11 @@ begin
           and (@effectiveEmpPk is null or wia.employeePk = @effectiveEmpPk)
         order by wia.workItemPk desc, wia.pk asc;
 
-        -- Result Set 6: 點數訂定與異動歷程紀錄 (一般員工僅可看到自己的工項或代表類型歷程)
+        -- Result Set 6: 點數訂定與異動歷程紀錄 (一般員工僅可看到自己的工項或基本工項歷程)
         select top 100
             ph.pk as historyPk,
             ph.targetKind,
-            case when ph.targetKind = 'workItemType' then N'工項代表類型' else N'實際工項' end as targetKindText,
+            case when ph.targetKind = 'workItemType' then N'基本工項' else N'一般工項' end as targetKindText,
             ph.workItemTypePk,
             wit.typeCode,
             wit.typeName,
@@ -4287,10 +4382,10 @@ begin
                 when ph.changeSource = 'votingFinalized' then N'多人投票拍板定案'
                 when ph.changeSource = 'revoteReset' then N'發起重新投票(重啟新一輪)'
                 when ph.changeSource = 'revoteRestartAll' then N'重新投票(全部重新開始重設)'
-                when ph.changeSource = 'autoFromType' then N'代表類型自動帶入'
+                when ph.changeSource = 'autoFromType' then N'基本工項自動帶入'
                 when ph.changeSource = 'manualAdjust' then N'管理者手動微調'
-                when ph.changeSource = 'typeSync' then N'隨代表類型同步更新'
-                when ph.changeSource = 'adminTypeSetting' then N'代表類型直接設定'
+                when ph.changeSource = 'typeSync' then N'隨基本工項同步更新'
+                when ph.changeSource = 'adminTypeSetting' then N'基本工項直接設定'
                 when ph.changeSource = 'autoExpireDeduct' then N'迄時到期自動扣點'
                 else ph.changeSource
             end as changeSourceText,
@@ -4353,7 +4448,7 @@ begin
         where @isViewerAdmin = 1
         order by lg.pk desc;
 
-        -- Result Set 9: 預設工項類型與主要特徵設定清單 (支援增刪修查：專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品 / 自訂類型)
+        -- Result Set 9: 工項類型與基本規範設定清單 (3-3 支援增刪修查：專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品 / 自訂類型，含一般 SP 範圍上下限)
         select
             wik.pk as workItemKindPk,
             wik.kindCode,
@@ -4361,6 +4456,22 @@ begin
             wik.badgeIcon,
             wik.badgeColor,
             wik.sortOrder,
+            isnull(
+                wik.minStoryPoint,
+                case
+                    when wik.kindCode = 'maintenance' then 0.50
+                    when wik.kindCode in ('consultingHour', 'training') then 1.00
+                    else 3.00
+                end
+            ) as minStoryPoint,
+            isnull(
+                wik.maxStoryPoint,
+                case
+                    when wik.kindCode = 'maintenance' then 5.00
+                    when wik.kindCode in ('consultingHour', 'training') then 8.00
+                    else 21.00
+                end
+            ) as maxStoryPoint,
             isnull(
                 nullif(ltrim(rtrim(wik.mainFeatureSummary)), N''),
                 case
@@ -5079,6 +5190,8 @@ create or alter procedure storyPoint.spUpsertWorkItemKind
     @badgeIcon nvarchar(512) = N'📌',
     @badgeColor varchar(32) = 'blue',
     @sortOrder int = 100,
+    @minStoryPoint decimal(8,2) = null,
+    @maxStoryPoint decimal(8,2) = null,
     @mainFeatureSummary nvarchar(512) = null,
     @estimationTrait nvarchar(256) = null,
     @timeAndDeliverableTrait nvarchar(256) = null,
@@ -5100,6 +5213,29 @@ begin
     declare @cleanColor varchar(32) = case
         when @badgeColor in ('blue', 'amber', 'purple', 'green', 'red', 'rose', 'teal', 'slate') then @badgeColor
         else 'blue'
+    end;
+    declare @cleanMinPt decimal(8,2) = isnull(
+        @minStoryPoint,
+        case
+            when @cleanCode = 'maintenance' then 0.50
+            when @cleanCode in ('consultingHour', 'training') then 1.00
+            else 3.00
+        end
+    );
+    declare @cleanMaxPt decimal(8,2) = isnull(
+        @maxStoryPoint,
+        case
+            when @cleanCode = 'maintenance' then 5.00
+            when @cleanCode in ('consultingHour', 'training') then 8.00
+            else 21.00
+        end
+    );
+    if @cleanMinPt < 0 set @cleanMinPt = 0.00;
+    if @cleanMaxPt < @cleanMinPt
+    begin
+        declare @swapKindPt decimal(8,2) = @cleanMinPt;
+        set @cleanMinPt = @cleanMaxPt;
+        set @cleanMaxPt = @swapKindPt;
     end;
     declare @cleanMainFeature nvarchar(512) = nullif(ltrim(rtrim(isnull(@mainFeatureSummary, N''))), N'');
     declare @cleanEstimationTrait nvarchar(256) = nullif(ltrim(rtrim(isnull(@estimationTrait, N''))), N'');
@@ -5136,8 +5272,10 @@ begin
                 badgeIcon = @cleanIcon,
                 badgeColor = @cleanColor,
                 sortOrder = isnull(@sortOrder, 100),
+                minStoryPoint = @cleanMinPt,
+                maxStoryPoint = @cleanMaxPt,
                 mainFeatureSummary = isnull(@cleanMainFeature, isnull(mainFeatureSummary, concat(@cleanName, N'專屬工作性質、標準化執行流程與跨團隊協作特徵'))),
-                estimationTrait = isnull(@cleanEstimationTrait, isnull(estimationTrait, N'依技術複雜度、工作投入規模與風險不確定性綜合估算 (常見 1 ~ 13 pt)')),
+                estimationTrait = isnull(@cleanEstimationTrait, isnull(estimationTrait, concat(N'依技術複雜度、工作投入規模與風險不確定性綜合估算 (一般範圍 ', cast(@cleanMinPt as varchar(16)), N' ~ ', cast(@cleanMaxPt as varchar(16)), N' pt)'))),
                 timeAndDeliverableTrait = isnull(@cleanDeliverableTrait, isnull(timeAndDeliverableTrait, N'具備明確起訖時間設定｜交付驗收成果｜達迄時自動轉已完成、扣點並通知部門主管與 HR')),
                 description = isnull(@description, description),
                 isActive = isnull(@isActive, 1),
@@ -5147,11 +5285,9 @@ begin
             if @oldCode is not null and @oldCode <> @cleanCode
             begin
                 update storyPoint.tbWorkItemType
-                set typeCode = case when typeCode = @oldCode then @cleanCode else typeCode end,
-                    defaultWorkItemKind = @cleanCode,
+                set defaultWorkItemKind = @cleanCode,
                     updatedAt = sysdatetime()
-                where defaultWorkItemKind = @oldCode
-                   or typeCode = @oldCode;
+                where defaultWorkItemKind = @oldCode;
 
                 update storyPoint.tbWorkItem
                 set workItemKind = @cleanCode,
@@ -5163,6 +5299,7 @@ begin
         begin
             insert into storyPoint.tbWorkItemKind (
                 kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+                minStoryPoint, maxStoryPoint,
                 mainFeatureSummary, estimationTrait, timeAndDeliverableTrait,
                 description, isActive, createdAt, updatedAt
             )
@@ -5172,8 +5309,10 @@ begin
                 @cleanIcon,
                 @cleanColor,
                 isnull(@sortOrder, 100),
+                @cleanMinPt,
+                @cleanMaxPt,
                 isnull(@cleanMainFeature, concat(@cleanName, N'專屬工作性質、標準化執行流程與跨團隊協作特徵')),
-                isnull(@cleanEstimationTrait, N'依技術複雜度、工作投入規模與風險不確定性綜合估算 (常見 1 ~ 13 pt)'),
+                isnull(@cleanEstimationTrait, concat(N'依技術複雜度、工作投入規模與風險不確定性綜合估算 (一般範圍 ', cast(@cleanMinPt as varchar(16)), N' ~ ', cast(@cleanMaxPt as varchar(16)), N' pt)')),
                 isnull(@cleanDeliverableTrait, N'具備明確起訖時間設定｜交付驗收成果｜達迄時自動轉已完成、扣點並通知部門主管與 HR'),
                 isnull(@description, concat(@cleanName, N'工項，具備明確起訖時間設定，達迄時自動轉為已完成並扣除 Story Point 及寄發通知信。')),
                 isnull(@isActive, 1),
@@ -5189,7 +5328,7 @@ begin
             @sourceName = 'tsql',
             @objectName = 'storyPoint.spUpsertWorkItemKind',
             @durationMillisecond = @durationMs,
-            @executionResult = N'預設工項類型與主要特徵儲存成功',
+            @executionResult = N'工項類型與基本規範儲存成功',
             @operatorAccount = @operatorAccount;
 
         select
@@ -5199,6 +5338,8 @@ begin
             wik.badgeIcon,
             wik.badgeColor,
             wik.sortOrder,
+            wik.minStoryPoint,
+            wik.maxStoryPoint,
             wik.mainFeatureSummary,
             wik.estimationTrait,
             wik.timeAndDeliverableTrait,
@@ -5286,47 +5427,6 @@ begin
             order by sortOrder asc, pk asc;
 
             set @safeFallback = isnull(@safeFallback, 'project');
-        end
-
-        declare @delTypePk int = null;
-        declare @fallbackTypePkForDel int = null;
-
-        select top 1 @delTypePk = pk
-        from storyPoint.tbWorkItemType
-        where typeCode = @targetCode;
-
-        select top 1 @fallbackTypePkForDel = pk
-        from storyPoint.tbWorkItemType
-        where typeCode = @safeFallback
-          and (@delTypePk is null or pk <> @delTypePk);
-
-        if @fallbackTypePkForDel is null
-        begin
-            select top 1 @fallbackTypePkForDel = pk
-            from storyPoint.tbWorkItemType
-            where (@delTypePk is null or pk <> @delTypePk)
-              and isActive = 1
-            order by pk asc;
-        end
-
-        if @delTypePk is not null and @fallbackTypePkForDel is not null
-        begin
-            update storyPoint.tbWorkItem
-            set workItemTypePk = @fallbackTypePkForDel,
-                updatedAt = sysdatetime()
-            where workItemTypePk = @delTypePk;
-
-            update storyPoint.tbVotingSession
-            set workItemTypePk = @fallbackTypePkForDel,
-                updatedAt = sysdatetime()
-            where workItemTypePk = @delTypePk;
-
-            update storyPoint.tbPointHistory
-            set workItemTypePk = @fallbackTypePkForDel
-            where workItemTypePk = @delTypePk;
-
-            delete from storyPoint.tbWorkItemType
-            where pk = @delTypePk;
         end
 
         update storyPoint.tbWorkItemType

@@ -97,6 +97,10 @@ begin
         alter table storyPoint.tbWorkItemKind add estimationTrait nvarchar(256) null;
     if col_length('storyPoint.tbWorkItemKind', 'timeAndDeliverableTrait') is null
         alter table storyPoint.tbWorkItemKind add timeAndDeliverableTrait nvarchar(256) null;
+    if col_length('storyPoint.tbWorkItemKind', 'minStoryPoint') is null
+        alter table storyPoint.tbWorkItemKind add minStoryPoint decimal(8,2) not null constraint dfMigrateKindMinPt default (0.50);
+    if col_length('storyPoint.tbWorkItemKind', 'maxStoryPoint') is null
+        alter table storyPoint.tbWorkItemKind add maxStoryPoint decimal(8,2) not null constraint dfMigrateKindMaxPt default (21.00);
     alter table storyPoint.tbWorkItemKind alter column badgeIcon nvarchar(512) not null;
 end
 go
@@ -105,6 +109,7 @@ if object_id('storyPoint.tbWorkItemKind', 'u') is not null
 begin
     select
         pk, kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        minStoryPoint, maxStoryPoint,
         mainFeatureSummary, estimationTrait, timeAndDeliverableTrait,
         description, isActive, createdAt, updatedAt
     into storyPoint.tbPreserveWorkItemKind
@@ -401,8 +406,9 @@ create table storyPoint.tbWorkItemIcon (
     constraint uqTbWorkItemIconCode unique nonclustered (iconCode asc)
 );
 
--- 4.5 預設工項類型與主要特徵設定資料表 (storyPoint.tbWorkItemKind)
--- 支援增刪修查預設工項類型並記載主要特徵（預設含：project 專案、maintenance 維運、consultingHour 顧問時數、training 教育訓練、productDevelopment 開發產品，並可自訂新增）
+-- 4.5 工項類型與基本規範設定資料表 (storyPoint.tbWorkItemKind)
+-- 支援增刪修查工項類型（預設含：project 專案、maintenance 維運、consultingHour 顧問時數、training 教育訓練、productDevelopment 開發產品，並可自訂新增）
+-- 記載該工項類型的一般工項基本規範與一般 Story Point 範圍 (minStoryPoint ~ maxStoryPoint)
 create table storyPoint.tbWorkItemKind (
     pk int identity(1,1) not null,
     kindCode varchar(64) not null,
@@ -410,6 +416,8 @@ create table storyPoint.tbWorkItemKind (
     badgeIcon nvarchar(512) not null constraint dfTbWorkItemKindIcon default (N'📌'),
     badgeColor varchar(32) not null constraint dfTbWorkItemKindColor default ('blue'),
     sortOrder int not null constraint dfTbWorkItemKindSortOrder default (100),
+    minStoryPoint decimal(8,2) not null constraint dfTbWorkItemKindMinPoint default (0.50),
+    maxStoryPoint decimal(8,2) not null constraint dfTbWorkItemKindMaxPoint default (21.00),
     mainFeatureSummary nvarchar(512) null,
     estimationTrait nvarchar(256) null,
     timeAndDeliverableTrait nvarchar(256) null,
@@ -706,11 +714,28 @@ begin
     set identity_insert storyPoint.tbWorkItemKind on;
     insert into storyPoint.tbWorkItemKind (
         pk, kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        minStoryPoint, maxStoryPoint,
         mainFeatureSummary, estimationTrait, timeAndDeliverableTrait,
         description, isActive, createdAt, updatedAt
     )
     select
         pk, kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        case
+            when kindCode = 'project' and isnull(minStoryPoint, 0.50) = 0.50 then 3.00
+            when kindCode = 'maintenance' then isnull(minStoryPoint, 0.50)
+            when kindCode = 'consultingHour' and isnull(minStoryPoint, 0.50) = 0.50 then 1.00
+            when kindCode = 'training' and isnull(minStoryPoint, 0.50) = 0.50 then 1.00
+            when kindCode = 'productDevelopment' and isnull(minStoryPoint, 0.50) = 0.50 then 3.00
+            else isnull(minStoryPoint, 0.50)
+        end,
+        case
+            when kindCode = 'project' then isnull(maxStoryPoint, 21.00)
+            when kindCode = 'maintenance' and isnull(maxStoryPoint, 21.00) = 21.00 then 5.00
+            when kindCode = 'consultingHour' and isnull(maxStoryPoint, 21.00) = 21.00 then 8.00
+            when kindCode = 'training' and isnull(maxStoryPoint, 21.00) = 21.00 then 8.00
+            when kindCode = 'productDevelopment' then isnull(maxStoryPoint, 21.00)
+            else isnull(maxStoryPoint, 21.00)
+        end,
         isnull(
             nullif(ltrim(rtrim(mainFeatureSummary)), N''),
             case

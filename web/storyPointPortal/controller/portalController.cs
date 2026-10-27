@@ -4555,23 +4555,23 @@ public class portalController : Controller
             ? "<span class='badge badge-admin'>👑 管理者 (Admin - 全域檢視與管理)</span>"
             : "<span class='badge badge-user'>🙋 個別員工 (僅檢視自己的投票、工項與分數)</span>";
 
-        string menu2MainLabel = isAdmin ? "📋 工項管理" : "📋 我的工項";
+        string menu2MainLabel = isAdmin ? "3. 📋 工項管理" : "3. 📋 我的工項";
         string menu2MainTip = isAdmin
-            ? "工項與代表類型管理：查詢各工項點數、指派負責員工、管理標準代表類型及匯出 CSV / Excel / 互動 HTML 報表"
-            : "我的工項與分數：查詢賦予給我的工項、查閱代表類型標準點數及匯出個人工項報表";
-        string menu2Sub1Title = isAdmin ? "2-1. 工項與員工指派" : "2-1. 我的工項查詢";
+            ? "3. 工項管理（三層架構）：3-1 一般工項（如集保健檢，套用基本工項 SP、可微調、具起訖時間）、3-2 基本工項（如資料庫健檢，無起訖時間、為盲投主要標的、可套用工項類型）、3-3 工項類型（如專案/維運/顧問時數，定義一般工項基本規範與一般 SP 範圍）"
+            : "3. 我的工項與分數：查詢賦予給我的 3-1 一般工項、查閱 3-2 基本工項標準點數與 3-3 工項類型基本規範";
+        string menu2Sub1Title = isAdmin ? "3-1. 一般工項與員工指派" : "3-1. 我的一般工項查詢";
         string menu2Sub1Desc = isAdmin
-            ? "2-1. 工項點數查詢與賦予員工設定：查詢各工項點數、選擇代表類型自動帶入或修改員工指派"
-            : "2-1. 我的工項與個人分數查詢：僅顯示賦予給我本人的工項與個人配額分數（不顯示其他人）";
-        string menu3MainLabel = isAdmin ? "📊 統計報表" : "📊 我的報表";
+            ? "3-1. 一般工項管理（如「集保健檢」）：套用 3-2 基本工項（如資料庫健檢）的 Story Point，支援微調點數，且一般工項才有起訖時間與員工指派"
+            : "3-1. 我的一般工項與個人分數查詢：僅顯示賦予給我本人的一般工項與個人配額分數（不顯示其他人）";
+        string menu3MainLabel = isAdmin ? "4. 📊 統計報表" : "4. 📊 我的報表";
         string menu3MainTip = isAdmin
-            ? "員工與部門統計報表：查詢員工個人與部門總 Story Point 負載統計，並支援匯出 CSV / Excel / 互動 HTML"
-            : "我的分數統計報表：查看我個人身上的工項數量與各狀態 Story Point 分數，並匯出三種格式報表";
-        string menu3Sub1Title = isAdmin ? "3-1. 員工與部門統計" : "3-1. 我的分數統計";
+            ? "4. 員工與部門統計報表：查詢員工個人與部門總 Story Point 負載統計，並支援匯出 CSV / Excel / 互動 HTML"
+            : "4. 我的分數統計報表：查看我個人身上的工項數量與各狀態 Story Point 分數，並匯出三種格式報表";
+        string menu3Sub1Title = isAdmin ? "4-1. 員工與部門統計" : "4-1. 我的分數統計";
         string menu3Sub1Desc = isAdmin
-            ? "3-1. 員工與部門總 Story Point 統計：查詢員工身上的點數與所屬部門的總 Story Point 數"
-            : "3-1. 我的個人總 Story Point 分數統計：查看我個人身上的工項數量與各狀態 Story Point 分數";
-        string menu3Sub3Title = isAdmin ? "3-3A. 匯出員工 (CSV)" : "3-2A. 匯出個人 (CSV)";
+            ? "4-1. 員工與部門總 Story Point 統計：查詢員工身上的點數與所屬部門的總 Story Point 數"
+            : "4-1. 我的個人總 Story Point 分數統計：查看我個人身上的工項數量與各狀態 Story Point 分數";
+        string menu3Sub3Title = isAdmin ? "4-3A. 匯出員工 (CSV)" : "4-2A. 匯出個人 (CSV)";
         string menu3Sub3Desc = isAdmin
             ? "匯出員工個人總點數 CSV 報表：下載每位員工賦予工項與點數統計表 (UTF-8 BOM)"
             : "匯出我的個人工項與分數 CSV 報表：僅下載我個人專屬的工項與分數統計表";
@@ -4871,17 +4871,17 @@ public class portalController : Controller
             <div class=""menu-group-list"">
                 <!-- 主選單 1: 多人估算 -->
                 <div class=""menu-dropdown"" id=""menu-group-voting"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "voting" || currentTab == "history" ? "active-group" : "")}"" data-tip=""多人估算與過程：Story Point 即時盲投大廳、回合設定與決策歷程查詢"" onclick=""toggleDropdownMenu(event, 'menu-group-voting')"">
-                        <span>🃏 多人估算</span>
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "voting" || currentTab == "history" ? "active-group" : "")}"" data-tip=""1. 多人估算與過程：Story Point 即時盲投大廳（主要投 3-2 基本工項）、回合設定與決策歷程查詢"" onclick=""toggleDropdownMenu(event, 'menu-group-voting')"">
+                        <span>1. 🃏 多人估算</span>
                         <span class=""menu-caret"">▼</span>
                     </button>
                     <div class=""menu-sub-list"">
                         <div class=""menu-sub-header"">STORY POINT 估算與歷程</div>
-                        <a class=""menu-sub-item {(currentTab == "voting" ? "active" : "")}"" data-tab=""voting"" data-tip=""{(isAdmin ? "1-1. 多人即時盲投大廳 (Planning Poker)：為工項代表類型或工項投出點數、翻牌與定案" : "1-1. 多人即時盲投大廳 (Planning Poker)：參與投票並檢視自己的出牌與定案點數（不顯示他人分數）")}"" onclick=""switchTab('voting')"">
+                        <a class=""menu-sub-item {(currentTab == "voting" ? "active" : "")}"" data-tab=""voting"" data-tip=""{(isAdmin ? "1-1. 多人即時盲投大廳 (Planning Poker)：主要為「基本工項（如：資料庫健檢）」投出共識點數，亦可為一般工項微調投票" : "1-1. 多人即時盲投大廳 (Planning Poker)：參與投票並檢視自己的出牌與定案點數（不顯示他人分數）")}"" onclick=""switchTab('voting')"">
                             <span class=""menu-sub-icon"">🃏</span>
                             <span class=""menu-sub-title"">1-1. 即時盲投大廳</span>
                         </a>
-                        <a class=""menu-sub-item {(currentTab == "roundSetup" ? "active" : "")}"" data-tab=""roundSetup"" data-tip=""{(isAdmin ? "1-2. 設定盲投回合：盲投開始前設定標的、參與者名單、高低點數上下限、共識規則與計時" : "1-2. 設定盲投回合：檢視各盲投議程的參與名單、點數範圍與共識規則設定")}"" onclick=""switchTab('roundSetup')"">
+                        <a class=""menu-sub-item {(currentTab == "roundSetup" ? "active" : "")}"" data-tab=""roundSetup"" data-tip=""{(isAdmin ? "1-2. 設定盲投回合：先選工項類型（專案、維運、顧問時數...）帶出基本規範與一般 SP 範圍，再選要投的基本工項（如資料庫健檢）與參與者" : "1-2. 設定盲投回合：檢視各盲投議程的參與名單、點數範圍與共識規則設定")}"" onclick=""switchTab('roundSetup')"">
                             <span class=""menu-sub-icon"">⚙️</span>
                             <span class=""menu-sub-title"">1-2. 設定盲投回合</span>
                         </a>
@@ -4892,50 +4892,50 @@ public class portalController : Controller
                     </div>
                 </div>
 
-                <!-- 主選單直接快速入口：設定回合 -->
+                <!-- 主選單 2: 設定回合 -->
                 <div class=""menu-dropdown"" id=""menu-group-roundsetup"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "roundSetup" ? "active-group" : "")}"" data-tip=""設定盲投回合 (盲投開始前設定)：設定本回合要投什麼標的、誰可參與、點數上下限範圍與共識規則"" onclick=""switchTab('roundSetup')"">
-                        <span>⚙️ 設定回合</span>
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "roundSetup" ? "active-group" : "")}"" data-tip=""2. 設定盲投回合 (盲投開始前設定)：選擇工項類型（專案/維運/顧問時數...）與目標基本工項（如資料庫健檢）、參與者名單、點數上下限範圍與共識規則"" onclick=""switchTab('roundSetup')"">
+                        <span>2. ⚙️ 設定回合</span>
                     </button>
                 </div>
 
-                <!-- 主選單 2: 工項管理 -->
+                <!-- 主選單 3: 工項管理 (3-1 一般工項 / 3-2 基本工項 / 3-3 工項類型) -->
                 <div class=""menu-dropdown"" id=""menu-group-workitems"">
                     <button type=""button"" class=""menu-main-btn {(currentTab == "workitems" || currentTab == "types" || currentTab == "kinds" ? "active-group" : "")}"" data-tip=""{menu2MainTip}"" onclick=""toggleDropdownMenu(event, 'menu-group-workitems')"">
                         <span>{menu2MainLabel}</span>
                         <span class=""menu-caret"">▼</span>
                     </button>
                     <div class=""menu-sub-list"">
-                        <div class=""menu-sub-header"">{(isAdmin ? "工項點數、代表工項與預設類型" : "我的工項與標準代表類型")}</div>
+                        <div class=""menu-sub-header"">{(isAdmin ? "三層架構：3-1 一般工項 ／ 3-2 基本工項 ／ 3-3 工項類型" : "我的一般工項與標準基本工項")}</div>
                         <a class=""menu-sub-item {(currentTab == "workitems" ? "active" : "")}"" data-tab=""workitems"" data-tip=""{menu2Sub1Desc}"" onclick=""switchTab('workitems')"">
                             <span class=""menu-sub-icon"">📋</span>
                             <span class=""menu-sub-title"">{menu2Sub1Title}</span>
                         </a>
-                        <a class=""menu-sub-item {(currentTab == "types" ? "active" : "")}"" data-tab=""types"" data-tip=""{(isAdmin ? "2-2. 工項代表類型（編輯投出 SP 的代表工項）：編輯如「資料庫健檢」等代表工項的各種屬性、屬於哪種預設工項類型、技術分類、標準 Story Point 與驗收標準說明" : "2-2. 工項代表類型標準點數與屬性參考：查閱如「資料庫健檢」等投出 SP 的代表工項所屬預設類型、各種屬性與標準 Story Point")}"" onclick=""switchTab('types')"">
+                        <a class=""menu-sub-item {(currentTab == "types" ? "active" : "")}"" data-tab=""types"" data-tip=""{(isAdmin ? "3-2. 基本工項管理：編輯如「資料庫健檢」這種基本工項（無起訖時間，為投票主要標的，可套用 3-3 工項類型以取得基本規範與一般 SP 範圍，供 3-1 一般工項如「集保健檢」套用點數）" : "3-2. 基本工項標準點數參考：查閱如「資料庫健檢」等基本工項所套用之工項類型、基本規範與標準 Story Point")}"" onclick=""switchTab('types')"">
                             <span class=""menu-sub-icon"">🏷️</span>
-                            <span class=""menu-sub-title"">2-2. {(isAdmin ? "工項代表類型" : "代表類型參考")}</span>
+                            <span class=""menu-sub-title"">3-2. {(isAdmin ? "基本工項管理" : "基本工項參考")}</span>
                         </a>
-                        <a class=""menu-sub-item {(currentTab == "kinds" ? "active" : "")}"" data-tab=""kinds"" data-tip=""{(isAdmin ? "2-3. 預設工項類型與特徵：增、刪、修、查管理專案、維運、顧問時數、教育訓練、開發產品等預設工項類型、代表圖示並表列三項主要特徵" : "2-3. 預設工項類型與主要特徵一覽表：查詢專案、維運、顧問時數、教育訓練、開發產品等預設工項類型的主要特徵")}"" onclick=""switchTab('kinds')"">
+                        <a class=""menu-sub-item {(currentTab == "kinds" ? "active" : "")}"" data-tab=""kinds"" data-tip=""{(isAdmin ? "3-3. 工項類型與基本規範：編輯專案、維運、顧問時數、教育訓練、開發產品等工項類型，定義一般工項基本規範與告知類型一般的 Story Point 範圍 (min ~ max pt)" : "3-3. 工項類型與基本規範一覽表：查詢專案、維運、顧問時數、教育訓練、開發產品等類型的一般工項基本規範與一般 Story Point 範圍")}"" onclick=""switchTab('kinds')"">
                             <span class=""menu-sub-icon"">🗂️</span>
-                            <span class=""menu-sub-title"">2-3. 預設工項類型與特徵</span>
+                            <span class=""menu-sub-title"">3-3. 工項類型與基本規範</span>
                         </a>
-                        <div class=""menu-sub-header"" style=""margin-top:6px;"">工項報表匯出</div>
-                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=csv"" data-tip=""2-4. 匯出工項報表 (CSV 格式)：下載 UTF-8 BOM CSV 工項點數清單"">
+                        <div class=""menu-sub-header"" style=""margin-top:6px;"">一般工項報表匯出</div>
+                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=csv"" data-tip=""3-4. 匯出一般工項報表 (CSV 格式)：下載 UTF-8 BOM CSV 一般工項點數清單"">
                             <span class=""menu-sub-icon"">📥</span>
-                            <span class=""menu-sub-title"">2-4. 匯出工項 (CSV)</span>
+                            <span class=""menu-sub-title"">3-4. 匯出工項 (CSV)</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=excel"" data-tip=""2-5. 匯出工項報表 (Excel .xlsx 格式)：下載標準 OpenXML Excel 活頁簿"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=excel"" data-tip=""3-5. 匯出一般工項報表 (Excel .xlsx 格式)：下載標準 OpenXML Excel 活頁簿"">
                             <span class=""menu-sub-icon"">📊</span>
-                            <span class=""menu-sub-title"">2-5. 匯出工項 (Excel)</span>
+                            <span class=""menu-sub-title"">3-5. 匯出工項 (Excel)</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=html"" data-tip=""2-6. 匯出工項互動 HTML 報表：支援點擊表頭排序、多條件篩選與動態群組彙總統計"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=html"" data-tip=""3-6. 匯出一般工項互動 HTML 報表：支援點擊表頭排序、多條件篩選與動態群組彙總統計"">
                             <span class=""menu-sub-icon"">🌐</span>
-                            <span class=""menu-sub-title"">2-6. 匯出工項 (HTML)</span>
+                            <span class=""menu-sub-title"">3-6. 匯出工項 (HTML)</span>
                         </a>
                     </div>
                 </div>
 
-                <!-- 主選單 3: 統計報表 -->
+                <!-- 主選單 4: 統計報表 -->
                 <div class=""menu-dropdown"" id=""menu-group-stats"">
                     <button type=""button"" class=""menu-main-btn {(currentTab == "stats" ? "active-group" : "")}"" data-tip=""{menu3MainTip}"" onclick=""toggleDropdownMenu(event, 'menu-group-stats')"">
                         <span>{menu3MainLabel}</span>
@@ -4951,17 +4951,17 @@ public class portalController : Controller
         {
             sb.Append(@"
                         <div class=""menu-sub-header"" style=""margin-top:6px;"">部門總點數匯出</div>
-                        <a class=""menu-sub-item"" href=""/export/report?type=department&format=csv"" data-tip=""3-2A. 匯出部門總點數 (CSV 格式)：下載各部門 Story Point 負載 CSV 報表"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=department&format=csv"" data-tip=""4-2A. 匯出部門總點數 (CSV 格式)：下載各部門 Story Point 負載 CSV 報表"">
                             <span class=""menu-sub-icon"">📥</span>
-                            <span class=""menu-sub-title"">3-2A. 匯出部門 (CSV)</span>
+                            <span class=""menu-sub-title"">4-2A. 匯出部門 (CSV)</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=department&format=excel"" data-tip=""3-2B. 匯出部門總點數 (Excel .xlsx 格式)：下載各部門 Story Point 負載 Excel 活頁簿"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=department&format=excel"" data-tip=""4-2B. 匯出部門總點數 (Excel .xlsx 格式)：下載各部門 Story Point 負載 Excel 活頁簿"">
                             <span class=""menu-sub-icon"">📊</span>
-                            <span class=""menu-sub-title"">3-2B. 匯出部門 (Excel)</span>
+                            <span class=""menu-sub-title"">4-2B. 匯出部門 (Excel)</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=department&format=html"" data-tip=""3-2C. 匯出部門互動 HTML (排序・篩選・群組彙總)：可於瀏覽器即時排序、篩選與群組彙總分析"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=department&format=html"" data-tip=""4-2C. 匯出部門互動 HTML (排序・篩選・群組彙總)：可於瀏覽器即時排序、篩選與群組彙總分析"">
                             <span class=""menu-sub-icon"">🌐</span>
-                            <span class=""menu-sub-title"">3-2C. 匯出部門 (HTML)</span>
+                            <span class=""menu-sub-title"">4-2C. 匯出部門 (HTML)</span>
                         </a>");
         }
         sb.Append($@"
@@ -4970,21 +4970,21 @@ public class portalController : Controller
                             <span class=""menu-sub-icon"">📥</span>
                             <span class=""menu-sub-title"">{menu3Sub3Title}</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=employee&format=excel"" data-tip=""{(isAdmin ? "3-3B. 匯出員工個人總點數 Excel (.xlsx)：下載標準 OpenXML Excel 報表格式" : "3-2B. 匯出我的個人工項與分數 Excel (.xlsx)：下載標準 OpenXML Excel 報表格式")}"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=employee&format=excel"" data-tip=""{(isAdmin ? "4-3B. 匯出員工個人總點數 Excel (.xlsx)：下載標準 OpenXML Excel 報表格式" : "4-2B. 匯出我的個人工項與分數 Excel (.xlsx)：下載標準 OpenXML Excel 報表格式")}"">
                             <span class=""menu-sub-icon"">📊</span>
-                            <span class=""menu-sub-title"">{(isAdmin ? "3-3B. 匯出員工 (Excel)" : "3-2B. 匯出個人 (Excel)")}</span>
+                            <span class=""menu-sub-title"">{(isAdmin ? "4-3B. 匯出員工 (Excel)" : "4-2B. 匯出個人 (Excel)")}</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=employee&format=html"" data-tip=""{(isAdmin ? "3-3C. 匯出員工總點數互動 HTML：支援欄位排序、條件篩選與依部門/角色群組彙總" : "3-2C. 匯出我的個人分數互動 HTML：支援欄位排序、條件篩選與群組彙總")}"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=employee&format=html"" data-tip=""{(isAdmin ? "4-3C. 匯出員工總點數互動 HTML：支援欄位排序、條件篩選與依部門/角色群組彙總" : "4-2C. 匯出我的個人分數互動 HTML：支援欄位排序、條件篩選與群組彙總")}"">
                             <span class=""menu-sub-icon"">🌐</span>
-                            <span class=""menu-sub-title"">{(isAdmin ? "3-3C. 匯出員工 (HTML)" : "3-2C. 匯出個人 (HTML)")}</span>
+                            <span class=""menu-sub-title"">{(isAdmin ? "4-3C. 匯出員工 (HTML)" : "4-2C. 匯出個人 (HTML)")}</span>
                         </a>
                     </div>
                 </div>
 
-                <!-- 主選單直接快速入口：修改帳密 -->
+                <!-- 主選單 5: 修改帳密 -->
                 <div class=""menu-dropdown"" id=""menu-group-myaccount"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "myAccount" ? "active-group" : "")}"" data-tip=""修改我的帳密：每個人皆可隨時修改自己的個人登入帳號 (loginAccount) 與登入密碼"" onclick=""switchTab('myAccount')"">
-                        <span>🔑 修改帳密</span>
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "myAccount" ? "active-group" : "")}"" data-tip=""5. 修改我的帳密：每個人皆可隨時修改自己的個人登入帳號 (loginAccount) 與登入密碼"" onclick=""switchTab('myAccount')"">
+                        <span>5. 🔑 修改帳密</span>
                     </button>
                 </div>");
 
@@ -5003,62 +5003,62 @@ public class portalController : Controller
                 : "<span style='background:#16a34a;color:#fff;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:800;'>0</span>";
 
             sb.Append($@"
-                <!-- 主選單 4: 組織與員工 (管理者可見全域管理 + 個人帳密修改) -->
+                <!-- 主選單 6: 組織與員工 (管理者可見全域管理 + 個人帳密修改) -->
                 <div class=""menu-dropdown"" id=""menu-group-employees"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "employees" ? "active-group" : "")}"" data-tip=""組織與員工帳密管理：管理部門主管註記、上下層樹狀階層、員工列表與 CSV / Excel 批次匯入"" onclick=""toggleDropdownMenu(event, 'menu-group-employees')"">
-                        <span>👥 組織與員工</span>
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "employees" ? "active-group" : "")}"" data-tip=""6. 組織與員工帳密管理：管理部門主管註記、上下層樹狀階層、員工列表與 CSV / Excel 批次匯入"" onclick=""toggleDropdownMenu(event, 'menu-group-employees')"">
+                        <span>6. 👥 組織與員工</span>
                         <span class=""menu-caret"">▼</span>
                     </button>
                     <div class=""menu-sub-list"">
                         <div class=""menu-sub-header"">帳密修改、員工管理與批次匯入</div>
-                        <a class=""menu-sub-item {(currentTab == "myAccount" ? "active" : "")}"" data-tab=""myAccount"" data-tip=""4-0. 修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號 (loginAccount) 與登入密碼"" onclick=""switchTab('myAccount')"">
+                        <a class=""menu-sub-item {(currentTab == "myAccount" ? "active" : "")}"" data-tab=""myAccount"" data-tip=""6-0. 修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號 (loginAccount) 與登入密碼"" onclick=""switchTab('myAccount')"">
                             <span class=""menu-sub-icon"">🔑</span>
-                            <span class=""menu-sub-title"">4-0. 修改我的帳密</span>
+                            <span class=""menu-sub-title"">6-0. 修改我的帳密</span>
                         </a>
-                        <a class=""menu-sub-item {(currentTab == "employees" ? "active" : "")}"" data-tab=""employees"" data-tip=""4-1. 員工列表與登入帳密管理：增刪修查、部門主管設定、樹狀階層、CSV 與 Excel 兩種批次匯入與三種匯出"" onclick=""switchTab('employees')"">
+                        <a class=""menu-sub-item {(currentTab == "employees" ? "active" : "")}"" data-tab=""employees"" data-tip=""6-1. 員工列表與登入帳密管理：增刪修查、部門主管設定、樹狀階層、CSV 與 Excel 兩種批次匯入與三種匯出"" onclick=""switchTab('employees')"">
                             <span class=""menu-sub-icon"">👥</span>
-                            <span class=""menu-sub-title"">4-1. 員工與組織管理</span>
+                            <span class=""menu-sub-title"">6-1. 員工與組織管理</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/employee/import/template?format=csv"" data-tip=""4-2A. 下載員工批次匯入 CSV 範本：取得標準 UTF-8 BOM CSV 欄位格式範本"">
+                        <a class=""menu-sub-item"" href=""/employee/import/template?format=csv"" data-tip=""6-2A. 下載員工批次匯入 CSV 範本：取得標準 UTF-8 BOM CSV 欄位格式範本"">
                             <span class=""menu-sub-icon"">📄</span>
-                            <span class=""menu-sub-title"">4-2A. 員工 CSV 範本</span>
+                            <span class=""menu-sub-title"">6-2A. 員工 CSV 範本</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/employee/import/template?format=excel"" data-tip=""4-2B. 下載員工批次匯入 Excel (.xlsx) 範本：取得標準 Excel .xlsx 欄位格式範本"">
+                        <a class=""menu-sub-item"" href=""/employee/import/template?format=excel"" data-tip=""6-2B. 下載員工批次匯入 Excel (.xlsx) 範本：取得標準 Excel .xlsx 欄位格式範本"">
                             <span class=""menu-sub-icon"">📊</span>
-                            <span class=""menu-sub-title"">4-2B. 員工 Excel 範本</span>
+                            <span class=""menu-sub-title"">6-2B. 員工 Excel 範本</span>
                         </a>
                         <div class=""menu-sub-header"" style=""margin-top:6px;"">工作階段與安全登出</div>
-                        <a class=""menu-sub-item"" href=""/logout"" onclick=""return performSystemLogout(event)"" data-tip=""4-3. 安全登出系統：清除目前登入狀態、釋放盲投議程鎖定並返回登入畫面"" style=""color:#dc2626;font-weight:800;"">
+                        <a class=""menu-sub-item"" href=""/logout"" onclick=""return performSystemLogout(event)"" data-tip=""6-3. 安全登出系統：清除目前登入狀態、釋放盲投議程鎖定並返回登入畫面"" style=""color:#dc2626;font-weight:800;"">
                             <span class=""menu-sub-icon"">🚪</span>
-                            <span class=""menu-sub-title"">4-3. 登出系統 (切換帳號)</span>
+                            <span class=""menu-sub-title"">6-3. 登出系統 (切換帳號)</span>
                         </a>
                     </div>
                 </div>
 
-                <!-- 主選單 5: 系統 Log (僅管理者可見) -->
+                <!-- 主選單 7: 系統 Log (僅管理者可見) -->
                 <div class=""menu-dropdown"" id=""menu-group-logs"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "logs" ? "active-group" : "")}"" data-tip=""系統與錯誤 Log 查詢中心：系統防崩潰保護、錯誤異常追蹤與 Log 三格式匯出 (目前錯誤數：{errLogCount} 筆)"" onclick=""toggleDropdownMenu(event, 'menu-group-logs')"">
-                        <span>🛡️ 系統 Log</span>
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "logs" ? "active-group" : "")}"" data-tip=""7. 系統與錯誤 Log 查詢中心：系統防崩潰保護、錯誤異常追蹤與 Log 三格式匯出 (目前錯誤數：{errLogCount} 筆)"" onclick=""toggleDropdownMenu(event, 'menu-group-logs')"">
+                        <span>7. 🛡️ 系統 Log</span>
                         {errCountBadge}
                         <span class=""menu-caret"">▼</span>
                     </button>
                     <div class=""menu-sub-list"">
                         <div class=""menu-sub-header"">防崩潰保護與 Log 查詢匯出</div>
-                        <a class=""menu-sub-item {(currentTab == "logs" ? "active" : "")}"" data-tab=""logs"" data-tip=""5-1. 系統與錯誤 Log 查詢中心 (tbLog / 本地雙軌備援)：查詢錯誤碼、行號、例外訊息、執行耗時與防崩潰攔截測試"" onclick=""switchTab('logs')"">
+                        <a class=""menu-sub-item {(currentTab == "logs" ? "active" : "")}"" data-tab=""logs"" data-tip=""7-1. 系統與錯誤 Log 查詢中心 (tbLog / 本地雙軌備援)：查詢錯誤碼、行號、例外訊息、執行耗時與防崩潰攔截測試"" onclick=""switchTab('logs')"">
                             <span class=""menu-sub-icon"">🛡️</span>
-                            <span class=""menu-sub-title"">5-1. 系統 Log 查詢</span>
+                            <span class=""menu-sub-title"">7-1. 系統 Log 查詢</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=log&format=csv"" data-tip=""5-2A. 匯出系統與錯誤 Log (CSV 格式)：下載 UTF-8 BOM CSV 格式系統 Log"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=log&format=csv"" data-tip=""7-2A. 匯出系統與錯誤 Log (CSV 格式)：下載 UTF-8 BOM CSV 格式系統 Log"">
                             <span class=""menu-sub-icon"">📥</span>
-                            <span class=""menu-sub-title"">5-2A. 匯出 Log (CSV)</span>
+                            <span class=""menu-sub-title"">7-2A. 匯出 Log (CSV)</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=log&format=excel"" data-tip=""5-2B. 匯出系統與錯誤 Log (Excel .xlsx 格式)：下載標準 OpenXML Excel 系統 Log 報表"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=log&format=excel"" data-tip=""7-2B. 匯出系統與錯誤 Log (Excel .xlsx 格式)：下載標準 OpenXML Excel 系統 Log 報表"">
                             <span class=""menu-sub-icon"">📊</span>
-                            <span class=""menu-sub-title"">5-2B. 匯出 Log (Excel)</span>
+                            <span class=""menu-sub-title"">7-2B. 匯出 Log (Excel)</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=log&format=html"" data-tip=""5-2C. 匯出系統 Log 互動 HTML：依錯誤層級、來源模組或物件群組彙總分析與欄位鎖定"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=log&format=html"" data-tip=""7-2C. 匯出系統 Log 互動 HTML：依錯誤層級、來源模組或物件群組彙總分析與欄位鎖定"">
                             <span class=""menu-sub-icon"">🌐</span>
-                            <span class=""menu-sub-title"">5-2C. 匯出 Log (HTML)</span>
+                            <span class=""menu-sub-title"">7-2C. 匯出 Log (HTML)</span>
                         </a>
                     </div>
                 </div>");
@@ -5066,72 +5066,72 @@ public class portalController : Controller
         else
         {
             sb.Append($@"
-                <!-- 主選單 4: 帳號設定 (參與者可見) -->
+                <!-- 主選單 6: 帳號設定 (參與者可見) -->
                 <div class=""menu-dropdown"" id=""menu-group-employees"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "employees" ? "active-group" : "")}"" data-tip=""個人帳密設定：檢視個人基本資料並隨時修改自己的登入帳號與密碼"" onclick=""toggleDropdownMenu(event, 'menu-group-employees')"">
-                        <span>🔑 帳號設定</span>
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "employees" ? "active-group" : "")}"" data-tip=""6. 個人帳密設定：檢視個人基本資料並隨時修改自己的登入帳號與密碼"" onclick=""toggleDropdownMenu(event, 'menu-group-employees')"">
+                        <span>6. 🔑 帳號設定</span>
                         <span class=""menu-caret"">▼</span>
                     </button>
                     <div class=""menu-sub-list"">
                         <div class=""menu-sub-header"">個人帳密設定</div>
-                        <a class=""menu-sub-item {(currentTab == "myAccount" ? "active" : "")}"" data-tab=""myAccount"" data-tip=""4-1. 修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號 (loginAccount) 與登入密碼"" onclick=""switchTab('myAccount')"">
+                        <a class=""menu-sub-item {(currentTab == "myAccount" ? "active" : "")}"" data-tab=""myAccount"" data-tip=""6-1. 修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號 (loginAccount) 與登入密碼"" onclick=""switchTab('myAccount')"">
                             <span class=""menu-sub-icon"">🔑</span>
-                            <span class=""menu-sub-title"">4-1. 修改我的帳密</span>
+                            <span class=""menu-sub-title"">6-1. 修改我的帳密</span>
                         </a>
-                        <a class=""menu-sub-item {(currentTab == "employees" ? "active" : "")}"" data-tab=""employees"" data-tip=""4-2. 個人帳號資訊與修改帳密專頁：檢視個人基本資料並修改自己的登入帳號與密碼"" onclick=""switchTab('employees')"">
+                        <a class=""menu-sub-item {(currentTab == "employees" ? "active" : "")}"" data-tab=""employees"" data-tip=""6-2. 個人帳號資訊與修改帳密專頁：檢視個人基本資料並修改自己的登入帳號與密碼"" onclick=""switchTab('employees')"">
                             <span class=""menu-sub-icon"">👤</span>
-                            <span class=""menu-sub-title"">4-2. 個人帳號資訊</span>
+                            <span class=""menu-sub-title"">6-2. 個人帳號資訊</span>
                         </a>
                         <div class=""menu-sub-header"" style=""margin-top:6px;"">工作階段與安全登出</div>
-                        <a class=""menu-sub-item"" href=""/logout"" onclick=""return performSystemLogout(event)"" data-tip=""4-3. 安全登出系統：清除目前登入狀態、釋放盲投議程鎖定並返回登入畫面"" style=""color:#dc2626;font-weight:800;"">
+                        <a class=""menu-sub-item"" href=""/logout"" onclick=""return performSystemLogout(event)"" data-tip=""6-3. 安全登出系統：清除目前登入狀態、釋放盲投議程鎖定並返回登入畫面"" style=""color:#dc2626;font-weight:800;"">
                             <span class=""menu-sub-icon"">🚪</span>
-                            <span class=""menu-sub-title"">4-3. 登出系統 (切換帳號)</span>
+                            <span class=""menu-sub-title"">6-3. 登出系統 (切換帳號)</span>
                         </a>
                     </div>
                 </div>");
         }
 
         sb.Append($@"
-                <!-- 主選單 6: 線上說明 (含搜尋與搭配操作畫面) -->
+                <!-- 主選單 8: 線上說明 (含搜尋與搭配操作畫面) -->
                 <div class=""menu-dropdown"" id=""menu-group-help"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "help" ? "active-group" : "")}"" data-tip=""系統線上說明與互動操作手冊：提供全站關鍵字搜尋、12 大章節搭配實機操作畫面與常見問題 FAQ"" onclick=""toggleDropdownMenu(event, 'menu-group-help')"">
-                        <span>📖 線上說明</span>
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "help" ? "active-group" : "")}"" data-tip=""8. 系統線上說明與互動操作手冊：提供全站關鍵字搜尋、12 大章節搭配實機操作畫面與常見問題 FAQ"" onclick=""toggleDropdownMenu(event, 'menu-group-help')"">
+                        <span>8. 📖 線上說明</span>
                         <span class=""menu-caret"">▼</span>
                     </button>
                     <div class=""menu-sub-list"">
                         <div class=""menu-sub-header"">線上說明搜尋與操作畫面圖解</div>
-                        <a class=""menu-sub-item {(currentTab == "help" ? "active" : "")}"" data-tab=""help"" data-tip=""6-1. 線上說明與全站搜尋中心：關鍵字即時搜尋、高亮反白與 12 幅實機操作畫面詳解"" onclick=""openHelpTopic('')"">
+                        <a class=""menu-sub-item {(currentTab == "help" ? "active" : "")}"" data-tab=""help"" data-tip=""8-1. 線上說明與全站搜尋中心：關鍵字即時搜尋、高亮反白與 12 幅實機操作畫面詳解"" onclick=""openHelpTopic('')"">
                             <span class=""menu-sub-icon"">📖</span>
-                            <span class=""menu-sub-title"">6-1. 線上說明搜尋中心</span>
+                            <span class=""menu-sub-title"">8-1. 線上說明搜尋中心</span>
                         </a>
-                        <a class=""menu-sub-item"" data-tip=""6-2. 登入驗證與個人帳密修改操作畫面圖解"" onclick=""openHelpTopic('topic-auth')"">
+                        <a class=""menu-sub-item"" data-tip=""8-2. 登入驗證與個人帳密修改操作畫面圖解"" onclick=""openHelpTopic('topic-auth')"">
                             <span class=""menu-sub-icon"">🔐</span>
-                            <span class=""menu-sub-title"">6-2. 登入與帳密操作畫面</span>
+                            <span class=""menu-sub-title"">8-2. 登入與帳密操作畫面</span>
                         </a>
-                        <a class=""menu-sub-item"" data-tip=""6-3. 多人即時盲投大廳 (待參與/參與中) 與獨立盲投網頁操作畫面圖解"" onclick=""openHelpTopic('topic-voting-lobby')"">
+                        <a class=""menu-sub-item"" data-tip=""8-3. 多人即時盲投大廳 (待參與/參與中) 與獨立盲投網頁操作畫面圖解"" onclick=""openHelpTopic('topic-voting-lobby')"">
                             <span class=""menu-sub-icon"">🃏</span>
-                            <span class=""menu-sub-title"">6-3. 多人盲投與獨立網頁畫面</span>
+                            <span class=""menu-sub-title"">8-3. 多人盲投與獨立網頁畫面</span>
                         </a>
-                        <a class=""menu-sub-item"" data-tip=""6-4. 盲投回合設定、撲克牌意義與共識規則操作畫面圖解"" onclick=""openHelpTopic('topic-round-setup')"">
+                        <a class=""menu-sub-item"" data-tip=""8-4. 盲投回合設定、撲克牌意義與共識規則操作畫面圖解"" onclick=""openHelpTopic('topic-round-setup')"">
                             <span class=""menu-sub-icon"">⚙️</span>
-                            <span class=""menu-sub-title"">6-4. 回合設定與牌組畫面</span>
+                            <span class=""menu-sub-title"">8-4. 回合設定與牌組畫面</span>
                         </a>
-                        <a class=""menu-sub-item"" data-tip=""6-5. 工項管理、代表類型自動帶點、到期自動扣點寄信與右鍵 Modal 單筆編輯操作畫面圖解"" onclick=""openHelpTopic('topic-workitem')"">
+                        <a class=""menu-sub-item"" data-tip=""8-5. 3-1 一般工項、3-2 基本工項、3-3 工項類型與右鍵 Modal 單筆編輯操作畫面圖解"" onclick=""openHelpTopic('topic-workitem')"">
                             <span class=""menu-sub-icon"">📋</span>
-                            <span class=""menu-sub-title"">6-5. 工項與右鍵 Modal 畫面</span>
+                            <span class=""menu-sub-title"">8-5. 工項與右鍵 Modal 畫面</span>
                         </a>
-                        <a class=""menu-sub-item"" data-tip=""6-6. 員工/部門點數統計、表頭排序與欄位鎖定、CSV/Excel/HTML 報表匯出操作畫面圖解"" onclick=""openHelpTopic('topic-stats-export')"">
+                        <a class=""menu-sub-item"" data-tip=""8-6. 員工/部門點數統計、表頭排序與欄位鎖定、CSV/Excel/HTML 報表匯出操作畫面圖解"" onclick=""openHelpTopic('topic-stats-export')"">
                             <span class=""menu-sub-icon"">📊</span>
-                            <span class=""menu-sub-title"">6-6. 統計報表與表頭鎖定畫面</span>
+                            <span class=""menu-sub-title"">8-6. 統計報表與表頭鎖定畫面</span>
                         </a>
-                        <a class=""menu-sub-item"" data-tip=""6-7. 組織與部門主管樹狀階層、批次匯入、系統 Log 與 PowerShell GUI 操作畫面圖解"" onclick=""openHelpTopic('topic-org-employees')"">
+                        <a class=""menu-sub-item"" data-tip=""8-7. 組織與部門主管樹狀階層、批次匯入、系統 Log 與 PowerShell GUI 操作畫面圖解"" onclick=""openHelpTopic('topic-org-employees')"">
                             <span class=""menu-sub-icon"">👥</span>
-                            <span class=""menu-sub-title"">6-7. 組織主管與 Log 畫面</span>
+                            <span class=""menu-sub-title"">8-7. 組織主管與 Log 畫面</span>
                         </a>
                         <div class=""menu-sub-header"" style=""margin-top:6px;"">獨立視窗檢視</div>
-                        <a class=""menu-sub-item"" href=""/help"" target=""_blank"" data-tip=""6-8. 於瀏覽器新分頁開啟獨立線上說明與搜尋專頁 (/help)"">
+                        <a class=""menu-sub-item"" href=""/help"" target=""_blank"" data-tip=""8-8. 於瀏覽器新分頁開啟獨立線上說明與搜尋專頁 (/help)"">
                             <span class=""menu-sub-icon"">🗗</span>
-                            <span class=""menu-sub-title"">6-8. 獨立視窗開啟說明 (/help)</span>
+                            <span class=""menu-sub-title"">8-8. 獨立視窗開啟說明 (/help)</span>
                         </a>
                     </div>
                 </div>
@@ -5141,30 +5141,30 @@ public class portalController : Controller
                 <span>位置：</span>
                 <span class=""current-location-pill"" id=""currentMenuTitlePill"" data-tip=""{(currentTab switch
                 {
-                    "roundSetup" => "1-2. 設定盲投回合：設定估算標的、參與者名單、高低點數上下限、共識規則與計時",
+                    "roundSetup" => "1-2. 設定盲投回合：先選擇工項類型（專案、維運、顧問時數...）帶出基本規範與一般 SP 範圍，再選目標基本工項（如資料庫健檢）與參與者",
                     "history" => isAdmin ? "1-3. 查詢訂出 Story Point 的過程：檢視每回合出牌明細、討論備註與點數異動紀錄" : "1-3. 查詢我的投票與訂定點數過程：檢視個人投票紀錄與工項點數異動歷程",
-                    "workitems" => isAdmin ? "2-1. 工項點數查詢與賦予員工設定：查詢各工項點數、選擇代表類型自動帶入或修改員工指派" : "2-1. 我的工項與個人分數查詢：顯示賦予給我本人的工項與個人配額分數",
-                    "types" => isAdmin ? "2-2. 工項代表類型管理：編輯投出 SP 的代表工項（如資料庫健檢）之各種屬性、所屬預設工項類型與標準點數" : "2-2. 工項代表類型標準點數參考：查閱各工項代表類型的屬性、所屬預設類型與標準 Story Point 定義",
-                    "kinds" => isAdmin ? "2-3. 預設工項類型與特徵管理：增、刪、修、查管理專案、維運、顧問時數、教育訓練、開發產品等預設工項類型與三項主要特徵" : "2-3. 預設工項類型與主要特徵一覽表：查詢各預設工項類型之主要特徵",
-                    "stats" => isAdmin ? "3-1. 員工與部門總 Story Point 統計：查詢員工身上的點數與所屬部門的總 Story Point 數" : "3-1. 我的個人總 Story Point 分數統計：查看個人工項數量與各狀態 Story Point 分數",
-                    "myAccount" => "修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號與密碼",
-                    "employees" => isAdmin ? "4-1. 員工列表與登入帳密管理：增刪修查、部門主管設定、樹狀階層與批次匯入" : "4-1. 修改我的個人登入帳號與密碼：檢視個人基本資料並修改帳密",
-                    "logs" => "5-1. 系統與錯誤 Log 查詢中心 (tbLog)：查詢錯誤碼、行號、例外訊息與防崩潰保護紀錄",
-                    "help" => "6-1. 系統線上說明與操作畫面搜尋手冊：支援關鍵字全文搜尋與 12 幅實機操作畫面詳解",
+                    "workitems" => isAdmin ? "3-1. 一般工項與員工指派：如「集保健檢」，套用 3-2 基本工項之 Story Point，支援微調點數，且一般工項才有起訖時間" : "3-1. 我的一般工項與個人分數查詢：顯示賦予給我本人的一般工項與個人配額分數",
+                    "types" => isAdmin ? "3-2. 基本工項管理：編輯如「資料庫健檢」這種基本工項（無起訖時間，為投票主要標的，可套用 3-3 工項類型取得基本規範與一般 SP 範圍）" : "3-2. 基本工項標準點數參考：查閱各基本工項所套用之工項類型、基本規範與標準 Story Point",
+                    "kinds" => isAdmin ? "3-3. 工項類型與基本規範管理：編輯專案、維運、顧問時數、教育訓練、開發產品等類型，定義一般工項基本規範與類型一般 Story Point 範圍" : "3-3. 工項類型與基本規範一覽表：查詢各工項類型之基本規範與一般 Story Point 範圍",
+                    "stats" => isAdmin ? "4-1. 員工與部門總 Story Point 統計：查詢員工身上的點數與所屬部門的總 Story Point 數" : "4-1. 我的個人總 Story Point 分數統計：查看個人工項數量與各狀態 Story Point 分數",
+                    "myAccount" => "5. 修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號與密碼",
+                    "employees" => isAdmin ? "6-1. 員工列表與登入帳密管理：增刪修查、部門主管設定、樹狀階層與批次匯入" : "6-1. 修改我的個人登入帳號與密碼：檢視個人基本資料並修改帳密",
+                    "logs" => "7-1. 系統與錯誤 Log 查詢中心 (tbLog)：查詢錯誤碼、行號、例外訊息與防崩潰保護紀錄",
+                    "help" => "8-1. 系統線上說明與操作畫面搜尋手冊：支援關鍵字全文搜尋與 12 幅實機操作畫面詳解",
                     _ => "1-1. 多人即時盲投大廳 (Planning Poker)：參與盲投出牌、同步翻牌揭曉與拍板定案"
                 })}"">
                     {(currentTab switch
                     {
                         "roundSetup" => "⚙️ 1-2. 設定盲投回合",
                         "history" => "📜 1-3. 估算過程查詢",
-                        "workitems" => isAdmin ? "📋 2-1. 工項與員工指派" : "📋 2-1. 我的工項查詢",
-                        "types" => isAdmin ? "🏷️ 2-2. 工項代表類型" : "🏷️ 2-2. 代表類型參考",
-                        "kinds" => "🗂️ 2-3. 預設工項類型與特徵",
-                        "stats" => isAdmin ? "📊 3-1. 員工與部門統計" : "📊 3-1. 我的分數統計",
-                        "myAccount" => "🔑 修改我的帳密",
-                        "employees" => isAdmin ? "👥 4-1. 員工與組織管理" : "🔑 4-1. 修改我的帳密",
-                        "logs" => "🛡️ 5-1. 系統 Log 查詢",
-                        "help" => "📖 6-1. 線上說明與搜尋",
+                        "workitems" => isAdmin ? "📋 3-1. 一般工項與員工指派" : "📋 3-1. 我的一般工項查詢",
+                        "types" => isAdmin ? "🏷️ 3-2. 基本工項管理" : "🏷️ 3-2. 基本工項參考",
+                        "kinds" => "🗂️ 3-3. 工項類型與基本規範",
+                        "stats" => isAdmin ? "📊 4-1. 員工與部門統計" : "📊 4-1. 我的分數統計",
+                        "myAccount" => "🔑 5. 修改我的帳密",
+                        "employees" => isAdmin ? "👥 6-1. 員工與組織管理" : "🔑 6-1. 修改我的帳密",
+                        "logs" => "🛡️ 7-1. 系統 Log 查詢",
+                        "help" => "📖 8-1. 線上說明與搜尋",
                         _ => "🃏 1-1. 即時盲投大廳"
                     })}
                 </span>
@@ -5192,7 +5192,7 @@ public class portalController : Controller
         if (!isAdmin)
         {
             sb.Append(@"<div class='alert' style='background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;margin-bottom:16px;'>
-                🔒 <strong>個人資料隱私保護模式：</strong>您目前以「個別員工 (參與者)」身分登入，可參與投票並查看<strong>您本人的投票紀錄、賦予給您的工項與個人 Story Point 分數</strong>；系統已自動隱藏其他員工的工項、分數與出牌紀錄。
+                🔒 <strong>個人資料隱私保護模式：</strong>您目前以「個別員工 (參與者)」身分登入，可參與投票並查看<strong>您本人的投票紀錄、賦予給您的一般工項與個人 Story Point 分數</strong>；系統已自動隱藏其他員工的工項、分數與出牌紀錄。
             </div>");
         }
 
@@ -5204,34 +5204,34 @@ public class portalController : Controller
             <div class=""kpi-card"">
                 <div class=""kpi-label"">🏢 全公司各部門總 Story Point</div>
                 <div class=""kpi-val"">{totalCompanyPoints:0.##} <span style=""font-size:14px;font-weight:600;"">pt</span></div>
-                <div class=""kpi-sub"">涵蓋 {deptTable.Rows.Count} 個部門、{itemTable.Rows.Count} 個實際工項</div>
+                <div class=""kpi-sub"">涵蓋 {deptTable.Rows.Count} 個部門、{itemTable.Rows.Count} 個一般工項</div>
             </div>");
         }
         sb.Append($@"
             <div class=""kpi-card"">
                 <div class=""kpi-label"">🙋 我身上的總 Story Point 分數</div>
                 <div class=""kpi-val"">{myPoints:0.##} <span style=""font-size:14px;font-weight:600;"">pt</span></div>
-                <div class=""kpi-sub"">目前賦予給我本人共 {myItems} 個工項</div>
+                <div class=""kpi-sub"">目前賦予給我本人共 {myItems} 個一般工項</div>
             </div>");
         if (!isAdmin)
         {
             sb.Append($@"
             <div class=""kpi-card"">
-                <div class=""kpi-label"">📋 我的各狀態工項分數明細</div>
+                <div class=""kpi-label"">📋 我的各狀態一般工項分數明細</div>
                 <div class=""kpi-val"" style=""font-size:19px;margin-top:8px;"">待處理 {myTodoPoints:0.##} ｜ 進行中 {myInProgressPoints:0.##} ｜ 完成 {myDonePoints:0.##}</div>
-                <div class=""kpi-sub"">僅統計我個人負責的工項配額點數</div>
+                <div class=""kpi-sub"">僅統計我個人負責的一般工項配額點數</div>
             </div>");
         }
         sb.Append($@"
             <div class=""kpi-card"">
-                <div class=""kpi-label"">🏷️ 已定義工項代表類型</div>
-                <div class=""kpi-val"">{typeTable.Rows.Count} <span style=""font-size:14px;font-weight:600;"">種代表類型</span></div>
-                <div class=""kpi-sub"">建立工項選取後自動帶入標準點數</div>
+                <div class=""kpi-label"">🏷️ 已定義基本工項與工項類型</div>
+                <div class=""kpi-val"">{typeTable.Rows.Count} <span style=""font-size:14px;font-weight:600;"">項基本工項</span> <span style=""font-size:13px;color:#64748b;"">/ {kindTable.Rows.Count} 種工項類型</span></div>
+                <div class=""kpi-sub"">基本工項套用工項類型｜一般工項套用基本工項 SP 並可微調</div>
             </div>
             <div class=""kpi-card"">
                 <div class=""kpi-label"">🃏 多人投票議程與過程紀錄</div>
                 <div class=""kpi-val"">{sessionTable.Rows.Count} <span style=""font-size:14px;font-weight:600;"">場議程</span></div>
-                <div class=""kpi-sub"">{(isAdmin ? "完整保留每回合出牌與共識收斂過程" : "可參與盲投並檢視自己的出牌紀錄")}</div>
+                <div class=""kpi-sub"">{(isAdmin ? "主要投基本工項，完整保留每回合出牌與共識過程" : "可參與盲投並檢視自己的出牌紀錄")}</div>
             </div>
         </div>");
 
@@ -5571,8 +5571,41 @@ public class portalController : Controller
         sb.Append("</div>"); // end right column
         sb.Append("</div></div>"); // end Tab 1
 
+        // 動態建構「3-3 工項類型 (專案、維運、顧問時數、教育訓練、開發產品...)」下拉選單選項 HTML (來自 storyPoint.tbWorkItemKind，支援一般工項基本規範與一般 Story Point 範圍上下限)
+        var kindOptionsBuilder = new StringBuilder();
+        if (kindTable.Rows.Count > 0)
+        {
+            foreach (DataRow kRow in kindTable.Rows)
+            {
+                int kPk = kRow.Table.Columns.Contains("workItemKindPk") && kRow["workItemKindPk"] != DBNull.Value ? Convert.ToInt32(kRow["workItemKindPk"]) : 0;
+                string kCode = kRow["kindCode"]?.ToString() ?? "project";
+                string kName = kRow["kindName"]?.ToString() ?? kCode;
+                string kIcon = kRow.Table.Columns.Contains("badgeIcon") && kRow["badgeIcon"] != DBNull.Value ? (kRow["badgeIcon"]?.ToString() ?? "📌") : "📌";
+                string kColor = kRow.Table.Columns.Contains("badgeColor") && kRow["badgeColor"] != DBNull.Value ? (kRow["badgeColor"]?.ToString() ?? "blue") : "blue";
+                int kSort = kRow.Table.Columns.Contains("sortOrder") && kRow["sortOrder"] != DBNull.Value ? Convert.ToInt32(kRow["sortOrder"]) : 100;
+                decimal kMinPt = kRow.Table.Columns.Contains("minStoryPoint") && kRow["minStoryPoint"] != DBNull.Value ? Convert.ToDecimal(kRow["minStoryPoint"]) : 0.5m;
+                decimal kMaxPt = kRow.Table.Columns.Contains("maxStoryPoint") && kRow["maxStoryPoint"] != DBNull.Value ? Convert.ToDecimal(kRow["maxStoryPoint"]) : 21m;
+                string kFeature = kRow.Table.Columns.Contains("mainFeatureSummary") && kRow["mainFeatureSummary"] != DBNull.Value ? (kRow["mainFeatureSummary"]?.ToString() ?? "") : "";
+                string kEstTrait = kRow.Table.Columns.Contains("estimationTrait") && kRow["estimationTrait"] != DBNull.Value ? (kRow["estimationTrait"]?.ToString() ?? "") : "";
+                string kDelivTrait = kRow.Table.Columns.Contains("timeAndDeliverableTrait") && kRow["timeAndDeliverableTrait"] != DBNull.Value ? (kRow["timeAndDeliverableTrait"]?.ToString() ?? "") : "";
+                string kDesc = kRow.Table.Columns.Contains("description") && kRow["description"] != DBNull.Value ? (kRow["description"]?.ToString() ?? "") : "";
+                int linkedWiCnt = kRow.Table.Columns.Contains("linkedWorkItemCount") && kRow["linkedWorkItemCount"] != DBNull.Value ? Convert.ToInt32(kRow["linkedWorkItemCount"]) : 0;
+                int linkedTypeCnt = kRow.Table.Columns.Contains("linkedTypeCount") && kRow["linkedTypeCount"] != DBNull.Value ? Convert.ToInt32(kRow["linkedTypeCount"]) : 0;
+                kindOptionsBuilder.Append($"<option value='{h(kCode)}' data-kind-pk='{kPk}' data-kind-code='{h(kCode)}' data-kind-name='{h(kName)}' data-kind-icon='{h(kIcon)}' data-kind-color='{h(kColor)}' data-kind-sort='{kSort}' data-kind-min-pt='{kMinPt.ToString(CultureInfo.InvariantCulture)}' data-kind-max-pt='{kMaxPt.ToString(CultureInfo.InvariantCulture)}' data-kind-feature='{h(kFeature)}' data-kind-estimation='{h(kEstTrait)}' data-kind-deliverable='{h(kDelivTrait)}' data-kind-desc='{h(kDesc)}' data-linked-wi='{linkedWiCnt}' data-linked-type='{linkedTypeCnt}'>{formatOptionIconPrefix(kIcon)} {h(kName)} ({h(kCode)}｜一般 SP 範圍 {kMinPt:0.##}~{kMaxPt:0.##} pt)</option>");
+            }
+        }
+        else
+        {
+            kindOptionsBuilder.Append("<option value='project' data-kind-pk='1' data-kind-code='project' data-kind-name='專案' data-kind-icon='🏗️' data-kind-color='blue' data-kind-sort='10' data-kind-min-pt='3' data-kind-max-pt='21' data-kind-feature='目標導向、具明確範疇與里程碑之新功能開發或系統建置' data-kind-estimation='依功能複雜度、跨模組整合難度進行團隊盲投估算 (一般 SP 範圍 3 ~ 21 pt)' data-kind-deliverable='具明確專案起訖日與階段驗收交付物，達迄時自動轉態扣點並通知主管與 HR' data-kind-desc='客戶導入專案、系統全新功能開發或跨部門里程碑交付工項'>🏗️ 專案 (project｜一般 SP 範圍 3~21 pt)</option>");
+            kindOptionsBuilder.Append("<option value='maintenance' data-kind-pk='2' data-kind-code='maintenance' data-kind-name='維運' data-kind-icon='🛠️' data-kind-color='amber' data-kind-sort='20' data-kind-min-pt='0.5' data-kind-max-pt='5' data-kind-feature='穩定度導向、既有系統問題排除、例行資料庫健檢、效能調校與安全性修補' data-kind-estimation='依問題排查深度與影響範圍套用基本工項標準點數 (一般 SP 範圍 0.5 ~ 5 pt)' data-kind-deliverable='具 SLA 處理時限與改善報告，達迄時自動結案扣點並寄送通知' data-kind-desc='既有系統日常維運、例外錯誤修復、資料庫健檢調校與例行巡檢工項'>🛠️ 維運 (maintenance｜一般 SP 範圍 0.5~5 pt)</option>");
+            kindOptionsBuilder.Append("<option value='consultingHour' data-kind-pk='3' data-kind-code='consultingHour' data-kind-name='顧問時數' data-kind-icon='⏳' data-kind-color='purple' data-kind-sort='30' data-kind-min-pt='1' data-kind-max-pt='8' data-kind-feature='專業知識輸出導向、架構諮詢、技術評估、POC 驗證與客戶駐點支援' data-kind-estimation='依投入時數區間與專業深度換算標準 Story Point (一般 SP 範圍 1 ~ 8 pt)' data-kind-deliverable='依約定諮詢區間設定起訖時間並產出顧問建議書或會議紀錄，達迄時自動扣點' data-kind-desc='提供內部或外部客戶技術架構諮詢、POC 評估、問題診斷與顧問服務時數工項'>⏳ 顧問時數 (consultingHour｜一般 SP 範圍 1~8 pt)</option>");
+            kindOptionsBuilder.Append("<option value='training' data-kind-pk='4' data-kind-code='training' data-kind-name='教育訓練' data-kind-icon='🎓' data-kind-color='green' data-kind-sort='40' data-kind-min-pt='1' data-kind-max-pt='8' data-kind-feature='知識傳承與賦能導向、教材編撰、實機 Lab 演練、內訓與客戶操作培訓' data-kind-estimation='依課程時數、教材深度與實機環境準備複雜度估算點數 (一般 SP 範圍 1 ~ 8 pt)' data-kind-deliverable='以開課/受訓起訖時程為準，交付簡報教材與課後測驗，達迄時自動扣點歸檔' data-kind-desc='內部技術傳承講座、新人培訓課程、教材編撰與客戶端系統操作教育訓練工項'>🎓 教育訓練 (training｜一般 SP 範圍 1~8 pt)</option>");
+            kindOptionsBuilder.Append("<option value='productDevelopment' data-kind-pk='5' data-kind-code='productDevelopment' data-kind-name='開發產品' data-kind-icon='🚀' data-kind-color='red' data-kind-sort='50' data-kind-min-pt='3' data-kind-max-pt='21' data-kind-feature='產品化與長期演進導向、自有核心模組研發、通用架構設計與高重用性元件開發' data-kind-estimation='依架構前瞻性、高可用度要求與自動化測試覆蓋率進行盲投估算 (一般 SP 範圍 3 ~ 21 pt)' data-kind-deliverable='配合產品 Roadmap 與版本發佈週期設定起訖時間，達迄時自動轉態扣點並發信' data-kind-desc='自有核心產品研發、新世代架構演進、共用引擎模組與產品路線圖功能開發工項'>🚀 開發產品 (productDevelopment｜一般 SP 範圍 3~21 pt)</option>");
+        }
+        string dynamicKindOptionsHtml = kindOptionsBuilder.ToString();
+
         // =====================================================================
-        // TAB 1-2 (roundSetup): 設定盲投回合 (多人盲投開始前設定：投什麼、誰可以參與、最高最低 Story Point 與建議回合設定)
+        // TAB 1-2 (roundSetup): 設定盲投回合 (多人盲投開始前設定：投票主要投「基本工項」，先選工項類型帶出基本規範與一般 SP 範圍，再選目標基本工項)
         // =====================================================================
         sb.Append($"<div id='pane-roundSetup' class='tab-pane {(currentTab == "roundSetup" ? "active" : "")}'>");
         sb.Append("<div class='card'>");
@@ -5581,7 +5614,7 @@ public class portalController : Controller
                 <div>
                     <span style='font-size:18px;'>⚙️ 多人盲投回合開始前設定 (Pre-Round Configuration Wizard)</span>
                     <div style='font-size:12.5px;color:#64748b;font-weight:normal;margin-top:3px;'>
-                        設定本回合「投什麼」、「誰可以參與」、「最低與最高 Story Point 範圍」，以及敏捷估算共識規則、自動翻牌與計時選項
+                        投票主要投「<strong>基本工項 (如：資料庫健檢)</strong>」：先選擇「<strong>目標工項代表類型 (專案、維運、顧問時數...)</strong>」自動帶出一般工項基本規範與一般 Story Point 範圍，再選擇要投票的基本工項！
                     </div>
                 </div>
                 <button type='button' class='btn btn-outline' onclick=""switchTab('voting')"">🔙 返回多人即時盲投大廳</button>
@@ -5644,57 +5677,67 @@ public class portalController : Controller
                 <!-- 區塊 1：投什麼 (What to vote on) -->
                 <div class='setup-section'>
                     <div class='setup-section-title'>
-                        <span>1️⃣ 投什麼：選擇估算標的類型、目標項目與回合驗收重點</span>
-                        <span class='badge badge-user'>必填項目</span>
+                        <span>1️⃣ 投什麼：選擇估算標的、目標工項代表類型（專案、維運、顧問時數...）與目標基本工項（如：資料庫健檢）</span>
+                        <span class='badge badge-user'>必填項目｜投票主要投「基本工項」</span>
                     </div>
                     <div class='form-row'>
                         <div>
-                            <label data-tip='選擇投票估算標的類型：投「工項的代表類型」（定案後建立工項自動帶入標準點數）或投「個別特定工項」' title='選擇投票估算標的類型：投「工項的代表類型」（定案後建立工項自動帶入標準點數）或投「個別特定工項」'>估算標的類型 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='多人盲投主要投「基本工項（如：資料庫健檢）」，定案後一般工項（如：集保健檢）即可套用其標準 Story Point 並可微調；亦可針對單一特殊「一般工項」進行投票' title='多人盲投主要投「基本工項（如：資料庫健檢）」，定案後一般工項（如：集保健檢）即可套用其標準 Story Point 並可微調'>估算標的類型 <span class='sp-tip-icon'>ⓘ</span></label>
                             <select name='targetKind' id='setupTargetKind' onchange='toggleSetupTargetKind()'>
-                                <option value='workItemType'>🏷️ 投「工項的代表類型」(定案後建立工項自動帶入標準點數)</option>
-                                <option value='workItem'>📋 投「個別特定工項」(針對單一特殊複雜工項估算點數)</option>
+                                <option value='workItemType'>🏷️ 投「基本工項」(主要投票標的，如：資料庫健檢；定案後供一般工項套用標準點數)</option>
+                                <option value='workItem'>📋 投「一般工項」(針對單一特殊一般工項如：集保健檢 微調或估算點數)</option>
                             </select>
                         </div>
-                        <div id='setupBoxType'>
-                            <label data-tip='選擇本回合要進行多人盲投估算的「目標工項代表類型」（專案、維運、顧問時數、教育訓練、開發產品...等）' title='選擇本回合要進行多人盲投估算的「目標工項代表類型」（專案、維運、顧問時數、教育訓練、開發產品...等）'>目標工項代表類型 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <select name='workItemTypePk' id='setupWorkItemTypePk' onchange='autoFillSetupTitle()'>");
+                        <div id='setupBoxType' style='grid-column: span 2;'>
+                            <div style='display:grid;grid-template-columns:1fr 1.25fr;gap:10px;'>
+                                <div>
+                                    <label data-tip='帶入 3-3 工項類型（專案、維運、顧問時數、教育訓練、開發產品...等），自動告知該類型的一般工項基本規範與一般 Story Point 範圍上下限' title='帶入 3-3 工項類型（專案、維運、顧問時數、教育訓練、開發產品...等），自動告知該類型的一般工項基本規範與一般 Story Point 範圍上下限'>目標工項代表類型 (專案、維運、顧問時數...) <span class='sp-tip-icon'>ⓘ</span></label>
+                                    <select name='defaultWorkItemKind' id='setupWorkItemKind' onchange='onSetupWorkItemKindChange()' style='border-color:#2563eb;font-weight:700;background:#eff6ff;'>
+                                        " + dynamicKindOptionsHtml + @"
+                                    </select>
+                                </div>
+                                <div>
+                                    <label data-tip='選擇本回合要進行多人盲投估算的「3-2 基本工項」（如：資料庫健檢、資料庫效能調校；基本工項無起訖時間，定案後供一般工項套用 SP）' title='選擇本回合要進行多人盲投估算的「3-2 基本工項」（如：資料庫健檢、資料庫效能調校；基本工項無起訖時間，定案後供一般工項套用 SP）'>目標基本工項 (如：資料庫健檢｜無起訖時間) <span class='sp-tip-icon'>ⓘ</span></label>
+                                    <select name='workItemTypePk' id='setupWorkItemTypePk' onchange='onSetupBasicWorkItemSelectChange()'>");
             foreach (DataRow tRow in typeTable.Rows)
             {
                 string tCodeVal = tRow["typeCode"]?.ToString() ?? "";
                 string tNameVal = tRow["typeName"]?.ToString() ?? "";
-                string tKindVal = tRow.Table.Columns.Contains("defaultWorkItemKind") ? (tRow["defaultWorkItemKind"]?.ToString() ?? tCodeVal) : tCodeVal;
+                string tKindVal = tRow.Table.Columns.Contains("defaultWorkItemKind") ? (tRow["defaultWorkItemKind"]?.ToString() ?? "project") : "project";
+                string tKindTextVal = tRow.Table.Columns.Contains("defaultWorkItemKindText") ? (tRow["defaultWorkItemKindText"]?.ToString() ?? "專案") : "專案";
                 string rawIconVal = tRow.Table.Columns.Contains("defaultWorkItemKindIcon") ? (tRow["defaultWorkItemKindIcon"]?.ToString() ?? "🏗️") : "🏗️";
                 string optIconPrefix = isImageIconValue(rawIconVal)
                     ? (tKindVal == "maintenance" ? "🛠️" : tKindVal == "consultingHour" ? "⏳" : tKindVal == "training" ? "🎓" : tKindVal == "productDevelopment" ? "🚀" : "🏗️")
                     : rawIconVal;
                 string curPt = tRow["standardStoryPoint"] != DBNull.Value ? $" (目前標準: {tRow["standardStoryPoint"]} pt)" : " (待估算)";
-                string displayLabel = string.Equals(tCodeVal, tNameVal, StringComparison.OrdinalIgnoreCase)
-                    ? $"{optIconPrefix} {tNameVal}{curPt}"
-                    : $"{optIconPrefix} {tNameVal} ({tCodeVal}){curPt}";
+                string displayLabel = $"{optIconPrefix} [{tKindTextVal}] {tNameVal} ({tCodeVal}){curPt}";
                 sb.Append($"<option value='{tRow["workItemTypePk"]}' data-code='{h(tCodeVal)}' data-kind='{h(tKindVal)}' data-name='{h(tNameVal)}'>{h(displayLabel)}</option>");
             }
-            sb.Append(@"
-                            </select>
+            sb.Append(@"<option value='0' data-code='' data-kind='' data-name=''>➕ 依下方「盲投議程標題」自動建立新基本工項</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id='setupKindNormBanner' style='margin-top:8px;'></div>
                         </div>
-                        <div id='setupBoxItem' style='display:none;'>
-                            <label data-tip='選擇本回合要單獨進行多人盲投估算的「個別特定工項」；若尚無工項或欲建立新工項，可選擇「依盲投議程標題自動建立」' title='選擇本回合要單獨進行多人盲投估算的「個別特定工項」；若尚無工項或欲建立新工項，可選擇「依盲投議程標題自動建立」'>目標特定工項 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <div id='setupBoxItem' style='display:none;grid-column: span 2;'>
+                            <label data-tip='選擇本回合要單獨進行多人盲投估算的「3-1 一般工項」（如：集保健檢；一般工項才有起訖時間，通常直接套用基本工項 SP 並可微調）' title='選擇本回合要單獨進行多人盲投估算的「3-1 一般工項」（如：集保健檢；一般工項才有起訖時間，通常直接套用基本工項 SP 並可微調）'>目標一般工項 (如：集保健檢｜具起訖時間) <span class='sp-tip-icon'>ⓘ</span></label>
                             <select name='workItemPk' id='setupWorkItemPk' onchange='autoFillSetupTitle()'>");
             foreach (DataRow wRow in itemTable.Rows)
             {
                 sb.Append($"<option value='{wRow["workItemPk"]}' data-name='{h(wRow["itemTitle"])}'>{h(wRow["itemCode"])} - {h(wRow["itemTitle"])} (目前: {wRow["storyPoint"]} pt)</option>");
             }
-            sb.Append(@"<option value='0' data-name=''>➕ 依下方「盲投議程標題」自動建立新實際工項</option>
+            sb.Append(@"<option value='0' data-name=''>➕ 依下方「盲投議程標題」自動建立新一般工項</option>
                             </select>
                         </div>
                     </div>
                     <div class='form-row' style='margin-bottom:0;'>
                         <div>
                             <label data-tip='設定本次多人盲投議程的顯示標題（切換估算標的時會自動帶入建議標題）' title='設定本次多人盲投議程的顯示標題（切換估算標的時會自動帶入建議標題）'>盲投議程標題 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' name='sessionTitle' id='setupSessionTitle' required placeholder='例如：【代表類型估算】複合交易 API 模組標準點數訂定' />
+                            <input type='text' name='sessionTitle' id='setupSessionTitle' required placeholder='例如：【基本工項估算】資料庫健檢 標準點數訂定' />
                         </div>
                         <div>
                             <label data-tip='本回合估算範圍與驗收重點說明（DoD / 估算邊界提示），會直接顯示於所有參與者的出牌桌面供評估參考' title='本回合估算範圍與驗收重點說明（DoD / 估算邊界提示），會直接顯示於所有參與者的出牌桌面供評估參考'>估算範圍與驗收重點說明 (DoD) <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' name='roundGoalNote' id='setupRoundGoalNote' placeholder='例如：包含 DB SP、API 權限驗證、單元測試與例外 Log，不含舊資料移轉' />
+                            <input type='text' name='roundGoalNote' id='setupRoundGoalNote' placeholder='例如：透過 script 收集狀態，分析健康狀態，提供健檢報告並完成報告' />
                         </div>
                     </div>
                 </div>
@@ -6075,40 +6118,9 @@ public class portalController : Controller
         sb.Append("</tbody></table></div></div>"); // end Tab 2
 
         // =====================================================================
-        // TAB 3: 工項點數查詢、工項類型增刪修、建立工項自動帶入代表類型點數、修改員工賦予的工項
+        // TAB 3-1: 一般工項與員工指派（如「集保健檢」：套用 3-2 基本工項之 Story Point、支援微調 SP，且一般工項才有起訖時間）
         // =====================================================================
         sb.Append($"<div id='pane-workitems' class='tab-pane {(currentTab == "workitems" ? "active" : "")}'>");
-
-        // 動態建構預設工項類型下拉選單選項 HTML (來自 storyPoint.tbWorkItemKind，支援增刪修查與主要特徵屬性)
-        var kindOptionsBuilder = new StringBuilder();
-        if (kindTable.Rows.Count > 0)
-        {
-            foreach (DataRow kRow in kindTable.Rows)
-            {
-                int kPk = kRow.Table.Columns.Contains("workItemKindPk") && kRow["workItemKindPk"] != DBNull.Value ? Convert.ToInt32(kRow["workItemKindPk"]) : 0;
-                string kCode = kRow["kindCode"]?.ToString() ?? "project";
-                string kName = kRow["kindName"]?.ToString() ?? kCode;
-                string kIcon = kRow.Table.Columns.Contains("badgeIcon") && kRow["badgeIcon"] != DBNull.Value ? (kRow["badgeIcon"]?.ToString() ?? "📌") : "📌";
-                string kColor = kRow.Table.Columns.Contains("badgeColor") && kRow["badgeColor"] != DBNull.Value ? (kRow["badgeColor"]?.ToString() ?? "blue") : "blue";
-                int kSort = kRow.Table.Columns.Contains("sortOrder") && kRow["sortOrder"] != DBNull.Value ? Convert.ToInt32(kRow["sortOrder"]) : 100;
-                string kFeature = kRow.Table.Columns.Contains("mainFeatureSummary") && kRow["mainFeatureSummary"] != DBNull.Value ? (kRow["mainFeatureSummary"]?.ToString() ?? "") : "";
-                string kEstTrait = kRow.Table.Columns.Contains("estimationTrait") && kRow["estimationTrait"] != DBNull.Value ? (kRow["estimationTrait"]?.ToString() ?? "") : "";
-                string kDelivTrait = kRow.Table.Columns.Contains("timeAndDeliverableTrait") && kRow["timeAndDeliverableTrait"] != DBNull.Value ? (kRow["timeAndDeliverableTrait"]?.ToString() ?? "") : "";
-                string kDesc = kRow.Table.Columns.Contains("description") && kRow["description"] != DBNull.Value ? (kRow["description"]?.ToString() ?? "") : "";
-                int linkedWiCnt = kRow.Table.Columns.Contains("linkedWorkItemCount") && kRow["linkedWorkItemCount"] != DBNull.Value ? Convert.ToInt32(kRow["linkedWorkItemCount"]) : 0;
-                int linkedTypeCnt = kRow.Table.Columns.Contains("linkedTypeCount") && kRow["linkedTypeCount"] != DBNull.Value ? Convert.ToInt32(kRow["linkedTypeCount"]) : 0;
-                kindOptionsBuilder.Append($"<option value='{h(kCode)}' data-kind-pk='{kPk}' data-kind-code='{h(kCode)}' data-kind-name='{h(kName)}' data-kind-icon='{h(kIcon)}' data-kind-color='{h(kColor)}' data-kind-sort='{kSort}' data-kind-feature='{h(kFeature)}' data-kind-estimation='{h(kEstTrait)}' data-kind-deliverable='{h(kDelivTrait)}' data-kind-desc='{h(kDesc)}' data-linked-wi='{linkedWiCnt}' data-linked-type='{linkedTypeCnt}'>{formatOptionIconPrefix(kIcon)} {h(kName)} ({h(kCode)})</option>");
-            }
-        }
-        else
-        {
-            kindOptionsBuilder.Append("<option value='project' data-kind-pk='1' data-kind-code='project' data-kind-name='專案' data-kind-icon='🏗️' data-kind-color='blue' data-kind-sort='10' data-kind-feature='目標導向、具明確範疇與里程碑之新功能開發或系統建置' data-kind-estimation='依功能複雜度、跨模組整合難度進行團隊盲投估算 (通常 3 ~ 21 pt)' data-kind-deliverable='具明確專案起訖日與階段驗收交付物，達迄時自動轉態扣點並通知主管與 HR' data-kind-desc='客戶導入專案、系統全新功能開發或跨部門里程碑交付工項'>🏗️ 專案 (project)</option>");
-            kindOptionsBuilder.Append("<option value='maintenance' data-kind-pk='2' data-kind-code='maintenance' data-kind-name='維運' data-kind-icon='🛠️' data-kind-color='amber' data-kind-sort='20' data-kind-feature='穩定度導向、既有系統問題排除、例行巡檢、效能調校與安全性修補' data-kind-estimation='依問題排查深度與影響範圍套用維運代表類型標準點數 (通常 0.5 ~ 5 pt)' data-kind-deliverable='具 SLA 處理時限與改善報告，達迄時自動結案扣點並寄送通知' data-kind-desc='既有系統日常維運、例外錯誤修復、資料庫調校與例行巡檢工項'>🛠️ 維運 (maintenance)</option>");
-            kindOptionsBuilder.Append("<option value='consultingHour' data-kind-pk='3' data-kind-code='consultingHour' data-kind-name='顧問時數' data-kind-icon='⏳' data-kind-color='purple' data-kind-sort='30' data-kind-feature='專業知識輸出導向、架構諮詢、技術評估、POC 驗證與客戶駐點支援' data-kind-estimation='依投入時數區間與專業深度換算標準 Story Point (通常 1 ~ 8 pt)' data-kind-deliverable='依約定諮詢區間設定起訖時間並產出顧問建議書或會議紀錄，達迄時自動扣點' data-kind-desc='提供內部或外部客戶技術架構諮詢、POC 評估、問題診斷與顧問服務時數工項'>⏳ 顧問時數 (consultingHour)</option>");
-            kindOptionsBuilder.Append("<option value='training' data-kind-pk='4' data-kind-code='training' data-kind-name='教育訓練' data-kind-icon='🎓' data-kind-color='green' data-kind-sort='40' data-kind-feature='知識傳承與賦能導向、教材編撰、實機 Lab 演練、內訓與客戶操作培訓' data-kind-estimation='依課程時數、教材深度與實機環境準備複雜度估算點數 (通常 1 ~ 5 pt)' data-kind-deliverable='以開課/受訓起訖時程為準，交付簡報教材與課後測驗，達迄時自動扣點歸檔' data-kind-desc='內部技術傳承講座、新人培訓課程、教材編撰與客戶端系統操作教育訓練工項'>🎓 教育訓練 (training)</option>");
-            kindOptionsBuilder.Append("<option value='productDevelopment' data-kind-pk='5' data-kind-code='productDevelopment' data-kind-name='開發產品' data-kind-icon='🚀' data-kind-color='red' data-kind-sort='50' data-kind-feature='產品化與長期演進導向、自有核心模組研發、通用架構設計與高重用性元件開發' data-kind-estimation='依架構前瞻性、高可用度要求與自動化測試覆蓋率進行盲投估算 (通常 5 ~ 21 pt)' data-kind-deliverable='配合產品 Roadmap 與版本發佈週期設定起訖時間，達迄時自動轉態扣點並發信' data-kind-desc='自有核心產品研發、新世代架構演進、共用引擎模組與產品路線圖功能開發工項'>🚀 開發產品 (productDevelopment)</option>");
-        }
-        string dynamicKindOptionsHtml = kindOptionsBuilder.ToString();
 
         // 建構代表圖示庫 JSON 與初始下拉選單 HTML (來自 storyPoint.tbWorkItemIcon：含 12 款彩色 SVG 圖示、24 款分類符號圖示與使用者自行上傳新增圖示)
         var iconJsonBuilder = new StringBuilder("[");
@@ -6132,37 +6144,37 @@ public class portalController : Controller
         iconJsonBuilder.Append(']');
         string dynamicIconCatalogJson = iconJsonBuilder.ToString();
 
-        // 共用輔助局部函數：輸出「預設工項類型 (tbWorkItemKind) 增、刪、修、查管理與主要特徵一覽表」卡片與清單
+        // 共用輔助局部函數：輸出「3-3. 工項類型與一般工項基本規範 (tbWorkItemKind) 增、刪、修、查管理」卡片與清單
         void renderWorkItemKindCrudCard(string tabSuffix)
         {
             sb.Append($@"
             <div class='card' id='wikCrudCard_{tabSuffix}' style='border:2px solid #93c5fd;background:linear-gradient(180deg,#f8fafc 0%,#ffffff 100%);margin-bottom:18px;box-shadow:0 4px 14px rgba(37,99,235,0.08);'>
                 <div class='card-title' style='flex-wrap:wrap;gap:8px;'>
                     <div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>
-                        <span>🗂️ 預設工項類型增、刪、修、查管理與主要特徵一覽表</span>
-                        <span class='badge badge-user' id='wikFilterCountLabel_{tabSuffix}'>共 {kindTable.Rows.Count} 種預設工項類型</span>
+                        <span>🗂️ 3-3. 工項類型與一般工項基本規範管理（定義各類型之基本規範與一般 Story Point 範圍上下限）</span>
+                        <span class='badge badge-user' id='wikFilterCountLabel_{tabSuffix}'>共 {kindTable.Rows.Count} 種工項類型</span>
                     </div>
                     <div style='display:flex;gap:8px;flex-wrap:wrap;'>
-                        {(isAdmin ? $@"<button type='button' class='btn btn-primary' style='padding:5px 12px;font-size:12px;' onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','{tabSuffix}','','','')"">➕ 彈出視窗新增預設工項類型</button>
+                        {(isAdmin ? $@"<button type='button' class='btn btn-primary' style='padding:5px 12px;font-size:12px;' onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','{tabSuffix}','','','',1,8)"">➕ 彈出視窗新增工項類型</button>
                         <button type='button' class='btn btn-outline' style='padding:5px 10px;font-size:12px;' onclick=""resetWorkItemKindForm('{tabSuffix}')"">🔄 清空表單切換為新增</button>" : "")}
                     </div>
                 </div>
 
-                <!-- 1. 預設工項類型與主要特徵即時查詢篩選列 (查) -->
+                <!-- 1. 工項類型與基本規範即時查詢篩選列 (查) -->
                 <div style='background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                     <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;'>
                         <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
-                            🔍 <strong>查詢預設工項類型與主要特徵：</strong>可輸入類型代碼、名稱、核心工作性質、點數估算特徵或交付特徵關鍵字即時過濾；雙擊列或點擊右側按鈕即可<strong>新增、修改、刪除、查詢套用工項</strong>。
+                            🔍 <strong>查詢工項類型與基本規範：</strong>基本工項（如「資料庫健檢」）可套用此處定義之工項類型（如「專案」、「維運」），以獲得該類型的一般工項基本規範與<strong>一般 Story Point 範圍</strong>；雙擊列或點擊右側按鈕即可<strong>新增、修改、刪除、查詢套用之基本工項與一般工項</strong>。
                         </div>
                         <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;background:#fff;' onclick=""resetWorkItemKindFilter('{tabSuffix}')"">🔄 清除查詢條件</button>
                     </div>
                     <div class='form-row' style='margin-bottom:0;align-items:end;'>
                         <div style='grid-column: span 2;'>
-                            <label data-tip='輸入類型代碼、名稱、主要特徵（核心工作性質）、點數估算特徵、時程交付特徵或適用情境說明關鍵字即時查詢' title='輸入類型代碼、名稱、主要特徵（核心工作性質）、點數估算特徵、時程交付特徵或適用情境說明關鍵字即時查詢'>🔍 關鍵字查詢預設工項類型與主要特徵 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='輸入類型代碼、名稱、基本規範、一般 SP 範圍或適用情境說明關鍵字即時查詢' title='輸入類型代碼、名稱、基本規範、一般 SP 範圍或適用情境說明關鍵字即時查詢'>🔍 關鍵字查詢工項類型與基本規範 <span class='sp-tip-icon'>ⓘ</span></label>
                             <input type='text' id='filterWikKeyword_{tabSuffix}' oninput=""filterWorkItemKindTable('{tabSuffix}')"" placeholder='輸入例如：專案、維運、顧問時數、教育訓練、開發產品、SLA、里程碑、盲投...' />
                         </div>
                         <div>
-                            <label data-tip='依預設工項類型的標籤代表色進行篩選' title='依預設工項類型的標籤代表色進行篩選'>🎨 標籤顏色篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='依工項類型的標籤代表色進行篩選' title='依工項類型的標籤代表色進行篩選'>🎨 標籤顏色篩選 <span class='sp-tip-icon'>ⓘ</span></label>
                             <select id='filterWikColor_{tabSuffix}' onchange=""filterWorkItemKindTable('{tabSuffix}')"">
                                 <option value=''>全部標籤顏色</option>
                                 <option value='blue'>🔵 藍色 (專案)</option>
@@ -6176,10 +6188,10 @@ public class portalController : Controller
                             </select>
                         </div>
                         <div>
-                            <label data-tip='依是否有工項代表類型或實際工項套用此預設類型進行篩選' title='依是否有工項代表類型或實際工項套用此預設類型進行篩選'>📊 套用狀態篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='依是否有基本工項或一般工項套用此工項類型進行篩選' title='依是否有基本工項或一般工項套用此工項類型進行篩選'>📊 套用狀態篩選 <span class='sp-tip-icon'>ⓘ</span></label>
                             <select id='filterWikUsage_{tabSuffix}' onchange=""filterWorkItemKindTable('{tabSuffix}')"">
                                 <option value=''>全部套用狀態</option>
-                                <option value='inUse'>✅ 已套用（有代表類型或工項）</option>
+                                <option value='inUse'>✅ 已套用（有基本工項或一般工項）</option>
                                 <option value='unused'>⚪ 尚未套用</option>
                             </select>
                         </div>
@@ -6189,22 +6201,22 @@ public class portalController : Controller
             if (isAdmin)
             {
                 sb.Append($@"
-                <!-- 2. 新增 / 修改預設工項類型與主要特徵表單 (增、修，支援多種代表圖示選取與自行上傳新增圖示) -->
+                <!-- 2. 新增 / 修改工項類型、基本規範與一般 SP 範圍表單 (增、修) -->
                 <form method='post' action='/workitem/kind/save' enctype='multipart/form-data' style='background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                     <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;'>
-                        <span id='wikFormTitle_{tabSuffix}' style='font-size:13px;font-weight:800;color:#0f172a;'>➕ 新增或修改「預設工項類型」及三項主要特徵（提供多種代表圖示選取並可自行上傳新增圖示）</span>
-                        <span style='font-size:11.5px;color:#475569;'>儲存後全站「預設工項類型」下拉選單與主要特徵表將立即同步更新</span>
+                        <span id='wikFormTitle_{tabSuffix}' style='font-size:13px;font-weight:800;color:#0f172a;'>➕ 新增或修改「工項類型」、一般工項基本規範與一般 Story Point 範圍上下限</span>
+                        <span style='font-size:11.5px;color:#475569;'>儲存後全站「工項類型」下拉選單、基本規範與一般 SP 範圍將立即同步更新</span>
                     </div>
                     <input type='hidden' name='workItemKindPk' id='wikPk_{tabSuffix}' value='' />
                     <input type='hidden' name='returnTab' value='{tabSuffix}' />
                     <input type='file' name='customIconFile' id='wikQuickUploadFile_{tabSuffix}' accept='.png,.svg,.jpg,.jpeg,.webp,.ico,.gif' style='display:none;' onchange=""handleQuickIconFileSelected('{tabSuffix}', this)"" />
                     <div class='form-row' style='align-items:end;'>
                         <div>
-                            <label data-tip='設定預設工項類型唯一識別代碼（例如：project、maintenance、consultingHour、training、productDevelopment 或自訂 supportCase）' title='設定預設工項類型唯一識別代碼（例如：project、maintenance、consultingHour、training、productDevelopment 或自訂 supportCase）'>類型代碼 (kindCode) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='設定工項類型唯一識別代碼（例如：project、maintenance、consultingHour、training、productDevelopment 或自訂 supportCase）' title='設定工項類型唯一識別代碼'>類型代碼 (kindCode) <span class='sp-tip-icon'>ⓘ</span></label>
                             <input type='text' name='kindCode' id='wikCode_{tabSuffix}' placeholder='例如：supportCase' required />
                         </div>
                         <div>
-                            <label data-tip='設定預設工項類型中文顯示名稱（例如：專案、維運、顧問時數、教育訓練、開發產品、駐點支援）' title='設定預設工項類型中文顯示名稱（例如：專案、維運、顧問時數、教育訓練、開發產品、駐點支援）'>預設工項類型名稱 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='設定工項類型中文顯示名稱（例如：專案、維運、顧問時數、教育訓練、開發產品、駐點支援）' title='設定工項類型中文顯示名稱'>工項類型名稱 <span class='sp-tip-icon'>ⓘ</span></label>
                             <input type='text' name='kindName' id='wikName_{tabSuffix}' placeholder='例如：駐點技術支援' required />
                         </div>
                         <div style='grid-column: span 2;'>
@@ -6218,7 +6230,7 @@ public class portalController : Controller
                             </div>
                         </div>
                         <div>
-                            <label data-tip='選擇此預設工項類型在報表與列表中的標籤顏色樣式' title='選擇此預設工項類型在報表與列表中的標籤顏色樣式'>標籤顏色 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='選擇此工項類型在報表與列表中的標籤顏色樣式' title='選擇此工項類型在報表與列表中的標籤顏色樣式'>標籤顏色 <span class='sp-tip-icon'>ⓘ</span></label>
                             <select name='badgeColor' id='wikColor_{tabSuffix}'>
                                 <option value='blue'>🔵 藍色 (Blue - 專案)</option>
                                 <option value='amber'>🟡 琥珀橘 (Amber - 維運)</option>
@@ -6259,44 +6271,53 @@ public class portalController : Controller
                     </div>
                     <div class='form-row' style='align-items:end;'>
                         <div>
-                            <label data-tip='表列此工項類型的主要特徵（核心工作性質與目標導向，例如：目標導向、具明確範疇與里程碑之新功能開發）' title='表列此工項類型的主要特徵（核心工作性質與目標導向）'>⭐ 主要特徵 (核心工作性質) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='設定此工項類型一般建議的最低 Story Point 下限（例如：維運 0.5、顧問時數 1、專案 3）' title='設定此工項類型一般建議的最低 Story Point 下限'>📐 一般 SP 範圍下限 (minStoryPoint) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='number' step='0.5' min='0' max='200' name='minStoryPoint' id='wikMinPt_{tabSuffix}' value='1' required style='font-weight:800;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' />
+                        </div>
+                        <div>
+                            <label data-tip='設定此工項類型一般建議的最高 Story Point 上限（例如：維運 5、顧問時數 8、專案 21）' title='設定此工項類型一般建議的最高 Story Point 上限'>📐 一般 SP 範圍上限 (maxStoryPoint) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='number' step='0.5' min='0' max='200' name='maxStoryPoint' id='wikMaxPt_{tabSuffix}' value='8' required style='font-weight:800;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' />
+                        </div>
+                        <div>
+                            <label data-tip='定義此工項類型的一般工項基本規範（核心工作性質與目標導向，例如：目標導向、具明確範疇與里程碑之新功能開發）' title='定義此工項類型的一般工項基本規範（核心工作性質與目標導向）'>⭐ 基本規範一：核心工作性質 <span class='sp-tip-icon'>ⓘ</span></label>
                             <input type='text' name='mainFeatureSummary' id='wikFeature_{tabSuffix}' placeholder='例如：目標導向、具明確範疇與里程碑之新功能開發或系統建置' />
                         </div>
                         <div>
-                            <label data-tip='表列此工項類型的 Story Point 點數估算與計量特徵（例如：依功能複雜度進行團隊盲投估算，通常 3~21 pt）' title='表列此工項類型的 Story Point 點數估算與計量特徵'>📐 點數估算與計量特徵 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' name='estimationTrait' id='wikEstimation_{tabSuffix}' placeholder='例如：依功能複雜度進行團隊盲投估算 (通常 3 ~ 21 pt)' />
-                        </div>
-                        <div>
-                            <label data-tip='表列此工項類型的時程週期、交付物與到期轉態特徵（例如：具明確專案起訖日與階段驗收交付物，達迄時自動轉態扣點）' title='表列此工項類型的時程週期、交付物與到期轉態特徵'>⏰ 時程週期與交付/到期特徵 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' name='timeAndDeliverableTrait' id='wikDeliverable_{tabSuffix}' placeholder='例如：具明確起訖日與驗收交付物，達迄時自動轉態扣點並發信' />
+                            <label data-tip='定義此工項類型的 Story Point 範圍與計量規範（告知此類型一般的 Story Point 範圍與盲投依據）' title='定義此工項類型的 Story Point 範圍與計量規範'>📐 基本規範二：點數範圍與計量規範 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' name='estimationTrait' id='wikEstimation_{tabSuffix}' placeholder='例如：一般 Story Point 範圍：3 ~ 21 pt（依功能複雜度進行團隊盲投）' />
                         </div>
                     </div>
                     <div class='form-row' style='align-items:end;margin-bottom:0;'>
-                        <div style='grid-column: span 3;'>
-                            <label data-tip='描述此預設工項類型的典型適用情境與管理規則（所有類型工項皆有起訖時間，達迄時自動轉態扣點並寄信給部門管理層與 HR）' title='描述此預設工項類型的典型適用情境與管理規則'>📋 適用情境與管理規則說明 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' name='description' id='wikDesc_{tabSuffix}' placeholder='說明此工項類型的典型適用業務情境（皆支援起訖時間設定與到期自動轉態扣點寄信）' />
+                        <div style='grid-column: span 2;'>
+                            <label data-tip='定義套用此類型之一般工項的時程週期、交付物與到期轉態規範（註：一般工項才有起訖時間，基本工項無起訖時間）' title='定義套用此類型之一般工項的時程週期、交付物與到期轉態規範'>⏰ 基本規範三：一般工項起訖時程與交付規範 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' name='timeAndDeliverableTrait' id='wikDeliverable_{tabSuffix}' placeholder='例如：一般工項具明確起訖日與驗收交付物（基本工項無起訖），達迄時自動轉態扣點' />
                         </div>
                         <div>
-                            <button type='submit' class='btn btn-primary' id='wikSubmitBtn_{tabSuffix}' style='width:100%;'>➕ 新增 / 儲存預設工項類型</button>
+                            <label data-tip='描述此工項類型的典型適用情境與基本規範總說明' title='描述此工項類型的典型適用情境與基本規範總說明'>📋 適用情境與規範說明 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' name='description' id='wikDesc_{tabSuffix}' placeholder='說明此工項類型的典型適用業務情境與基本工項套用規範' />
+                        </div>
+                        <div>
+                            <button type='submit' class='btn btn-primary' id='wikSubmitBtn_{tabSuffix}' style='width:100%;'>➕ 新增 / 儲存工項類型與基本規範</button>
                         </div>
                     </div>
                 </form>");
             }
 
             sb.Append($@"
-                <!-- 3. 預設工項類型與主要特徵一覽表 (表列主要特徵 + 滑鼠右鍵快捷選單操作) -->
+                <!-- 3. 工項類型、一般工項基本規範與一般 Story Point 範圍一覽表 -->
                 <div style='overflow-x:auto;'>
                 <table class='wik-data-table' id='wikDataTable_{tabSuffix}'>
                     <thead>
                         <tr>
                             <th style='width:56px;'>排序</th>
-                            <th style='width:130px;'>類型代碼</th>
-                            <th style='width:150px;'>預設工項類型</th>
-                            <th>⭐ 主要特徵 (核心工作性質)</th>
-                            <th>📐 點數估算與計量特徵</th>
-                            <th>⏰ 時程週期與交付/到期特徵</th>
+                            <th style='width:125px;'>類型代碼</th>
+                            <th style='width:145px;'>工項類型</th>
+                            <th style='width:140px;'>📐 一般 SP 範圍</th>
+                            <th>⭐ 基本規範一：核心工作性質</th>
+                            <th>📐 基本規範二：點數範圍與計量規範</th>
+                            <th>⏰ 基本規範三：一般工項起訖與交付規範</th>
                             <th>📋 適用情境說明</th>
-                            <th style='width:165px;'>套用統計</th>
+                            <th style='width:170px;'>套用統計</th>
                         </tr>
                     </thead>
                     <tbody>");
@@ -6308,15 +6329,17 @@ public class portalController : Controller
                 string kIcon = kRow.Table.Columns.Contains("badgeIcon") && kRow["badgeIcon"] != DBNull.Value ? (kRow["badgeIcon"]?.ToString() ?? "📌") : "📌";
                 string kColor = kRow.Table.Columns.Contains("badgeColor") && kRow["badgeColor"] != DBNull.Value ? (kRow["badgeColor"]?.ToString() ?? "blue") : "blue";
                 int kSort = kRow.Table.Columns.Contains("sortOrder") && kRow["sortOrder"] != DBNull.Value ? Convert.ToInt32(kRow["sortOrder"]) : 100;
+                decimal kMinPt = kRow.Table.Columns.Contains("minStoryPoint") && kRow["minStoryPoint"] != DBNull.Value ? Convert.ToDecimal(kRow["minStoryPoint"]) : 1m;
+                decimal kMaxPt = kRow.Table.Columns.Contains("maxStoryPoint") && kRow["maxStoryPoint"] != DBNull.Value ? Convert.ToDecimal(kRow["maxStoryPoint"]) : 8m;
                 string kFeature = kRow.Table.Columns.Contains("mainFeatureSummary") && kRow["mainFeatureSummary"] != DBNull.Value && !string.IsNullOrWhiteSpace(kRow["mainFeatureSummary"]?.ToString())
                     ? kRow["mainFeatureSummary"]!.ToString()!
-                    : (kRow["description"]?.ToString() ?? "依業務需求設定之標準工項類型");
+                    : (kRow["description"]?.ToString() ?? "依業務需求設定之工項類型基本規範");
                 string kEstTrait = kRow.Table.Columns.Contains("estimationTrait") && kRow["estimationTrait"] != DBNull.Value && !string.IsNullOrWhiteSpace(kRow["estimationTrait"]?.ToString())
                     ? kRow["estimationTrait"]!.ToString()!
-                    : "支援選擇工項代表類型自動帶入標準點數或發起團隊多人盲投估算";
+                    : $"一般 Story Point 範圍：{kMinPt:0.##} ~ {kMaxPt:0.##} pt（支援基本工項盲投與一般工項微調）";
                 string kDelivTrait = kRow.Table.Columns.Contains("timeAndDeliverableTrait") && kRow["timeAndDeliverableTrait"] != DBNull.Value && !string.IsNullOrWhiteSpace(kRow["timeAndDeliverableTrait"]?.ToString())
                     ? kRow["timeAndDeliverableTrait"]!.ToString()!
-                    : "具備明確起訖時間 (startDate ~ endDate)，達迄時自動轉態為已完成、扣減 Story Point 並寄信通知主管與 HR";
+                    : "一般工項具備明確起訖時間 (startDate ~ endDate)，基本工項無起訖時間；一般工項達迄時自動轉態扣點並寄信";
                 string kDesc = kRow["description"]?.ToString() ?? "";
                 int linkedWiCnt = kRow.Table.Columns.Contains("linkedWorkItemCount") && kRow["linkedWorkItemCount"] != DBNull.Value ? Convert.ToInt32(kRow["linkedWorkItemCount"]) : 0;
                 int linkedTypeCnt = kRow.Table.Columns.Contains("linkedTypeCount") && kRow["linkedTypeCount"] != DBNull.Value ? Convert.ToInt32(kRow["linkedTypeCount"]) : 0;
@@ -6334,7 +6357,7 @@ public class portalController : Controller
                 };
 
                 string usageState = (linkedWiCnt > 0 || linkedTypeCnt > 0) ? "inUse" : "unused";
-                string searchBlob = $"{kCode} {kName} {kFeature} {kEstTrait} {kDelivTrait} {kDesc}".ToLowerInvariant();
+                string searchBlob = $"{kCode} {kName} {kMinPt:0.##}~{kMaxPt:0.##} {kFeature} {kEstTrait} {kDelivTrait} {kDesc}".ToLowerInvariant();
 
                 sb.Append($@"
                         <tr class='wik-row sp-context-row'
@@ -6346,25 +6369,30 @@ public class portalController : Controller
                             data-kind-icon='{h(kIcon)}'
                             data-kind-color='{h(kColor)}'
                             data-kind-sort='{kSort}'
+                            data-kind-min-pt='{kMinPt.ToString(CultureInfo.InvariantCulture)}'
+                            data-kind-max-pt='{kMaxPt.ToString(CultureInfo.InvariantCulture)}'
                             data-kind-feature='{h(kFeature)}'
                             data-kind-estimation='{h(kEstTrait)}'
                             data-kind-deliverable='{h(kDelivTrait)}'
                             data-kind-desc='{h(kDesc)}'
                             data-kind-usage='{usageState}'
                             data-tab-suffix='{h(tabSuffix)}'
-                            title='💡 雙擊列或按滑鼠右鍵開啟「{h(kName)} ({h(kCode)})」操作選單（單筆編輯、刪除、查詢套用代表類型與工項）'>
+                            title='💡 雙擊列或按滑鼠右鍵開啟「{h(kName)} ({h(kCode)})」操作選單（單筆編輯、刪除、查詢套用之基本工項與一般工項）'>
                             <td data-sort-value='{kSort}'>
                                 <strong>{kSort}</strong>
                             </td>
                             <td><code>{h(kCode)}</code></td>
                             <td style='white-space:nowrap;'><span class='badge' style='{badgeStyle};font-size:12.5px;padding:4px 10px;display:inline-flex;align-items:center;gap:4px;'>{renderIconDisplayHtml(kIcon, 18)} {h(kName)}</span></td>
+                            <td style='white-space:nowrap;' data-sort-value='{kMinPt}'>
+                                <span class='badge' style='background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;font-size:12.5px;font-weight:800;'>{kMinPt:0.##} ~ {kMaxPt:0.##} pt</span>
+                            </td>
                             <td style='font-size:12.5px;color:#0f172a;font-weight:600;line-height:1.45;'>{h(kFeature)}</td>
                             <td style='font-size:12px;color:#1e3a8a;line-height:1.45;'>{h(kEstTrait)}</td>
                             <td style='font-size:12px;color:#334155;line-height:1.45;'>{h(kDelivTrait)}</td>
                             <td style='font-size:12px;color:#475569;line-height:1.45;'>{h(kDesc)}</td>
                             <td style='font-size:12px;white-space:nowrap;'>
-                                <div>🏷️ 代表類型：<strong>{linkedTypeCnt}</strong> 個</div>
-                                <div>📋 實際工項：<strong>{linkedWiCnt}</strong> 件 ({totalKindPt:0.#} pt)</div>
+                                <div>🏷️ 基本工項：<strong>{linkedTypeCnt}</strong> 個</div>
+                                <div>📋 一般工項：<strong>{linkedWiCnt}</strong> 件 ({totalKindPt:0.#} pt)</div>
                             </td>
                         </tr>");
             }
@@ -6384,17 +6412,18 @@ public class portalController : Controller
             sb.Append($@"
             <div class='sp-page-action-bar'>
                 <div class='sp-action-title'>
-                    <span>⚡ 工項管理快捷指令列</span>
-                    <span style='font-size:12px;font-weight:600;color:#93c5fd;'>（表格直接置頂呈現｜支援左鍵單擊選取列、雙擊列彈出 Modal 編輯、右鍵快捷選單）</span>
+                    <span>⚡ 3-1. 一般工項管理快捷指令列（如「集保健檢」：套用 3-2 基本工項之 Story Point、支援微調 SP，且一般工項才有起訖時間）</span>
+                    <span style='font-size:12px;font-weight:600;color:#93c5fd;'>（支援左鍵單擊選取列、雙擊列彈出 Modal 編輯、右鍵快捷選單）</span>
                 </div>
                 <div class='sp-action-group'>
-                    <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;background:#2563eb;border-color:#60a5fa;' onclick=""openWorkItemEditModal('','{nextWiCode}','','0','','todo','','project','{defaultStartIso}','{defaultEndIso}','2026-Q4 Sprint 2',false,'')"">➕ 新增工項與指派 (彈出 Modal)</button>
+                    <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;background:#2563eb;border-color:#60a5fa;' onclick=""openWorkItemEditModal('','{nextWiCode}','','0','','todo','','project','{defaultStartIso}','{defaultEndIso}','2026-Q4 Sprint 2',false,'')"">➕ 新增一般工項與指派 (彈出 Modal)</button>
                     <button type='button' class='btn btn-success' style='padding:6px 12px;font-size:12.5px;' onclick=""openWorkItemAssignModal('','','','','')"">👥 指派員工與分攤配額 (Modal)</button>
-                    <button type='button' class='sp-drawer-toggle-btn' onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','workitems')"">🗂️ 新增工項類型 (Modal)</button>
-                    <button type='button' class='sp-drawer-toggle-btn' onclick=""toggleAdminDrawer('drawer-wi-import', this)"">📤 批次匯入工項面板 ▾</button>
-                    <button type='button' class='sp-drawer-toggle-btn' onclick=""toggleAdminDrawer('drawer-wi-full', this)"">🛠️ 完整管理與類型面板 ▾</button>
+                    <button type='button' class='sp-drawer-toggle-btn' onclick=""switchTab('types')"">🏷️ 3-2. 基本工項管理 (如：資料庫健檢)</button>
+                    <button type='button' class='sp-drawer-toggle-btn' onclick=""switchTab('kinds')"">🗂️ 3-3. 工項類型與基本規範</button>
+                    <button type='button' class='sp-drawer-toggle-btn' onclick=""toggleAdminDrawer('drawer-wi-import', this)"">📤 批次匯入一般工項面板 ▾</button>
+                    <button type='button' class='sp-drawer-toggle-btn' onclick=""toggleAdminDrawer('drawer-wi-full', this)"">🛠️ 完整建立一般工項面板 ▾</button>
                     <form method='post' action='/workitem/checkExpired' style='margin:0;display:inline;'>
-                        <button type='submit' class='btn btn-warning' style='padding:6px 12px;font-size:12.5px;white-space:nowrap;' title='立即執行到期工項自動轉態、扣減 Story Point 並寄信給部門主管與 HR'>⚡ 立即檢核到期工項</button>
+                        <button type='submit' class='btn btn-warning' style='padding:6px 12px;font-size:12.5px;white-space:nowrap;' title='立即執行到期一般工項自動轉態、扣減 Story Point 並寄信給部門主管與 HR'>⚡ 立即檢核到期工項</button>
                     </form>
                 </div>
             </div>
@@ -6403,13 +6432,14 @@ public class portalController : Controller
             <div class='card' style='border:2px solid #93c5fd;background:linear-gradient(135deg,#eff6ff 0%,#ffffff 100%);margin-bottom:18px;'>
                 <div style='display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;'>
                     <div style='flex:1;min-width:280px;'>
-                        <div style='font-size:15px;font-weight:800;color:#1e3a8a;margin-bottom:4px;'>⏰ 工項類型（專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品 / 自訂類型）與起訖時間到期自動轉態、扣減 Story Point 及 Email 寄信通知機制</div>
+                        <div style='font-size:15px;font-weight:800;color:#1e3a8a;margin-bottom:4px;'>⏰ 三層架構說明：一般工項（如「集保健檢」）套用基本工項（如「資料庫健檢」）之 Story Point、可微調點數，且一般工項才有起訖時間</div>
                         <div style='font-size:13px;color:#334155;line-height:1.55;'>
-                            每一項工項皆支援設定類型（預設含 <strong>🏗️ 專案</strong>、<strong>🛠️ 維運</strong>、<strong>⏳ 顧問時數</strong>、<strong>🎓 教育訓練</strong>、<strong>🚀 開發產品</strong>，且工項類型支援<strong>增、刪、修</strong>）與<strong>起訖時間 (起時 ~ 迄時)</strong>。當工項達到<strong>迄時 (endDate)</strong> 時，系統背景排程與即時檢核會自動將該工項狀態轉換為「<strong>已完成 (已到期扣點)</strong>」、自動扣掉該工項與負責員工/部門身上的 <strong>Story Point</strong>，並透過 <strong>Email 寄信通知所屬部門管理層（部門經理）與 HR</strong>。
+                            <strong>1. 一般工項 (3-1，如「集保健檢」)</strong>：選擇套用<strong>基本工項 (3-2，如「資料庫健檢」)</strong> 後，自動帶入該基本工項投出的標準 Story Point 與所屬<strong>工項類型 (3-3)</strong>；您仍可依實際專案複雜度<strong>微調一般工項的 Story Point</strong>。<br/>
+                            <strong>2. 一般工項才有起訖時間 (起時 ~ 迄時)</strong>：基本工項沒有起訖時間；當一般工項達到<strong>迄時 (endDate)</strong> 時，系統自動轉換為「<strong>已完成 (已到期扣點)</strong>」、扣減負責員工與部門的 Story Point，並寄信通知部門管理層與 HR。
                         </div>
                     </div>
                     <form method='post' action='/workitem/checkExpired' style='margin:0;'>
-                        <button type='submit' class='btn btn-primary' style='background:#1d4ed8;box-shadow:0 4px 12px rgba(29,78,216,0.22);white-space:nowrap;'>⚡ 立即檢核到期工項（自動轉態 + 扣減 Story Point + 寄信給部門管理層與 HR）</button>
+                        <button type='submit' class='btn btn-primary' style='background:#1d4ed8;box-shadow:0 4px 12px rgba(29,78,216,0.22);white-space:nowrap;'>⚡ 立即檢核到期一般工項（自動轉態 + 扣減 Story Point + 寄信通知）</button>
                     </form>
                 </div>
             </div>");
@@ -6420,38 +6450,38 @@ public class portalController : Controller
             <div class='grid-2'>
                 <div class='card'>
                     <div class='card-title'>
-                        <span id='wiFormTitle'>➕ 建立/修改工項（設定工項類型、起訖時間與 Story Point）</span>
-                        <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick=""resetWorkItemForm('{nextWiCode}')"">🔄 清空切換為新增工項</button>
+                        <span id='wiFormTitle'>➕ 建立/修改一般工項（如「集保健檢」：套用基本工項 Story Point、支援微調 SP、設定起訖時間）</span>
+                        <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick=""resetWorkItemForm('{nextWiCode}')"">🔄 清空切換為新增一般工項</button>
                     </div>
                     <form method='post' action='/workitem/save'>
                         <input type='hidden' name='workItemPk' id='wiPk' value='' />
                         <div class='form-row'>
                             <div>
-                                <label data-tip='工項唯一識別代碼（例如：WI-2026-001）' title='工項唯一識別代碼（例如：WI-2026-001）'>工項代碼 <span class='sp-tip-icon'>ⓘ</span></label>
+                                <label data-tip='一般工項唯一識別代碼（例如：WI-2026-TDCC）' title='一般工項唯一識別代碼（例如：WI-2026-TDCC）'>一般工項代碼 <span class='sp-tip-icon'>ⓘ</span></label>
                                 <input type='text' name='itemCode' id='wiCode' value='{nextWiCode}' required />
                             </div>
                             <div>
-                                <label data-tip='選擇工項類型（如：專案、維運、顧問時數，或於上方工項類型管理新增的自訂類型）' title='選擇工項類型（如：專案、維運、顧問時數，或於上方工項類型管理新增的自訂類型）'>工項類型 <span class='sp-tip-icon'>ⓘ</span></label>
+                                <label data-tip='選擇工項類型（如：專案、維運、顧問時數；選取下方基本工項時亦會自動帶入其套用的工項類型）' title='選擇工項類型（如：專案、維運、顧問時數）'>工項類型 (3-3) <span class='sp-tip-icon'>ⓘ</span></label>
                                 <select name='workItemKind' id='wiKindSelect' onchange='onWorkItemKindSelectSyncType()' required style='border-color:#2563eb;font-weight:700;background:#eff6ff;'>
                                     {dynamicKindOptionsHtml}
                                 </select>
                             </div>
                             <div>
-                                <label data-tip='輸入工項標題與功能簡述' title='輸入工項標題與功能簡述'>工項標題 <span class='sp-tip-icon'>ⓘ</span></label>
-                                <input type='text' name='itemTitle' id='wiTitle' placeholder='請輸入工項名稱' required />
+                                <label data-tip='輸入一般工項標題（例如：集保健檢、2026 Q4 帳務系統資料庫調校）' title='輸入一般工項標題（例如：集保健檢）'>一般工項標題 (如：集保健檢) <span class='sp-tip-icon'>ⓘ</span></label>
+                                <input type='text' name='itemTitle' id='wiTitle' placeholder='例如：集保健檢' required />
                             </div>
                         </div>
                         <div class='form-row'>
                             <div>
-                                <label data-tip='設定工項開始時間（起時 startDate）' title='設定工項開始時間（起時 startDate）'>開始時間 (起時) <span class='sp-tip-icon'>ⓘ</span></label>
+                                <label data-tip='設定一般工項開始時間（起時 startDate；一般工項才有起訖時間，基本工項沒有起訖時間）' title='設定一般工項開始時間（起時 startDate）'>開始時間 (起時 - 一般工項專屬) <span class='sp-tip-icon'>ⓘ</span></label>
                                 <input type='datetime-local' name='startDate' id='wiStartDate' value='{defaultStartIso}' onchange='applyWorkItemDurationPreset()' required />
                             </div>
                             <div>
-                                <label data-tip='設定工項結束時間（迄時 endDate）：當達到迄時，系統自動轉換該工項狀態為已完成、扣掉該 Story Point，並寄信給部門管理層與 HR' title='設定工項結束時間（迄時 endDate）：當達到迄時，系統自動轉換該工項狀態為已完成、扣掉該 Story Point，並寄信給部門管理層與 HR'>結束時間 (迄時 - 到期自動扣點寄信) <span class='sp-tip-icon'>ⓘ</span></label>
+                                <label data-tip='設定一般工項結束時間（迄時 endDate）：當達到迄時，系統自動轉換該一般工項狀態為已完成、扣掉該 Story Point，並寄信給部門管理層與 HR' title='設定一般工項結束時間（迄時 endDate）'>結束時間 (迄時 - 到期自動扣點寄信) <span class='sp-tip-icon'>ⓘ</span></label>
                                 <input type='datetime-local' name='endDate' id='wiEndDate' value='{defaultEndIso}' required style='border-color:#dc2626;font-weight:700;' />
                             </div>
                             <div>
-                                <label data-tip='快速設定工項起訖時間範圍：手動輸入數量（預設 1）並選擇單位（天、周、月、季、年），自動依據起時計算迄時' title='快速設定工項起訖時間範圍：手動輸入數量（預設 1）並選擇單位（天、周、月、季、年），自動依據起時計算迄時'>起訖時間快速設定 <span class='sp-tip-icon'>ⓘ</span></label>
+                                <label data-tip='快速設定一般工項起訖時間範圍：手動輸入數量（預設 1）並選擇單位（天、周、月、季、年），自動依據起時計算迄時' title='快速設定一般工項起訖時間範圍'>起訖時間快速設定 <span class='sp-tip-icon'>ⓘ</span></label>
                                 <div style='display:grid;grid-template-columns:1fr 1.15fr;gap:6px;align-items:center;'>
                                     <div style='display:flex;align-items:center;gap:4px;'>
                                         <span style='font-size:12px;color:#475569;white-space:nowrap;font-weight:700;'>數量</span>
@@ -6472,9 +6502,9 @@ public class portalController : Controller
                         </div>
                         <div class='form-row'>
                             <div style='grid-column: span 2;'>
-                                <label data-tip='選擇已賦予標準 Story Point 的「工項代表類型」，選擇後系統會自動帶入標準點數與預設工項類型' title='選擇已賦予標準 Story Point 的「工項代表類型」，選擇後系統會自動帶入標準點數與預設工項類型'>工項代表類型 <span class='sp-tip-icon'>ⓘ</span></label>
+                                <label data-tip='選擇要套用的 3-2 基本工項（例如：資料庫健檢），選擇後系統會自動帶入該基本工項的標準 Story Point 與所屬工項類型' title='選擇要套用的 3-2 基本工項（例如：資料庫健檢）'>套用基本工項 (3-2 基本工項，如：資料庫健檢 — 自動帶入標準 SP) <span class='sp-tip-icon'>ⓘ</span></label>
                                 <select name='workItemTypePk' id='wiTypeSelect' onchange='onWorkItemTypeChange()'>
-                                    <option value='0' data-pt='' data-kind='' data-code=''>-- 不使用代表類型（直接手動輸入點數） --</option>");
+                                    <option value='0' data-pt='' data-kind='' data-code=''>-- 不套用基本工項（直接手動輸入點數） --</option>");
             foreach (DataRow tRow in typeTable.Rows)
             {
                 string tCodeVal = tRow["typeCode"]?.ToString() ?? "";
@@ -6486,17 +6516,15 @@ public class portalController : Controller
                 string optIconPrefix = isImageIconValue(rawIconVal)
                     ? (dKind == "maintenance" ? "🛠️" : dKind == "consultingHour" ? "⏳" : dKind == "training" ? "🎓" : dKind == "productDevelopment" ? "🚀" : "🏗️")
                     : rawIconVal;
-                string labelText = string.Equals(tNameVal, dKindText, StringComparison.OrdinalIgnoreCase)
-                    ? $"{optIconPrefix} {tNameVal} ({tCodeVal}) (標準: {(string.IsNullOrEmpty(ptVal) ? "待估算" : ptVal + " pt")})"
-                    : $"[{dKindText}] {tCodeVal} - {tNameVal} (標準: {(string.IsNullOrEmpty(ptVal) ? "待估算" : ptVal + " pt")})";
+                string labelText = $"{optIconPrefix} [{dKindText}] {tNameVal} ({tCodeVal}) (標準 SP: {(string.IsNullOrEmpty(ptVal) ? "待盲投" : ptVal + " pt")})";
                 sb.Append($"<option value='{tRow["workItemTypePk"]}' data-pt='{ptVal}' data-kind='{h(dKind)}' data-code='{h(tCodeVal)}'>{h(labelText)}</option>");
             }
             sb.Append(@"
                                 </select>
                             </div>
                             <div>
-                                <label data-tip='Story Point 點數：選擇代表類型後會自動帶入，管理者亦可手動修改微調（留空即自動帶入代表類型點數）' title='Story Point 點數：選擇代表類型後會自動帶入，管理者亦可手動修改微調（留空即自動帶入代表類型點數）'>Story Point 點數 <span class='sp-tip-icon'>ⓘ</span></label>
-                                <input type='number' step='0.5' name='storyPoint' id='wiStoryPoint' placeholder='留空即自動帶入代表類型點數' />
+                                <label data-tip='Story Point 點數：選擇基本工項（如資料庫健檢）後自動帶入其標準點數，一般工項仍可手動微調 Story Point（留空即自動帶入基本工項點數）' title='Story Point 點數：套用基本工項 SP，並可針對此一般工項微調'>Story Point 點數 (套用基本工項 SP，可微調) <span class='sp-tip-icon'>ⓘ</span></label>
+                                <input type='number' step='0.5' name='storyPoint' id='wiStoryPoint' placeholder='留空即自動帶入基本工項點數 (可微調)' />
                             </div>
                         </div>
                         <div class='form-row'>
@@ -6632,34 +6660,34 @@ public class portalController : Controller
             </div>");
         }
 
-        // 各工項的 Story Point 清單表格（管理者檢視全部工項，一般員工僅檢視賦予給自己的工項與個人分數）
+        // 3-1 各一般工項的 Story Point 清單表格（管理者檢視全部一般工項，一般員工僅檢視賦予給自己的工項與個人分數）
         sb.Append($@"
         <div class='card'>
             <div class='card-title'>
-                <span>📋 {(isAdmin ? "各工項的類型（專案/維運/顧問時數/自訂類型）、起訖時間、Story Point 與到期自動扣點寄信一覽表" : "我的工項與個人獲得分數一覽表（僅顯示賦予給我本人的工項與分數，不顯示其他人）")}</span>
+                <span>📋 {(isAdmin ? "3-1. 一般工項清單（如「集保健檢」：套用 3-2 基本工項之 Story Point、支援微調 SP、一般工項專屬起訖時間與到期自動扣點寄信）" : "我的工項與個人獲得分數一覽表（僅顯示賦予給我本人的工項與分數，不顯示其他人）")}</span>
                 <div style='display:flex;gap:8px;flex-wrap:wrap;align-items:center;'>
-                    <span class='badge badge-user' id='wiFilterCountLabel'>共 {itemTable.Rows.Count} 筆工項</span>
+                    <span class='badge badge-user' id='wiFilterCountLabel'>共 {itemTable.Rows.Count} 筆一般工項</span>
                     <a href='/export/report?type=workitem&format=csv' class='btn btn-outline' style='padding:6px 12px;font-size:12.5px;'>📥 匯出 CSV</a>
                     <a href='/export/report?type=workitem&format=excel' class='btn btn-outline' style='padding:6px 12px;font-size:12.5px;'>📊 匯出 Excel (.xlsx)</a>
                     <a href='/export/report?type=workitem&format=html' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;'>🌐 匯出互動 HTML (排序・篩選・群組彙總)</a>
                 </div>
             </div>
 
-            <!-- 工項清單多維度即時篩選列 + 滑鼠右鍵快捷選單操作說明 -->
+            <!-- 一般工項清單多維度即時篩選列 + 滑鼠右鍵快捷選單操作說明 -->
             <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                 <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
                     <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
-                        💡 <strong>操作提示：</strong>於表格內任一筆紀錄<strong>滑鼠雙擊 (Double-Click)</strong> 直接彈出單筆編輯 Modal（含負責員工與配額指派）；<strong>按滑鼠右鍵</strong>開啟快捷選單執行<strong>單筆編輯、修改指派員工、發起盲投、刪除、以此欄值篩選</strong>（選取列後亦可按 <code>Enter</code> / <code>F2</code> 編輯）！
+                        💡 <strong>操作提示：</strong>於表格內任一筆一般工項紀錄<strong>滑鼠雙擊 (Double-Click)</strong> 直接彈出單筆編輯 Modal（可選擇套用之基本工項、微調 Story Point、設定起訖時間與指派員工）；<strong>按滑鼠右鍵</strong>開啟快捷選單！
                     </div>
                     <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick='resetWorkItemFilter()'>🔄 清除全部篩選條件</button>
                 </div>
                 <div class='form-row' style='margin-bottom:0;align-items:end;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));'>
                     <div>
-                        <label data-tip='輸入工項代碼、標題、說明、Sprint、代表類型、負責員工或部門關鍵字即時篩選表格' title='輸入工項代碼、標題、說明、Sprint、代表類型、負責員工或部門關鍵字即時篩選表格'>🔍 關鍵字快速篩選 <span class='sp-tip-icon'>ⓘ</span></label>
-                        <input type='text' id='filterWiKeyword' oninput='filterWorkItemTable()' placeholder='輸入代碼 / 標題 / 員工 / 部門 / 說明...' />
+                        <label data-tip='輸入一般工項代碼、標題（如：集保健檢）、說明、Sprint、基本工項、負責員工或部門關鍵字即時篩選表格' title='輸入一般工項代碼、標題、說明、Sprint、基本工項、負責員工或部門關鍵字即時篩選表格'>🔍 關鍵字快速篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <input type='text' id='filterWiKeyword' oninput='filterWorkItemTable()' placeholder='輸入例如：集保健檢 / 代碼 / 員工 / 部門...' />
                     </div>
                     <div>
-                        <label data-tip='依工項類型（專案 / 維運 / 顧問時數 / 自訂類型）過濾工項列表' title='依工項類型（專案 / 維運 / 顧問時數 / 自訂類型）過濾工項列表'>🏷️ 工項類型篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <label data-tip='依工項類型（專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品）過濾一般工項列表' title='依工項類型過濾一般工項列表'>🗂️ 工項類型 (3-3) 篩選 <span class='sp-tip-icon'>ⓘ</span></label>
                         <select id='filterWiKind' onchange='filterWorkItemTable()'>
                             <option value=''>全部工項類型</option>");
         foreach (DataRow kRow in kindTable.Rows)
@@ -6673,9 +6701,9 @@ public class portalController : Controller
                         </select>
                     </div>
                     <div>
-                        <label data-tip='依所屬工項代表類型過濾工項列表' title='依所屬工項代表類型過濾工項列表'>📐 所屬代表類型篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <label data-tip='依所套用的 3-2 基本工項（如：資料庫健檢）過濾一般工項列表' title='依所套用的 3-2 基本工項過濾一般工項列表'>🏷️ 套用基本工項 (3-2) 篩選 <span class='sp-tip-icon'>ⓘ</span></label>
                         <select id='filterWiType' onchange='filterWorkItemTable()'>
-                            <option value=''>全部代表類型</option>");
+                            <option value=''>全部基本工項</option>");
         foreach (DataRow tRow in typeTable.Rows)
         {
             sb.Append($"<option value='{h(tRow["typeName"])}'>{h(tRow["typeCode"])} - {h(tRow["typeName"])}</option>");
@@ -6684,7 +6712,7 @@ public class portalController : Controller
                         </select>
                     </div>
                     <div>
-                        <label data-tip='依工項執行狀態或是否已達迄時自動扣點過濾工項列表' title='依工項執行狀態或是否已達迄時自動扣點過濾工項列表'>⚡ 執行與到期狀態篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <label data-tip='依一般工項執行狀態或是否已達迄時自動扣點過濾列表' title='依一般工項執行狀態或是否已達迄時自動扣點過濾列表'>⚡ 執行與到期狀態篩選 <span class='sp-tip-icon'>ⓘ</span></label>
                         <select id='filterWiStatus' onchange='filterWorkItemTable()'>
                             <option value=''>全部狀態</option>
                             <option value='todo'>📝 待處理 (To Do)</option>
@@ -6695,7 +6723,7 @@ public class portalController : Controller
                         </select>
                     </div>
                     <div>
-                        <label data-tip='依負責員工姓名或所屬部門過濾工項列表' title='依負責員工姓名或所屬部門過濾工項列表'>👤 負責員工 / 部門篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <label data-tip='依負責員工姓名或所屬部門過濾一般工項列表' title='依負責員工姓名或所屬部門過濾一般工項列表'>👤 負責員工 / 部門篩選 <span class='sp-tip-icon'>ⓘ</span></label>
                         <select id='filterWiAssignee' onchange='filterWorkItemTable()'>
                             <option value=''>全部負責員工與部門</option>
                             <option value='尚未指派'>⚪ 尚未指派員工</option>");
@@ -6716,13 +6744,13 @@ public class portalController : Controller
             <table id='workItemDataTable'>
                 <thead>
                     <tr>
-                        <th>工項代碼</th>
-                        <th>工項類型</th>
-                        <th>工項標題</th>
-                        <th>起訖時間 (起時 ~ 迄時)</th>
-                        <th>所屬代表類型</th>
-                        <th>工項 Story Point</th>
-                        <th>點數來源與到期扣點紀錄</th>
+                        <th>一般工項代碼</th>
+                        <th>工項類型 (3-3)</th>
+                        <th>一般工項標題 (如：集保健檢)</th>
+                        <th>起訖時間 (一般工項專屬)</th>
+                        <th>套用基本工項 (3-2)</th>
+                        <th>Story Point (可微調)</th>
+                        <th>點數來源與微調/扣點紀錄</th>
                         <th>執行狀態與到期寄信通知</th>
                         <th>{(isAdmin ? "賦予員工與部門配額明細" : "我的分攤比例與個人獲得分數")}</th>
                     </tr>
@@ -6770,13 +6798,13 @@ public class portalController : Controller
 
             string pointCellHtml = isExpiredProc
                 ? $"<div><strong style='font-size:16px;color:#dc2626;'>0.00 pt</strong> <span class='badge' style='background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;'>已扣 -{dedPt:0.##} pt</span></div><div style='font-size:11.5px;color:#64748b;margin-top:2px;'>原核定：{origPt:0.##} pt</div>"
-                : $"<strong style='font-size:17px;color:#2563eb;'>{curPt:0.##} pt</strong><div style='font-size:11px;color:#64748b;'>標準：{(wRow["defaultTypePoint"] != DBNull.Value ? wRow["defaultTypePoint"] + " pt" : "-")}</div>";
+                : $"<strong style='font-size:17px;color:#2563eb;'>{curPt:0.##} pt</strong><div style='font-size:11px;color:#64748b;'>基本工項標準：{(wRow["defaultTypePoint"] != DBNull.Value ? wRow["defaultTypePoint"] + " pt" : "-")}</div>";
 
             string srcBadge = isExpiredProc
                 ? $"<span class='badge' style='background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;'>⏰ 到期自動扣點</span><div style='font-size:11.5px;color:#334155;margin-top:3px;'>{h(wRow["adjustmentReason"])}</div>"
                 : (isManual
-                    ? $"<span class='badge badge-voting'>手動調整</span> <div style='font-size:11.5px;color:#64748b;'>{h(wRow["adjustmentReason"])}</div>"
-                    : "<span class='badge badge-finalized'>代表類型自動帶入</span>");
+                    ? $"<span class='badge badge-voting'>✏️ 已微調 SP</span> <div style='font-size:11.5px;color:#64748b;'>{h(wRow["adjustmentReason"])}</div>"
+                    : "<span class='badge badge-finalized'>套用基本工項 SP</span>");
 
             string statusAndMailHtml = isExpiredProc
                 ? $"<div><span class='badge badge-finalized'>✅ {h(wRow["executionStatusText"])}</span></div>" +
@@ -6819,7 +6847,7 @@ public class portalController : Controller
                 data-wi-expired='{(isExpiredProc ? "1" : "0")}'
                 data-wi-assignee='{h(wAssigneeStr)}'
                 data-wi-last-session-pk='{wiLastSessPk}'
-                title='💡 按滑鼠右鍵選擇此筆工項並開啟操作選單（彈出 Modal 單筆編輯、修改指派員工、重新投票、發起盲投、刪除）'>
+                title='💡 按滑鼠右鍵選擇此筆一般工項並開啟操作選單（彈出 Modal 單筆編輯、微調 SP、修改指派員工、發起盲投、刪除）'>
                 <td data-sort-value='{h(wCodeStr)}'>
                     <div><strong>{h(wCodeStr)}</strong></div>
                     <div style='font-size:11px;color:#64748b;margin-top:2px;'>{h(wSprintStr)}</div>
@@ -6837,10 +6865,10 @@ public class portalController : Controller
                 <td><strong>{h(wAssigneeStr)}</strong></td>
             </tr>");
         }
-        sb.Append("</tbody></table></div></div>"); // end Tab 3
+        sb.Append("</tbody></table></div></div>"); // end Tab 3-1
 
         // =====================================================================
-        // TAB 4 (2-2): 工項代表類型（編輯投出 SP 的代表工項之各種屬性與所屬預設類型）
+        // TAB 3-2: 基本工項管理（編輯如「資料庫健檢」這種基本工項｜無起訖時間｜套用 3-3 工項類型取得基本規範與一般 SP 範圍｜為盲投主要標的）
         // =====================================================================
         sb.Append($"<div id='pane-types' class='tab-pane {(currentTab == "types" ? "active" : "")}'>");
 
@@ -6900,36 +6928,38 @@ public class portalController : Controller
             sb.Append($@"
             <div class='sp-page-action-bar'>
                 <div class='sp-action-title'>
-                    <span>⚡ 2-2. 工項代表類型（編輯投出 SP 的代表工項屬性與所屬預設類型）</span>
-                    <span style='font-size:12px;font-weight:600;color:#93c5fd;'>（直接點選代表工項編輯各項屬性、設定屬於哪種預設工項類型｜預設工項類型與特徵請至「2-3. 預設工項類型與特徵」）</span>
+                    <span>⚡ 3-2. 基本工項管理（編輯如「資料庫健檢」這種基本工項｜基本工項無起訖時間｜套用 3-3 工項類型取得基本規範與一般 SP 範圍）</span>
+                    <span style='font-size:12px;font-weight:600;color:#93c5fd;'>（多人投票主要投基本工項；一般工項如「集保健檢」於 3-1 套用基本工項的 Story Point 並可微調，且一般工項才有起訖時間）</span>
                 </div>
                 <div class='sp-action-group'>
-                    <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;background:#2563eb;border-color:#60a5fa;' onclick=""resetTypeForm()"">➕ 新增代表工項 (清空表單)</button>
-                    <button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12.5px;background:#eff6ff;color:#1d4ed8;border-color:#93c5fd;' onclick=""openWorkItemTypeEditModal('','','','後端與資料庫','','','project')"">🪟 彈出視窗新增代表工項</button>
-                    <button type='button' class='btn btn-success' style='padding:6px 12px;font-size:12.5px;' onclick=""switchTab('kinds')"">🗂️ 前往 2-3. 預設工項類型與特徵 ➔</button>
+                    <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;background:#2563eb;border-color:#60a5fa;' onclick=""resetTypeForm()"">➕ 新增基本工項 (清空表單)</button>
+                    <button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12.5px;background:#eff6ff;color:#1d4ed8;border-color:#93c5fd;' onclick=""openWorkItemTypeEditModal('','','','資料庫健檢與維運','','','maintenance')"">🪟 彈出視窗新增基本工項</button>
+                    <button type='button' class='btn btn-success' style='padding:6px 12px;font-size:12.5px;' onclick=""switchTab('kinds')"">🗂️ 前往 3-3. 工項類型與基本規範 ➔</button>
+                    <button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12.5px;background:#fff;' onclick=""switchTab('workitems')"">📋 前往 3-1. 一般工項 (如：集保健檢) ➔</button>
                 </div>
             </div>
 
-            <!-- 2-2 核心功能：直接置頂呈現「編輯投出 SP 的代表工項（如：資料庫健檢）之各種屬性與所屬預設類型」 -->
+            <!-- 3-2 核心功能：直接置頂呈現「編輯基本工項（如：資料庫健檢）之屬性、套用 3-3 工項類型與投出之標準 Story Point」 -->
             <div class='card' id='typeAttributeEditorCard' style='border:2px solid #60a5fa;background:linear-gradient(180deg,#eff6ff 0%,#ffffff 100%);margin-bottom:18px;box-shadow:0 4px 14px rgba(37,99,235,0.08);'>
                 <div class='card-title' style='flex-wrap:wrap;gap:8px;'>
                     <div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>
-                        <span id='typeFormTitle'>🏷️ {(initTypePk > 0 ? $"正在編輯代表工項：{h(initTypeName)} ({h(initTypeCode)})" : "新增或編輯投出 SP 的代表工項（設定各項屬性與所屬預設工項類型）")}</span>
+                        <span id='typeFormTitle'>🏷️ {(initTypePk > 0 ? $"正在編輯基本工項：{h(initTypeName)} ({h(initTypeCode)})" : "新增或編輯基本工項（如：資料庫健檢｜無起訖時間｜套用 3-3 工項類型）")}</span>
                         <span class='badge badge-finalized' id='typeCurrentModeBadge'>{(initTypePk > 0 ? $"✏️ 編輯模式 (PK #{initTypePk})" : "➕ 新增模式")}</span>
+                        <span class='badge' style='background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-size:11.5px;'>📌 基本工項無起訖時間（一般工項如「集保健檢」才有起訖時間）</span>
                     </div>
                     <div style='display:flex;gap:8px;flex-wrap:wrap;'>
-                        <button type='button' class='btn btn-outline' style='padding:5px 12px;font-size:12px;background:#fff;' onclick=""resetTypeForm()"">➕ 切換為新增代表工項</button>
+                        <button type='button' class='btn btn-outline' style='padding:5px 12px;font-size:12px;background:#fff;' onclick=""resetTypeForm()"">➕ 切換為新增基本工項</button>
                         <button type='button' class='btn btn-outline' style='padding:5px 12px;font-size:12px;background:#eff6ff;color:#1d4ed8;border-color:#93c5fd;' onclick=""openCurrentLoadedTypeInModal()"">🪟 以彈出 Modal 視窗編輯</button>
-                        <button type='button' class='btn btn-outline' style='padding:5px 12px;font-size:12px;background:#f0fdf4;color:#15803d;border-color:#86efac;' onclick=""switchTab('kinds')"">🗂️ 管理預設工項類型與特徵 (2-3)</button>
+                        <button type='button' class='btn btn-outline' style='padding:5px 12px;font-size:12px;background:#f0fdf4;color:#15803d;border-color:#86efac;' onclick=""switchTab('kinds')"">🗂️ 編輯工項類型與基本規範 (3-3)</button>
                     </div>
                 </div>
 
-                <!-- 快速點選已投出 SP 或既有代表工項列（例如：資料庫健檢、資料庫效能調校、標準 RESTful API 開發...） -->
+                <!-- 快速點選基本工項列（例如：資料庫健檢、資料庫效能調校、標準 API 與資料模組開發...） -->
                 <div style='background:#f8fafc;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;margin-bottom:14px;'>
                     <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;'>
-                        <span style='font-size:12.5px;font-weight:800;color:#1e3a8a;'>🎯 點選下方代表工項按鈕或下拉選單，立即載入該代表工項（如「資料庫健檢」）編輯各種屬性與所屬預設類型：</span>
-                        <select id='quickTypeEditSelector' onchange='onQuickTypeEditSelectChange(this.value)' style='max-width:340px;font-weight:700;background:#fff;border-color:#60a5fa;padding:5px 10px;font-size:12.5px;'>
-                            <option value=''>-- ➕ 新增代表工項 --</option>");
+                        <span style='font-size:12.5px;font-weight:800;color:#1e3a8a;'>🎯 點選下方基本工項按鈕或下拉選單，立即載入該基本工項（如「資料庫健檢」）編輯屬性、套用工項類型或發起盲投：</span>
+                        <select id='quickTypeEditSelector' onchange='onQuickTypeEditSelectChange(this.value)' style='max-width:360px;font-weight:700;background:#fff;border-color:#60a5fa;padding:5px 10px;font-size:12.5px;'>
+                            <option value=''>-- ➕ 新增基本工項 --</option>");
             foreach (DataRow tRow in typeTable.Rows)
             {
                 int tPkVal = Convert.ToInt32(tRow["workItemTypePk"]);
@@ -6938,7 +6968,7 @@ public class portalController : Controller
                 string dKindText = tRow.Table.Columns.Contains("defaultWorkItemKindText") ? (tRow["defaultWorkItemKindText"]?.ToString() ?? "專案") : "專案";
                 string ptDisp = tRow["standardStoryPoint"] != DBNull.Value ? $"{tRow["standardStoryPoint"]} pt" : "待盲投";
                 string selAttr = (tPkVal == initTypePk) ? " selected" : "";
-                sb.Append($"<option value='{tPkVal}'{selAttr}>🏷️ {h(tNameStr)} ({h(tCodeStr)}) ｜ 預設類型：{h(dKindText)} ｜ {h(ptDisp)}</option>");
+                sb.Append($"<option value='{tPkVal}'{selAttr}>🏷️ {h(tNameStr)} ({h(tCodeStr)}) ｜ 套用類型：{h(dKindText)} ｜ {h(ptDisp)}</option>");
             }
             sb.Append(@"
                         </select>
@@ -6955,7 +6985,7 @@ public class portalController : Controller
                 string tCatStr = tRow["categoryName"]?.ToString() ?? "";
                 string tDescStr = tRow["description"]?.ToString() ?? "";
                 string ptJs = tRow["standardStoryPoint"] != DBNull.Value ? tRow["standardStoryPoint"].ToString()! : "";
-                string ptBadge = tRow["standardStoryPoint"] != DBNull.Value ? $"{tRow["standardStoryPoint"]} pt" : "待定案";
+                string ptBadge = tRow["standardStoryPoint"] != DBNull.Value ? $"{tRow["standardStoryPoint"]} pt" : "待盲投";
                 int tDeckPk = tRow.Table.Columns.Contains("defaultCardDeckPk") && tRow["defaultCardDeckPk"] != DBNull.Value ? Convert.ToInt32(tRow["defaultCardDeckPk"]) : 1;
                 int tLastSessPk = tRow.Table.Columns.Contains("lastVotingSessionPk") && tRow["lastVotingSessionPk"] != DBNull.Value ? Convert.ToInt32(tRow["lastVotingSessionPk"]) : 0;
                 bool isActiveInit = (tPkVal == initTypePk);
@@ -6978,20 +7008,20 @@ public class portalController : Controller
                     <input type='hidden' id='typeLastSessionPkHidden' value='{initTypeLastSessPk}' />
                     <div class='form-row'>
                         <div>
-                            <label data-tip='投出 SP 的代表工項名稱（例如：資料庫健檢、資料庫效能調校、標準 RESTful API 開發）' title='投出 SP 的代表工項名稱（例如：資料庫健檢）'>1. 代表工項名稱 (typeName) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='基本工項名稱（例如：資料庫健檢、資料庫效能調校、標準 API 與資料模組開發；投票主要投基本工項，一般工項如「集保健檢」會套用此基本工項的 Story Point）' title='基本工項名稱（例如：資料庫健檢）'>1. 基本工項名稱 (typeName，如：資料庫健檢) <span class='sp-tip-icon'>ⓘ</span></label>
                             <input type='text' name='typeName' id='typeName' value='{h(initTypeName)}' placeholder='例如：資料庫健檢' required style='font-weight:800;border-color:#2563eb;background:#fff;' />
                         </div>
                         <div>
-                            <label style='display:flex;justify-content:space-between;align-items:center;gap:4px;' data-tip='設定此代表工項屬於哪種預設工項類型（如：專案、維運、顧問時數、教育訓練、開發產品）；建立實際工項選擇此代表工項時將自動帶入此預設類型' title='設定此代表工項屬於哪種預設工項類型'>
-                                <span>2. 屬於哪種預設工項類型 <span class='sp-tip-icon'>ⓘ</span></span>
-                                <a href='javascript:void(0)' onclick=""switchTab('kinds')"" style='font-size:11px;color:#1d4ed8;font-weight:700;text-decoration:none;'>🗂️ 管理預設類型(2-3)</a>
+                            <label style='display:flex;justify-content:space-between;align-items:center;gap:4px;' data-tip='設定此基本工項套用哪種 3-3 工項類型（如：專案、維運、顧問時數、教育訓練、開發產品），套用後即顯示該類型的一般工項基本規範，並告知該類型一般的 Story Point 範圍' title='設定此基本工項套用哪種 3-3 工項類型'>
+                                <span>2. 套用工項類型 (3-3 帶出基本規範與 SP 範圍) <span class='sp-tip-icon'>ⓘ</span></span>
+                                <a href='javascript:void(0)' onclick=""switchTab('kinds')"" style='font-size:11px;color:#1d4ed8;font-weight:700;text-decoration:none;'>🗂️ 編輯類型(3-3)</a>
                             </label>
                             <select name='defaultWorkItemKind' id='typeKind' onchange=""onModalKindSelectChange('typeKind','mainTypeKindFeatureBanner')"" style='font-weight:800;border-color:#2563eb;background:#eff6ff;'>
                                 {dynamicKindOptionsHtml}
                             </select>
                         </div>
                         <div>
-                            <label data-tip='此代表工項所屬的技術或業務分類屬性（可下拉選擇常用分類或自行輸入）' title='此代表工項所屬的技術或業務分類屬性'>3. 技術 / 業務分類屬性 (categoryName) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='此基本工項所屬的技術或業務分類屬性（可下拉選擇常用分類或自行輸入）' title='此基本工項所屬的技術或業務分類屬性'>3. 技術 / 業務分類屬性 (categoryName) <span class='sp-tip-icon'>ⓘ</span></label>
                             <input type='text' name='categoryName' id='typeCat' list='typeCategoryDatalist' value='{h(initTypeCat)}' placeholder='例如：資料庫健檢與維運 / 後端與資料庫' required />
                             <datalist id='typeCategoryDatalist'>
                                 <option value='資料庫健檢與維運'></option>
@@ -7001,44 +7031,44 @@ public class portalController : Controller
                                 <option value='雲端與資安維運'></option>
                                 <option value='教育訓練與知識傳承'></option>
                                 <option value='核心產品研發'></option>
-                                <option value='一般代表類型'></option>
+                                <option value='一般基本工項'></option>
                             </datalist>
                         </div>
                         <div>
-                            <label data-tip='投出或核定的標準 Story Point 點數（建立實際工項選取此代表工項時會自動帶入此點數）' title='投出或核定的標準 Story Point 點數'>4. 投出 / 核定標準 Story Point <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='number' step='0.5' min='0' max='200' name='standardStoryPoint' id='typePt' value='{h(initTypePt)}' placeholder='例如：8 (留空為待盲投定案)' style='font-weight:800;color:#1d4ed8;' />
+                            <label data-tip='基本工項投出或核定的標準 Story Point 點數（一般工項如「集保健檢」套用此基本工項時會自動帶入此點數，且一般工項仍可微調）' title='基本工項投出或核定的標準 Story Point 點數'>4. 基本工項標準 Story Point (盲投共識點數) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='number' step='0.5' min='0' max='200' name='standardStoryPoint' id='typePt' value='{h(initTypePt)}' placeholder='例如：2 (留空為待盲投定案)' style='font-weight:800;color:#1d4ed8;' />
                         </div>
                     </div>
 
-                    <!-- 即時顯示目前所選「屬於哪種預設工項類型」之三項主要特徵預覽卡 -->
+                    <!-- 即時顯示目前所選「套用工項類型 (3-3)」之一般工項基本規範與一般 Story Point 範圍預覽卡 -->
                     <div id='mainTypeKindFeatureBanner' style='margin-bottom:12px;'></div>
 
                     <div class='form-row'>
                         <div>
-                            <label data-tip='代表工項唯一識別代碼（例如：TYPE_DB_HEALTH_CHECK 或自動編號 TYPE_2026...）' title='代表工項唯一識別代碼'>5. 代表工項代碼 (typeCode) <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' name='typeCode' id='typeCode' value='{h(initTypeCode)}' placeholder='例如：TYPE_DB_HEALTH_CHECK' required />
+                            <label data-tip='基本工項唯一識別代碼（例如：TYPE-DB-HC 或自動編號 TYPE_2026...）' title='基本工項唯一識別代碼'>5. 基本工項代碼 (typeCode) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' name='typeCode' id='typeCode' value='{h(initTypeCode)}' placeholder='例如：TYPE-DB-HC' required />
                         </div>
                         <div>
-                            <label data-tip='發起此代表工項多人盲投時預設採用的 Planning Poker 撲克牌組樣式' title='預設盲投撲克牌組'>6. 預設盲投撲克牌組 (defaultCardDeckPk) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='發起此基本工項多人盲投時預設採用的 Planning Poker 撲克牌組樣式' title='預設盲投撲克牌組'>6. 預設盲投撲克牌組 (defaultCardDeckPk) <span class='sp-tip-icon'>ⓘ</span></label>
                             <select name='defaultCardDeckPk' id='typeCardDeckPk'>
                                 {typeDeckOptionsHtml}
                             </select>
                         </div>
                         <div style='grid-column: span 2;'>
-                            <label data-tip='詳細定義此代表工項（如資料庫健檢）的工作內容、執行步驟、技術複雜度與驗收交付標準 (DoD)，供團隊盲投與執行工項對照' title='詳細定義此代表工項的工作內容、複雜度與驗收標準 (DoD)'>7. 代表工項工作內容、複雜度與驗收標準屬性說明 (description / DoD) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='詳細定義此基本工項（如資料庫健檢）的標準工作內容、執行步驟、技術複雜度與驗收交付標準 (DoD)，供團隊盲投估算與一般工項套用對照（基本工項本身沒有起訖時間）' title='詳細定義此基本工項的工作內容、複雜度與驗收標準 (DoD)'>7. 基本工項工作內容、複雜度與驗收標準說明 (description / DoD｜基本工項無起訖時間) <span class='sp-tip-icon'>ⓘ</span></label>
                             <input type='text' name='description' id='typeDesc' value='{h(initTypeDesc)}' placeholder='例如：透過 script 收集狀態，分析健康狀態，提供健檢報告並完成現場或線上報告' />
                         </div>
                     </div>
 
                     <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding-top:6px;border-top:1px dashed #cbd5e1;'>
-                        <label style='display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-size:13px;color:#1e3a8a;font-weight:700;' data-tip='勾選後，儲存時將一併把「所屬預設工項類型」與「標準 Story Point」同步更新至所有套用此代表工項且尚未結案之既有實際工項'>
+                        <label style='display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-size:13px;color:#1e3a8a;font-weight:700;' data-tip='勾選後，儲存時將一併把「所屬工項類型」與「標準 Story Point」同步更新至所有套用此基本工項且尚未手動微調點數之未結案一般工項（如集保健檢）'>
                             <input type='checkbox' name='syncExistingOpenWorkItem' value='true' checked style='width:auto;' />
-                            <span>🔄 儲存時同步更新關聯未結案工項之「預設工項類型」與「標準 Story Point」（未手動微調點數之工項）</span>
+                            <span>🔄 儲存時同步更新套用此基本工項之未結案一般工項（未微調 SP 者自動同步標準點數）</span>
                         </label>
                         <div style='display:flex;gap:8px;flex-wrap:wrap;'>
                             <button type='button' class='btn btn-outline' id='btnTypeRevoteNextRound' style='padding:7px 12px;font-size:12.5px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;{(initTypePk > 0 ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeRevote('nextRound')"">🔄 重啟新一輪盲投</button>
                             <button type='button' class='btn btn-outline' id='btnTypeRevoteRestartAll' style='padding:7px 12px;font-size:12.5px;color:#b45309;border-color:#fcd34d;background:#fffbeb;{(initTypePk > 0 ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeRevote('restartAll')"">🃏 重新盲投設定 (全部重新開始)</button>
-                            <button type='submit' class='btn btn-primary' id='typeSubmitBtn' style='padding:8px 18px;font-size:13.5px;'>💾 {(initTypePk > 0 ? $"儲存「{h(initTypeName)}」代表工項屬性與預設類型" : "新增並儲存代表工項")}</button>
+                            <button type='submit' class='btn btn-primary' id='typeSubmitBtn' style='padding:8px 18px;font-size:13.5px;'>💾 {(initTypePk > 0 ? $"儲存「{h(initTypeName)}」基本工項與套用類型" : "新增並儲存基本工項")}</button>
                         </div>
                     </div>
                 </form>
@@ -7048,26 +7078,26 @@ public class portalController : Controller
         sb.Append($@"
         <div class='card'>
             <div class='card-title'>
-                <span>🏷️ 投出 SP 的工項代表類型（代表工項）與所屬預設類型一覽表</span>
-                <span class='badge badge-user' id='typeFilterCountLabel'>共 {typeTable.Rows.Count} 筆代表工項</span>
+                <span>🏷️ 3-2. 基本工項清單（如「資料庫健檢」：套用 3-3 工項類型取得基本規範與一般 SP 範圍｜無起訖時間｜供 3-1 一般工項套用）</span>
+                <span class='badge badge-user' id='typeFilterCountLabel'>共 {typeTable.Rows.Count} 筆基本工項</span>
             </div>
-            <!-- 工項代表類型即時篩選列 -->
+            <!-- 基本工項即時篩選列 -->
             <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                 <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
                     <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
-                        💡 <strong>操作提示：</strong><strong>單擊 (Click)</strong> 任一代表工項列（或點擊「✏️ 載入表單編輯」）可立即載入上方表單編輯其<strong>各種屬性與所屬預設工項類型</strong>；<strong>雙擊 (Double-Click)</strong> 直接彈出單筆編輯 Modal；<strong>按滑鼠右鍵</strong>開啟完整快捷選單！
+                        💡 <strong>操作提示：</strong><strong>單擊 (Click)</strong> 任一基本工項列可立即載入上方表單編輯其<strong>基本工項屬性與套用的工項類型</strong>；<strong>雙擊 (Double-Click)</strong> 直接彈出單筆編輯 Modal；<strong>按滑鼠右鍵</strong>可針對該基本工項發起多人盲投！
                     </div>
                     <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick='resetWorkItemTypeFilter()'>🔄 清除全部篩選條件</button>
                 </div>
                 <div class='form-row' style='margin-bottom:0;align-items:end;'>
                     <div>
-                        <label data-tip='輸入代表工項代碼、名稱（如：資料庫健檢）、分類或屬性說明關鍵字即時篩選表格' title='輸入代表工項代碼、名稱、分類或屬性說明關鍵字即時篩選表格'>🔍 關鍵字快速篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <label data-tip='輸入基本工項代碼、名稱（如：資料庫健檢）、分類或屬性說明關鍵字即時篩選表格' title='輸入基本工項代碼、名稱、分類或屬性說明關鍵字即時篩選表格'>🔍 關鍵字快速篩選 <span class='sp-tip-icon'>ⓘ</span></label>
                         <input type='text' id='filterTypeKeyword' oninput='filterWorkItemTypeTable()' placeholder='輸入例如：資料庫健檢 / API / 代碼 / 分類 / 說明...' />
                     </div>
                     <div>
-                        <label data-tip='依代表工項所屬的預設工項類型（專案、維運、顧問時數、教育訓練、開發產品）過濾列表' title='依所屬預設工項類型過濾代表工項列表'>🏷️ 所屬預設工項類型篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <label data-tip='依基本工項所套用的 3-3 工項類型（專案、維運、顧問時數、教育訓練、開發產品）過濾列表' title='依所套用的 3-3 工項類型過濾基本工項列表'>🗂️ 套用工項類型 (3-3) 篩選 <span class='sp-tip-icon'>ⓘ</span></label>
                         <select id='filterTypeKind' onchange='filterWorkItemTypeTable()'>
-                            <option value=''>全部預設工項類型</option>");
+                            <option value=''>全部工項類型</option>");
         foreach (DataRow kRow in kindTable.Rows)
         {
             string kCode = kRow["kindCode"]?.ToString() ?? "";
@@ -7079,7 +7109,7 @@ public class portalController : Controller
                         </select>
                     </div>
                     <div>
-                        <label data-tip='依是否已完成標準點數核定過濾代表工項列表' title='依是否已完成標準點數核定過濾代表工項列表'>📊 盲投估算狀態篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <label data-tip='依是否已完成標準點數核定過濾基本工項列表' title='依是否已完成標準點數核定過濾基本工項列表'>📊 盲投估算狀態篩選 <span class='sp-tip-icon'>ⓘ</span></label>
                         <select id='filterTypeStatus' onchange='filterWorkItemTypeTable()'>
                             <option value=''>全部估算狀態</option>
                             <option value='finalized'>✅ 已投出/核定標準 Story Point</option>
@@ -7090,7 +7120,7 @@ public class portalController : Controller
                 </div>
             </div>
             <table id='workItemTypeDataTable'>
-                <thead><tr><th>代表工項代碼</th><th>代表工項名稱</th><th>所屬預設工項類型與主要特徵</th><th>技術/業務分類屬性</th><th>工作內容、複雜度與驗收標準說明</th><th>投出標準 SP</th><th>估算狀態与議程</th><th>套用工項數</th></tr></thead><tbody>");
+                <thead><tr><th>基本工項代碼</th><th>基本工項名稱 (無起訖)</th><th>套用工項類型 (3-3) 與一般 SP 範圍/規範</th><th>技術/業務分類屬性</th><th>基本工項工作內容與驗收標準 (DoD)</th><th>標準 SP (供一般工項套用)</th><th>盲投估算狀態與議程</th><th>套用之一般工項數</th></tr></thead><tbody>");
         foreach (DataRow tRow in typeTable.Rows)
         {
             int tPkVal = Convert.ToInt32(tRow["workItemTypePk"]);
@@ -7103,6 +7133,12 @@ public class portalController : Controller
             string dKindFeature = tRow.Table.Columns.Contains("defaultWorkItemKindMainFeature") && tRow["defaultWorkItemKindMainFeature"] != DBNull.Value
                 ? (tRow["defaultWorkItemKindMainFeature"]?.ToString() ?? "")
                 : "";
+            decimal dKindMinPt = tRow.Table.Columns.Contains("defaultWorkItemKindMinPoint") && tRow["defaultWorkItemKindMinPoint"] != DBNull.Value
+                ? Convert.ToDecimal(tRow["defaultWorkItemKindMinPoint"])
+                : 1m;
+            decimal dKindMaxPt = tRow.Table.Columns.Contains("defaultWorkItemKindMaxPoint") && tRow["defaultWorkItemKindMaxPoint"] != DBNull.Value
+                ? Convert.ToDecimal(tRow["defaultWorkItemKindMaxPoint"])
+                : 8m;
             string tCodeStr = tRow["typeCode"]?.ToString() ?? "";
             string tNameStr = tRow["typeName"]?.ToString() ?? "";
             string tCatStr = tRow["categoryName"]?.ToString() ?? "";
@@ -7141,17 +7177,20 @@ public class portalController : Controller
                 data-type-est-status='{h(tEstStatus)}'
                 data-type-last-session-pk='{tLastSessPk}'
                 onclick=""selectTypeRowForInlineEdit(this, event)""
-                title='💡 單擊載入上方表單編輯「{h(tNameStr)}」各項屬性與所屬預設類型；雙擊彈出 Modal 編輯；按滑鼠右鍵開啟操作選單'>
+                title='💡 單擊載入上方表單編輯基本工項「{h(tNameStr)}」屬性與套用工項類型；雙擊彈出 Modal 編輯；按滑鼠右鍵開啟操作選單'>
                 <td data-sort-value='{h(tCodeStr)}'>
                     <strong>{h(tCodeStr)}</strong>
                 </td>
                 <td>
                     <strong style='font-size:14px;color:#0f172a;'>{h(tNameStr)}</strong>
-                    {(!string.IsNullOrWhiteSpace(tDeckName) ? $"<div style='font-size:11px;color:#64748b;margin-top:2px;'>🃏 牌組：{h(tDeckName)}</div>" : "")}
+                    <div style='font-size:11px;color:#64748b;margin-top:2px;'>📌 基本工項 (無起訖時間){(!string.IsNullOrWhiteSpace(tDeckName) ? $"｜🃏 {h(tDeckName)}" : "")}</div>
                 </td>
                 <td>
-                    <div><span class='badge badge-user' style='display:inline-flex;align-items:center;gap:4px;'>{renderIconDisplayHtml(dKindIcon, 16)} {h(dKindText)} ({h(dKind)})</span></div>
-                    {(string.IsNullOrWhiteSpace(dKindFeature) ? "" : $"<div style='font-size:11.5px;color:#475569;margin-top:3px;line-height:1.35;'>{h(dKindFeature)}</div>")}
+                    <div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>
+                        <span class='badge badge-user' style='display:inline-flex;align-items:center;gap:4px;'>{renderIconDisplayHtml(dKindIcon, 16)} {h(dKindText)} ({h(dKind)})</span>
+                        <span class='badge' style='background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd;font-size:11px;font-weight:800;'>📐 類型一般 SP 範圍：{dKindMinPt:0.##} ~ {dKindMaxPt:0.##} pt</span>
+                    </div>
+                    {(string.IsNullOrWhiteSpace(dKindFeature) ? "" : $"<div style='font-size:11.5px;color:#475569;margin-top:3px;line-height:1.35;'>📋 基本規範：{h(dKindFeature)}</div>")}
                 </td>
                 <td><span class='badge' style='background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;'>{h(tCatStr)}</span></td>
                 <td style='line-height:1.45;'>{h(tDescStr)}</td>
@@ -7160,13 +7199,13 @@ public class portalController : Controller
                     <span class='badge {tEstBadgeCls}'>{h(tRow["estimationStatusText"])}</span>
                     {(!string.IsNullOrWhiteSpace(tLastSessCode) ? $"<div style='font-size:11px;color:#475569;margin-top:3px;'>議程：{h(tLastSessCode)}</div>" : "")}
                 </td>
-                <td><strong>{tRow["linkedWorkItemCount"]}</strong> 個工項</td>
+                <td><strong>{tRow["linkedWorkItemCount"]}</strong> 件一般工項</td>
             </tr>");
         }
-        sb.Append("</tbody></table></div></div>"); // end Tab 4 (2-2 types)
+        sb.Append("</tbody></table></div></div>"); // end Tab 3-2 (types)
 
         // =====================================================================
-        // TAB 4B (2-3): 預設工項類型與主要特徵增、刪、修、查專頁 (#pane-kinds)
+        // TAB 3-3: 工項類型與基本規範增、刪、修、查專頁 (#pane-kinds)
         // =====================================================================
         sb.Append($"<div id='pane-kinds' class='tab-pane {(currentTab == "kinds" ? "active" : "")}'>");
         if (isAdmin)
@@ -7174,13 +7213,13 @@ public class portalController : Controller
             sb.Append(@"
             <div class='sp-page-action-bar'>
                 <div class='sp-action-title'>
-                    <span>⚡ 2-3. 預設工項類型與主要特徵管理（專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品 / 自訂類型）</span>
-                    <span style='font-size:12px;font-weight:600;color:#93c5fd;'>（增、刪、修、查預設工項類型與三項主要特徵｜選擇 36+ 款代表圖示或自行上傳新增圖示）</span>
+                    <span>⚡ 3-3. 工項類型與基本規範管理（專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品 / 自訂類型）</span>
+                    <span style='font-size:12px;font-weight:600;color:#93c5fd;'>（設定各類型之一般工項基本規範與一般 Story Point 範圍上下限，供 3-2 基本工項套用）</span>
                 </div>
                 <div class='sp-action-group'>
-                    <button type='button' class='btn btn-success' style='padding:6px 12px;font-size:12.5px;' onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','kinds','','','')"">➕ 新增預設工項類型 (彈出 Modal)</button>
-                    <button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12.5px;background:#eff6ff;color:#1d4ed8;border-color:#93c5fd;' onclick=""resetWorkItemKindForm('kinds'); document.getElementById('wikCode_kinds')?.focus();"">📝 清空下方表單新增預設類型</button>
-                    <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;background:#2563eb;border-color:#60a5fa;' onclick=""switchTab('types')"">🏷️ 前往 2-2. 工項代表類型 (編輯投出 SP 代表工項) ➔</button>
+                    <button type='button' class='btn btn-success' style='padding:6px 12px;font-size:12.5px;' onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','kinds','','','',1,8)"">➕ 新增工項類型與基本規範 (彈出 Modal)</button>
+                    <button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12.5px;background:#eff6ff;color:#1d4ed8;border-color:#93c5fd;' onclick=""resetWorkItemKindForm('kinds'); document.getElementById('wikCode_kinds')?.focus();"">📝 清空下方表單新增工項類型</button>
+                    <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;background:#2563eb;border-color:#60a5fa;' onclick=""switchTab('types')"">🏷️ 前往 3-2. 基本工項管理 (如：資料庫健檢) ➔</button>
                 </div>
             </div>");
         }
@@ -7189,15 +7228,15 @@ public class portalController : Controller
             sb.Append(@"
             <div class='sp-page-action-bar'>
                 <div class='sp-action-title'>
-                    <span>🗂️ 2-3. 預設工項類型與主要特徵一覽表（專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品）</span>
+                    <span>🗂️ 3-3. 工項類型與一般工項基本規範一覽表（專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品）</span>
                 </div>
                 <div class='sp-action-group'>
-                    <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;' onclick=""switchTab('types')"">🏷️ 前往 2-2. 代表類型參考 ➔</button>
+                    <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;' onclick=""switchTab('types')"">🏷️ 前往 3-2. 基本工項參考 ➔</button>
                 </div>
             </div>");
         }
         renderWorkItemKindCrudCard("kinds");
-        sb.Append("</div>"); // end Tab 4B (2-3 kinds)
+        sb.Append("</div>"); // end Tab 3-3 (kinds)
 
         // =====================================================================
         // TAB 5: 查詢員工身上有多少 Story Point，以及員工所屬部門的總 Story Point 數
@@ -8393,27 +8432,27 @@ public class portalController : Controller
                 'voting': '🃏 1-1. 即時盲投大廳',
                 'roundSetup': '⚙️ 1-2. 設定盲投回合',
                 'history': '📜 1-3. 估算過程查詢',
-                'workitems': isViewerAdmin ? '📋 2-1. 工項與員工指派' : '📋 2-1. 我的工項查詢',
-                'types': isViewerAdmin ? '🏷️ 2-2. 工項代表類型' : '🏷️ 2-2. 代表類型參考',
-                'kinds': '🗂️ 2-3. 預設工項類型與特徵',
-                'stats': isViewerAdmin ? '📊 3-1. 員工與部門統計' : '📊 3-1. 我的分數統計',
-                'myAccount': '🔑 修改我的帳密',
-                'employees': isViewerAdmin ? '👥 4-1. 員工與組織管理' : '🔑 4-1. 修改我的帳密',
-                'logs': '🛡️ 5-1. 系統 Log 查詢',
-                'help': '📖 6-1. 線上說明與搜尋'
+                'workitems': isViewerAdmin ? '📋 3-1. 一般工項與員工指派' : '📋 3-1. 我的工項查詢',
+                'types': isViewerAdmin ? '🏷️ 3-2. 基本工項管理' : '🏷️ 3-2. 基本工項參考',
+                'kinds': '🗂️ 3-3. 工項類型與基本規範',
+                'stats': isViewerAdmin ? '📊 4-1. 員工與部門統計' : '📊 4-1. 我的分數統計',
+                'myAccount': '🔑 5. 修改我的帳密',
+                'employees': isViewerAdmin ? '👥 6-1. 員工與組織管理' : '🔑 5. 修改我的帳密',
+                'logs': '🛡️ 7-1. 系統 Log 查詢',
+                'help': '📖 8-1. 線上說明與搜尋'
             };
             const tipMap = {
-                'voting': '1-1. 多人即時盲投大廳 (Planning Poker)：參與盲投出牌、同步翻牌揭曉與拍板定案',
-                'roundSetup': '1-2. 設定盲投回合：設定估算標的、參與者名單、高低點數上下限、共識規則與計時',
+                'voting': '1-1. 多人即時盲投大廳 (Planning Poker)：參與盲投出牌、同步翻牌揭曉與拍板定案（投票主要投基本工項）',
+                'roundSetup': '1-2. 設定盲投回合：選擇目標工項代表類型（專案、維運、顧問時數...）帶出基本規範與一般 SP 範圍，再指定要盲投的基本工項（如：資料庫健檢）',
                 'history': isViewerAdmin ? '1-3. 查詢訂出 Story Point 的過程：檢視每回合出牌明細、討論備註與點數異動紀錄' : '1-3. 查詢我的投票與訂定點數過程：檢視個人投票紀錄與工項點數異動歷程',
-                'workitems': isViewerAdmin ? '2-1. 工項點數查詢與賦予員工設定：查詢各工項點數、選擇代表類型自動帶入或修改員工指派' : '2-1. 我的工項與個人分數查詢：顯示賦予給我本人的工項與個人配額分數',
-                'types': isViewerAdmin ? '2-2. 工項代表類型管理：編輯投出 SP 的代表工項（如資料庫健檢）之各種屬性、所屬預設工項類型與標準點數' : '2-2. 工項代表類型標準點數參考：查閱各工項代表類型的屬性、所屬預設類型與標準 Story Point 定義',
-                'kinds': isViewerAdmin ? '2-3. 預設工項類型與特徵管理：增、刪、修、查管理專案、維運、顧問時數、教育訓練、開發產品等預設工項類型與三項主要特徵' : '2-3. 預設工項類型與主要特徵一覽表：查詢各預設工項類型之主要特徵',
-                'stats': isViewerAdmin ? '3-1. 員工與部門總 Story Point 統計：查詢員工身上的點數與所屬部門的總 Story Point 數' : '3-1. 我的個人總 Story Point 分數統計：查看個人工項數量與各狀態 Story Point 分數',
-                'myAccount': '修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號與密碼',
-                'employees': isViewerAdmin ? '4-1. 員工列表與登入帳密管理：增刪修查、部門主管設定、樹狀階層與批次匯入' : '4-1. 修改我的個人登入帳號與密碼：檢視個人基本資料並修改帳密',
-                'logs': '5-1. 系統與錯誤 Log 查詢中心 (tbLog)：查詢錯誤碼、行號、例外訊息與防崩潰保護紀錄',
-                'help': '6-1. 系統線上說明與操作畫面搜尋手冊：支援關鍵字全文搜尋與 12 幅實機操作畫面詳解'
+                'workitems': isViewerAdmin ? '3-1. 一般工項與員工指派：建立或編輯一般工項（如：集保健檢），套用 3-2 基本工項之 Story Point、支援微調 SP，且一般工項才有起訖時間' : '3-1. 我的工項與個人分數查詢：顯示賦予給我本人的工項與個人配額分數',
+                'types': isViewerAdmin ? '3-2. 基本工項管理：編輯如「資料庫健檢」這種基本工項（無起訖時間，為盲投主要標的），並套用 3-3 工項類型取得基本規範與一般 SP 範圍' : '3-2. 基本工項標準點數參考：查閱各基本工項（如資料庫健檢）的標準 Story Point 與套用之工項類型',
+                'kinds': isViewerAdmin ? '3-3. 工項類型與基本規範管理：編輯專案、維運、顧問時數、教育訓練、開發產品等工項類型，定義一般工項基本規範與一般 Story Point 範圍' : '3-3. 工項類型與基本規範一覽表：查閱各工項類型之基本規範與一般 Story Point 範圍',
+                'stats': isViewerAdmin ? '4-1. 員工與部門總 Story Point 統計：查詢員工身上的點數與所屬部門的總 Story Point 數' : '4-1. 我的個人總 Story Point 分數統計：查看個人工項數量與各狀態 Story Point 分數',
+                'myAccount': '5. 修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號與密碼',
+                'employees': isViewerAdmin ? '6-1. 員工列表與登入帳密管理：增刪修查、部門主管設定、樹狀階層與批次匯入' : '5. 修改我的個人登入帳號與密碼：檢視個人基本資料並修改帳密',
+                'logs': '7-1. 系統與錯誤 Log 查詢中心 (tbLog)：查詢錯誤碼、行號、例外訊息與防崩潰保護紀錄',
+                'help': '8-1. 系統線上說明與操作畫面搜尋手冊：支援關鍵字全文搜尋與三層工項架構詳解'
             };
             const pill = document.getElementById('currentMenuTitlePill');
             if (pill && titleMap[tabName]) {
@@ -8534,29 +8573,101 @@ public class portalController : Controller
             autoFillSetupTitle();
         }
 
+        function onSetupWorkItemKindChange(skipSyncTypeDropdown) {
+            const kindSel = document.getElementById('setupWorkItemKind');
+            const banner = document.getElementById('setupKindNormBanner');
+            if (!kindSel) return;
+            const opt = kindSel.options[kindSel.selectedIndex];
+            const kCode = opt?.getAttribute('data-kind-code') || kindSel.value || 'project';
+            const kName = opt?.getAttribute('data-kind-name') || opt?.textContent || kCode;
+            const kIcon = opt?.getAttribute('data-kind-icon') || '📌';
+            const kMinPt = opt?.getAttribute('data-kind-min-pt') || '1';
+            const kMaxPt = opt?.getAttribute('data-kind-max-pt') || '8';
+            const kFeature = opt?.getAttribute('data-kind-feature') || '';
+            const kEst = opt?.getAttribute('data-kind-estimation') || '';
+            const kDeliv = opt?.getAttribute('data-kind-deliverable') || '';
+
+            if (banner) {
+                banner.innerHTML = `
+                    <div style=""background:#f0f9ff;border:1.5px solid #93c5fd;border-radius:9px;padding:10px 12px;font-size:12.5px;color:#0f172a;line-height:1.5;"">
+                        <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:4px;"">
+                            <span style=""font-weight:800;color:#1e3a8a;display:inline-flex;align-items:center;gap:6px;"">
+                                ${renderIconHtmlJs(kIcon, kName)}
+                                <span>目前所選工項代表類型【${escapeModalHtml(kName)} (${escapeModalHtml(kCode)})】之一般工項基本規範：</span>
+                            </span>
+                            <span class=""badge"" style=""background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;font-size:12px;font-weight:800;"">📐 此類型一般 Story Point 範圍：${escapeModalHtml(kMinPt)} ~ ${escapeModalHtml(kMaxPt)} pt</span>
+                        </div>
+                        ${kFeature ? `<div><strong>⭐ 基本規範一（核心工作性質）：</strong><span>${escapeModalHtml(kFeature)}</span></div>` : ''}
+                        ${kEst ? `<div><strong>📐 基本規範二（點數範圍與計量規範）：</strong><span style=""color:#1e40af;font-weight:700;"">${escapeModalHtml(kEst)}</span></div>` : ''}
+                        ${kDeliv ? `<div><strong>⏰ 基本規範三（一般工項起訖與交付規範）：</strong><span style=""color:#334155;"">${escapeModalHtml(kDeliv)}</span></div>` : ''}
+                    </div>`;
+            }
+
+            // 同步將此工項類型的一般 SP 範圍上下限帶入本回合允許點數上下限（若尚未鎖定特定既有 Session）
+            const selSession = document.getElementById('setupSessionSelector');
+            if (!selSession || selSession.value === '') {
+                const minInput = document.getElementById('setupMinStoryPoint');
+                const maxInput = document.getElementById('setupMaxStoryPoint');
+                if (minInput && kMinPt) minInput.value = kMinPt;
+                if (maxInput && kMaxPt) maxInput.value = kMaxPt;
+                updateSetupCardPreview();
+            }
+
+            if (!skipSyncTypeDropdown) {
+                const typeSel = document.getElementById('setupWorkItemTypePk');
+                if (typeSel) {
+                    const curOpt = typeSel.options[typeSel.selectedIndex];
+                    if (!curOpt || curOpt.value === '0' || curOpt.getAttribute('data-kind') !== kCode) {
+                        const matchOpt = Array.from(typeSel.options).find(o => o.value !== '0' && o.getAttribute('data-kind') === kCode);
+                        if (matchOpt) {
+                            typeSel.value = matchOpt.value;
+                        }
+                    }
+                }
+                autoFillSetupTitle();
+            }
+        }
+
+        function onSetupBasicWorkItemSelectChange() {
+            const typeSel = document.getElementById('setupWorkItemTypePk');
+            const kindSel = document.getElementById('setupWorkItemKind');
+            if (typeSel && kindSel) {
+                const opt = typeSel.options[typeSel.selectedIndex];
+                const dKind = opt?.getAttribute('data-kind') || '';
+                if (dKind && kindSel.value !== dKind) {
+                    kindSel.value = dKind;
+                    onSetupWorkItemKindChange(true);
+                }
+            }
+            autoFillSetupTitle();
+        }
+
         function autoFillSetupTitle() {
             const selSession = document.getElementById('setupSessionSelector');
             if (selSession && selSession.value !== '') return; // 修改既有議程時不自動覆蓋標題
             const kind = document.getElementById('setupTargetKind')?.value || 'workItemType';
             const titleInput = document.getElementById('setupSessionTitle');
             if (!titleInput) return;
+            const kindSel = document.getElementById('setupWorkItemKind');
+            const kindOpt = kindSel?.options[kindSel.selectedIndex];
+            const kindName = kindOpt?.getAttribute('data-kind-name') || '專案';
             if (kind === 'workItemType') {
                 const sel = document.getElementById('setupWorkItemTypePk');
                 const opt = sel?.options[sel.selectedIndex];
                 const name = opt?.getAttribute('data-name') || '';
                 if (name) {
-                    titleInput.value = '【代表類型估算】' + name + ' 標準點數訂定';
+                    titleInput.value = '【基本工項盲投｜' + kindName + '】' + name + ' 標準點數訂定';
                 } else {
-                    titleInput.placeholder = '請輸入新工項代表類型名稱（例如：【代表類型估算】複合交易 API 模組標準點數訂定）';
+                    titleInput.placeholder = '請輸入新基本工項名稱（例如：資料庫健檢）';
                 }
             } else {
                 const sel = document.getElementById('setupWorkItemPk');
                 const opt = sel?.options[sel.selectedIndex];
                 const name = opt?.getAttribute('data-name') || '';
                 if (name) {
-                    titleInput.value = '【特定工項估算】' + name;
+                    titleInput.value = '【一般工項微調盲投】' + name;
                 } else {
-                    titleInput.placeholder = '請輸入新實際工項名稱（例如：【特定工項估算】核心交易引擎批次結算優化）';
+                    titleInput.placeholder = '請輸入新一般工項名稱（例如：集保健檢）';
                 }
             }
         }
@@ -8911,6 +9022,7 @@ public class portalController : Controller
             initFloatingTooltips();
             initAllSortableLockableTables();
             initTableRowContextMenu();
+            onSetupWorkItemKindChange(true);
             if (document.getElementById('setupSessionTitle') && !document.getElementById('setupSessionTitle').value) {
                 autoFillSetupTitle();
             }
@@ -9650,16 +9762,16 @@ public class portalController : Controller
                     <input type=""hidden"" name=""workItemPk"" value=""${escapeModalHtml(pk)}"" />
                     <div class=""form-row"">
                         <div>
-                            <label>工項代碼</label>
+                            <label>一般工項代碼</label>
                             <input type=""text"" name=""itemCode"" id=""modalWiCode"" value=""${escapeModalHtml(code)}"" required />
                         </div>
                         <div>
                             <label style=""display:flex;justify-content:space-between;align-items:center;gap:4px;"">
-                                <span>預設工項類型</span>
+                                <span>工項類型 (3-3)</span>
                                 <span style=""display:inline-flex;gap:3px;"">
-                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','workitems','','','')"" title=""新增預設工項類型"">➕ 新增</button>
-                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#0f766e;border-color:#5eead4;background:#f0fdfa;"" onclick=""editSelectedModalKindBySelectId('modalWiKind','workitems')"" title=""修改目前選取的預設工項類型與主要特徵"">✏️ 修改</button>
-                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""deleteSelectedModalKindBySelectId('modalWiKind','workitems')"" title=""刪除目前選取的預設工項類型"">🗑️ 刪除</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','workitems','','','',1,8)"" title=""新增工項類型"">➕ 新增</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#0f766e;border-color:#5eead4;background:#f0fdfa;"" onclick=""editSelectedModalKindBySelectId('modalWiKind','workitems')"" title=""修改目前選取的工項類型與基本規範"">✏️ 修改</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""deleteSelectedModalKindBySelectId('modalWiKind','workitems')"" title=""刪除目前選取的工項類型"">🗑️ 刪除</button>
                                 </span>
                             </label>
                             <select name=""workItemKind"" id=""modalWiKind"" onchange=""onModalKindSelectChange('modalWiKind','modalWiKindFeatureBanner')"" required style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">
@@ -9667,22 +9779,22 @@ public class portalController : Controller
                             </select>
                         </div>
                         <div>
-                            <label>工項標題</label>
-                            <input type=""text"" name=""itemTitle"" id=""modalWiTitle"" value=""${escapeModalHtml(title)}"" placeholder=""請輸入工項標題"" required />
+                            <label>一般工項名稱（如：集保健檢）</label>
+                            <input type=""text"" name=""itemTitle"" id=""modalWiTitle"" value=""${escapeModalHtml(title)}"" placeholder=""例如：集保健檢"" required />
                         </div>
                     </div>
                     <div id=""modalWiKindFeatureBanner"" style=""margin-bottom:12px;""></div>
                     <div class=""form-row"">
                         <div>
-                            <label data-tip=""設定工項開始時間（起時 startDate）"" title=""設定工項開始時間（起時 startDate）"">開始時間 (起時) <span class=""sp-tip-icon"">ⓘ</span></label>
+                            <label data-tip=""設定一般工項開始時間（起時 startDate，僅一般工項有起訖時間，基本工項沒有）"" title=""設定一般工項開始時間（起時 startDate，僅一般工項有起訖時間，基本工項沒有）"">開始時間 (起時 - 一般工項專屬) <span class=""sp-tip-icon"">ⓘ</span></label>
                             <input type=""datetime-local"" name=""startDate"" id=""modalWiStartDate"" value=""${escapeModalHtml(resolvedStart)}"" onchange=""applyModalWorkItemDurationPreset()"" required />
                         </div>
                         <div>
-                            <label data-tip=""設定工項結束時間（迄時 endDate）：當達到迄時，系統自動轉換該工項狀態為已完成、扣掉該 Story Point，並寄信給部門管理層與 HR"" title=""設定工項結束時間（迄時 endDate）：當達到迄時，系統自動轉換該工項狀態為已完成、扣掉該 Story Point，並寄信給部門管理層與 HR"">結束時間 (迄時 - 到期自動扣點寄信) <span class=""sp-tip-icon"">ⓘ</span></label>
+                            <label data-tip=""設定一般工項結束時間（迄時 endDate）：當達到迄時，系統自動轉換該工項狀態為已完成、扣掉該 Story Point，並寄信給部門管理層與 HR"" title=""設定一般工項結束時間（迄時 endDate）：當達到迄時，系統自動轉換該工項狀態為已完成、扣掉該 Story Point，並寄信給部門管理層與 HR"">結束時間 (迄時 - 到期自動扣點寄信) <span class=""sp-tip-icon"">ⓘ</span></label>
                             <input type=""datetime-local"" name=""endDate"" id=""modalWiEndDate"" value=""${escapeModalHtml(resolvedEnd)}"" required style=""border-color:#dc2626;font-weight:700;"" />
                         </div>
                         <div>
-                            <label data-tip=""快速設定工項起訖時間範圍：手動輸入數量（預設 1）並選擇單位（天、周、月、季、年），自動依據起時計算迄時"" title=""快速設定工項起訖時間範圍：手動輸入數量（預設 1）並選擇單位（天、周、月、季、年），自動依據起時計算迄時"">起訖時間快速設定 <span class=""sp-tip-icon"">ⓘ</span></label>
+                            <label data-tip=""快速設定一般工項起訖時間範圍：手動輸入數量（預設 1）並選擇單位（天、周、月、季、年），自動依據起時計算迄時"" title=""快速設定一般工項起訖時間範圍：手動輸入數量（預設 1）並選擇單位（天、周、月、季、年），自動依據起時計算迄時"">起訖時間快速設定 <span class=""sp-tip-icon"">ⓘ</span></label>
                             <div style=""display:grid;grid-template-columns:1fr 1.15fr;gap:6px;align-items:center;"">
                                 <div style=""display:flex;align-items:center;gap:4px;"">
                                     <span style=""font-size:12px;color:#475569;white-space:nowrap;font-weight:700;"">數量</span>
@@ -9703,14 +9815,14 @@ public class portalController : Controller
                     </div>
                     <div class=""form-row"">
                         <div style=""grid-column: span 2;"">
-                            <label>工項代表類型（選擇後自動帶入標準點數）</label>
+                            <label>套用基本工項（3-2 基本工項，如：資料庫健檢，選擇後自動帶入標準 Story Point）</label>
                             <select name=""workItemTypePk"" id=""modalWiTypeSelect"" onchange=""onModalWorkItemTypeChange()"">
                                 ${typeOptionsHtml}
                             </select>
                         </div>
                         <div>
-                            <label>Story Point 點數</label>
-                            <input type=""number"" step=""0.5"" name=""storyPoint"" id=""modalWiStoryPoint"" value=""${escapeModalHtml(pt)}"" placeholder=""留空即自動帶入代表類型點數"" />
+                            <label>Story Point 點數（套用基本工項 SP，可微調）</label>
+                            <input type=""number"" step=""0.5"" name=""storyPoint"" id=""modalWiStoryPoint"" value=""${escapeModalHtml(pt)}"" placeholder=""留空即自動帶入基本工項點數，亦可微調"" />
                         </div>
                     </div>
                     <div class=""form-row"">
@@ -9727,13 +9839,13 @@ public class portalController : Controller
                             </select>
                         </div>
                         <div>
-                            <label>點數微調原因</label>
-                            <input type=""text"" name=""adjustmentReason"" id=""modalWiReason"" value=""${escapeModalHtml(reason)}"" placeholder=""選填：說明為何與代表類型不同"" />
+                            <label>Story Point 微調原因</label>
+                            <input type=""text"" name=""adjustmentReason"" id=""modalWiReason"" value=""${escapeModalHtml(reason)}"" placeholder=""選填：說明為何微調與基本工項標準點數不同"" />
                         </div>
                     </div>
                     <div style=""background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;margin-bottom:12px;"">
                         <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px;"">
-                            <span style=""font-size:12.5px;font-weight:800;color:#1e3a8a;"">👥 負責員工與點數分攤配額指派（可於儲存工項時一次完成指派）</span>
+                            <span style=""font-size:12.5px;font-weight:800;color:#1e3a8a;"">👥 負責員工與點數分攤配額指派（可於儲存一般工項時一次完成指派）</span>
                             ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""padding:3px 9px;font-size:11.5px;"" onclick=""openWorkItemAssignModal('${escapeModalHtml(pk)}','${escapeModalHtml(code)}','${escapeModalHtml(title)}','${escapeModalHtml(pt)}','${escapeModalHtml(assigneeSummary || '')}')"">🔄 切換至多人分攤配額設定 Modal</button>` : ''}
                         </div>
                         ${assigneeSummary ? `<div style=""font-size:12px;color:#334155;margin-bottom:8px;"">📌 目前已指派負責員工：<strong>${escapeModalHtml(assigneeSummary)}</strong></div>` : ''}
@@ -9756,14 +9868,14 @@ public class portalController : Controller
                         <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
                             ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""closeRecordEditModal(); triggerRevoteFromTarget('workItem', '${escapeModalHtml(pk)}', 0, '${escapeModalHtml(code)} - ${escapeModalHtml(title)}', false, 'voting');"">🔄 重啟新一輪</button>` : ''}
                             ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#b45309;border-color:#fcd34d;background:#fffbeb;"" onclick=""openSessionSetupEditModal(0, 'workItem', '${escapeModalHtml(pk)}', true, 'restartAll');"">🆕 全部重新開始(重設投票人與所有選項)</button>` : ''}
-                            <button type=""submit"" class=""btn btn-primary"">${isCreate ? '➕ 建立工項並完成指派' : '💾 儲存此筆工項與指派修改'}</button>
+                            <button type=""submit"" class=""btn btn-primary"">${isCreate ? '➕ 建立一般工項並完成指派' : '💾 儲存此筆一般工項與指派修改'}</button>
                         </div>
                     </div>
                 </form>
             `;
             openRecordModalShell(
-                isCreate ? '➕ 新增工項與指派負責員工' : '✏️ 單筆編輯工項紀錄与負責員工指派',
-                `<span class=""badge badge-user"">${escapeModalHtml(code)}${title ? ' - ' + escapeModalHtml(title) : ' (新增工項)'}</span>`,
+                isCreate ? '➕ 新增一般工項與指派負責員工（3-1 一般工項：套用基本工項 SP、可微調、具起訖時間）' : '✏️ 單筆編輯一般工項紀錄與負責員工指派（3-1 一般工項）',
+                `<span class=""badge badge-user"">${escapeModalHtml(code)}${title ? ' - ' + escapeModalHtml(title) : ' (新增一般工項)'}</span>`,
                 bodyHtml
             );
             const kSel = document.getElementById('modalWiKind');
@@ -9836,12 +9948,12 @@ public class portalController : Controller
             const targetWiSectionHtml = hasFixedWi
                 ? `<input type=""hidden"" name=""workItemPk"" value=""${escapeModalHtml(wiPk)}"" />
                    <div style=""background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#1e3a8a;"">
-                       <div><strong>📌 目標工項：</strong>${escapeModalHtml(wiCode)} - ${escapeModalHtml(wiTitle)} （總點數：<strong>${escapeModalHtml(wiPt || '0')} pt</strong>）</div>
+                       <div><strong>📌 目標一般工項：</strong>${escapeModalHtml(wiCode)} - ${escapeModalHtml(wiTitle)} （總點數：<strong>${escapeModalHtml(wiPt || '0')} pt</strong>）</div>
                        <div style=""margin-top:4px;""><strong>👥 目前負責員工與配額：</strong>${escapeModalHtml(currentAssigneeText || '尚未指派')}</div>
                    </div>`
                 : `<div class=""form-row"">
                        <div style=""grid-column: span 3;"">
-                           <label>選擇要指派或調整分攤配額的目標工項</label>
+                           <label>選擇要指派或調整分攤配額的目標一般工項</label>
                            <select name=""workItemPk"" id=""modalAssignWiSelect"" required style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">
                                ${wiSelectOptionsHtml}
                            </select>
@@ -9889,16 +10001,18 @@ public class portalController : Controller
                 </form>
             `;
             openRecordModalShell(
-                '👥 修改工項之賦予員工與分攤配額',
-                `<span class=""badge badge-user"">${hasFixedWi ? escapeModalHtml(wiCode) : '選擇工項指派'}</span>`,
+                '👥 修改一般工項之賦予員工與分攤配額',
+                `<span class=""badge badge-user"">${hasFixedWi ? escapeModalHtml(wiCode) : '選擇一般工項指派'}</span>`,
                 bodyHtml
             );
         }
 
-        function openWorkItemKindEditModal(pk, code, name, icon, color, sortOrder, desc, tabSuffix, mainFeature, estimationTrait, deliverableTrait) {
+        function openWorkItemKindEditModal(pk, code, name, icon, color, sortOrder, desc, tabSuffix, mainFeature, estimationTrait, deliverableTrait, minPt, maxPt) {
             const isCreate = !pk || String(pk).trim() === '' || String(pk) === '0';
-            const sfx = tabSuffix || 'types';
+            const sfx = tabSuffix || 'kinds';
             const curIcon = icon || '📌';
+            const curMinPt = (minPt !== undefined && minPt !== null && String(minPt) !== '') ? minPt : 1;
+            const curMaxPt = (maxPt !== undefined && maxPt !== null && String(maxPt) !== '') ? maxPt : 8;
             const bodyHtml = `
                 <form method=""post"" action=""/workitem/kind/save"" enctype=""multipart/form-data"">
                     <input type=""hidden"" name=""workItemKindPk"" value=""${escapeModalHtml(pk)}"" />
@@ -9907,11 +10021,11 @@ public class portalController : Controller
                     <div class=""form-row"">
                         <div>
                             <label>類型代碼 (kindCode)</label>
-                            <input type=""text"" name=""kindCode"" value=""${escapeModalHtml(code)}"" placeholder=""例如：project / supportCase"" required />
+                            <input type=""text"" name=""kindCode"" value=""${escapeModalHtml(code)}"" placeholder=""例如：project / maintenance"" required />
                         </div>
                         <div>
-                            <label>預設工項類型名稱 (kindName)</label>
-                            <input type=""text"" name=""kindName"" value=""${escapeModalHtml(name)}"" placeholder=""例如：專案 / 維運 / 駐點支援"" required />
+                            <label>工項類型名稱 (kindName)</label>
+                            <input type=""text"" name=""kindName"" value=""${escapeModalHtml(name)}"" placeholder=""例如：專案 / 維運 / 顧問時數"" required />
                         </div>
                         <div>
                             <label>代表圖示 (選擇內建圖示或自行上傳新增)</label>
@@ -9943,7 +10057,7 @@ public class portalController : Controller
                             <span id=""wikUploadIconStatus_modal"" style=""font-size:12px;color:#15803d;font-weight:700;""></span>
                         </div>
                     </div>
-                    <div class=""form-row"">
+                    <div class=""form-row"" style=""grid-template-columns:1fr 0.7fr 0.7fr 0.7fr;"">
                         <div>
                             <label>徽章主題色 (badgeColor)</label>
                             <select name=""badgeColor"" id=""modalWikColor"">
@@ -9958,45 +10072,55 @@ public class portalController : Controller
                             </select>
                         </div>
                         <div>
+                            <label>📉 一般 SP 下限 (minStoryPoint)</label>
+                            <input type=""number"" step=""0.5"" min=""0"" max=""100"" name=""minStoryPoint"" value=""${escapeModalHtml(curMinPt)}"" required style=""font-weight:800;color:#1d4ed8;border-color:#93c5fd;"" />
+                        </div>
+                        <div>
+                            <label>📈 一般 SP 上限 (maxStoryPoint)</label>
+                            <input type=""number"" step=""0.5"" min=""0.5"" max=""200"" name=""maxStoryPoint"" value=""${escapeModalHtml(curMaxPt)}"" required style=""font-weight:800;color:#1d4ed8;border-color:#93c5fd;"" />
+                        </div>
+                        <div>
                             <label>排序順序 (sortOrder)</label>
                             <input type=""number"" name=""sortOrder"" value=""${escapeModalHtml(sortOrder || 60)}"" step=""10"" required />
                         </div>
-                        <div>
-                            <label>📋 適用情境與管理規則說明</label>
-                            <input type=""text"" name=""description"" value=""${escapeModalHtml(desc || '')}"" placeholder=""說明此工項類型的定義與使用情境"" />
-                        </div>
                     </div>
                     <div style=""background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;margin-bottom:14px;"">
-                        <div style=""font-size:13px;font-weight:800;color:#1e3a8a;margin-bottom:8px;"">⭐ 預設工項類型主要特徵設定（表列於工項類型主要特徵一覽表）</div>
+                        <div style=""font-size:13px;font-weight:800;color:#1e3a8a;margin-bottom:8px;"">⭐ 工項類型一般基本規範與一般 Story Point 範圍說明（供基本工項套用時顯示）</div>
                         <div class=""form-row"">
                             <div style=""grid-column: span 3;"">
-                                <label>⭐ 主要特徵 (核心工作性質 mainFeatureSummary)</label>
+                                <label>⭐ 基本規範：主要工作性質 (mainFeatureSummary)</label>
                                 <input type=""text"" name=""mainFeatureSummary"" value=""${escapeModalHtml(mainFeature || '')}"" placeholder=""例如：目標導向、具明確範疇與里程碑之新功能開發或系統建置"" />
                             </div>
                         </div>
-                        <div class=""form-row"" style=""margin-bottom:0;"">
+                        <div class=""form-row"">
                             <div>
-                                <label>📐 點數估算與計量特徵 (estimationTrait)</label>
-                                <input type=""text"" name=""estimationTrait"" value=""${escapeModalHtml(estimationTrait || '')}"" placeholder=""例如：依功能複雜度、跨模組整合難度進行團隊盲投估算 (通常 3 ~ 21 pt)"" />
+                                <label>📐 基本規範：一般 Story Point 範圍與計量規範 (estimationTrait)</label>
+                                <input type=""text"" name=""estimationTrait"" value=""${escapeModalHtml(estimationTrait || '')}"" placeholder=""例如：一般 Story Point 範圍為 3 ~ 21 pt；依功能複雜度、跨模組整合難度進行團隊盲投估算"" />
                             </div>
                             <div style=""grid-column: span 2;"">
-                                <label>⏰ 時程週期與交付/到期特徵 (timeAndDeliverableTrait)</label>
-                                <input type=""text"" name=""timeAndDeliverableTrait"" value=""${escapeModalHtml(deliverableTrait || '')}"" placeholder=""例如：具明確專案起訖日與階段驗收交付物，達迄時自動轉態扣點並通知主管與 HR"" />
+                                <label>⏰ 基本規範：交付驗收與一般工項時程規範 (timeAndDeliverableTrait)</label>
+                                <input type=""text"" name=""timeAndDeliverableTrait"" value=""${escapeModalHtml(deliverableTrait || '')}"" placeholder=""例如：基本工項定義標準範本（無起訖時間）；套用至一般工項後須設定起訖日，達迄時自動轉態扣點並通知主管與 HR"" />
+                            </div>
+                        </div>
+                        <div class=""form-row"" style=""margin-bottom:0;"">
+                            <div style=""grid-column: span 3;"">
+                                <label>📋 適用情境與管理規則補充說明 (description)</label>
+                                <input type=""text"" name=""description"" value=""${escapeModalHtml(desc || '')}"" placeholder=""說明此工項類型的基本規範與使用情境"" />
                             </div>
                         </div>
                     </div>
                     <div class=""sp-modal-footer"">
                         <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
                             <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
-                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""confirmDeleteWorkItemKind('${escapeModalHtml(pk)}', '${escapeModalHtml(code)}', '${escapeModalHtml(name)}', '${escapeModalHtml(sfx)}')"">🗑️ 刪除此預設工項類型</button>` : ''}
+                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""confirmDeleteWorkItemKind('${escapeModalHtml(pk)}', '${escapeModalHtml(code)}', '${escapeModalHtml(name)}', '${escapeModalHtml(sfx)}')"">🗑️ 刪除此工項類型</button>` : ''}
                         </div>
-                        <button type=""submit"" class=""btn btn-primary"">${isCreate ? '➕ 新增儲存預設工項類型與特徵' : '💾 儲存修改預設工項類型與特徵'}</button>
+                        <button type=""submit"" class=""btn btn-primary"">${isCreate ? '➕ 新增儲存工項類型與基本規範' : '💾 儲存修改工項類型與基本規範'}</button>
                     </div>
                 </form>
             `;
             openRecordModalShell(
-                isCreate ? '➕ 新增預設工項類型與主要特徵 (tbWorkItemKind)' : '✏️ 單筆編輯預設工項類型與主要特徵 (tbWorkItemKind)',
-                `<span class=""badge badge-user"">${renderIconHtmlJs(curIcon, name || code)} ${name ? escapeModalHtml(name) + ' (' + escapeModalHtml(code) + ')' : '新預設工項類型'}</span>`,
+                isCreate ? '➕ 新增工項類型與基本規範 (3-3 tbWorkItemKind)' : '✏️ 單筆編輯工項類型、基本規範與一般 SP 範圍 (3-3 tbWorkItemKind)',
+                `<span class=""badge badge-user"">${renderIconHtmlJs(curIcon, name || code)} ${name ? escapeModalHtml(name) + ' (' + escapeModalHtml(code) + ')' : '新工項類型'}</span>`,
                 bodyHtml
             );
             const cSel = document.getElementById('modalWikColor');
@@ -10017,17 +10141,17 @@ public class portalController : Controller
                     <input type=""hidden"" name=""workItemTypePk"" value=""${escapeModalHtml(pk)}"" />
                     <div class=""form-row"">
                         <div>
-                            <label>代表工項名稱 (typeName)</label>
+                            <label>基本工項名稱 (typeName，如：資料庫健檢，無起訖時間)</label>
                             <input type=""text"" name=""typeName"" value=""${escapeModalHtml(name)}"" placeholder=""例如：資料庫健檢"" required style=""font-weight:800;border-color:#2563eb;"" />
                         </div>
                         <div>
                             <label style=""display:flex;justify-content:space-between;align-items:center;gap:4px;"">
-                                <span>屬於哪種預設工項類型</span>
+                                <span>套用工項類型 (3-3 帶出基本規範與 SP 範圍)</span>
                                 <span style=""display:inline-flex;gap:3px;flex-wrap:wrap;"">
-                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','kinds','','','')"" title=""新增預設工項類型"">➕ 新增</button>
-                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#0f766e;border-color:#5eead4;background:#f0fdfa;"" onclick=""editSelectedModalKindBySelectId('modalTypeKind','kinds')"" title=""修改目前選取的預設工項類型與主要特徵"">✏️ 修改</button>
-                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""deleteSelectedModalKindBySelectId('modalTypeKind','kinds')"" title=""刪除目前選取的預設工項類型"">🗑️ 刪除</button>
-                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#4338ca;border-color:#a5b4fc;background:#eef2ff;"" onclick=""toggleModalKindFeatureTable()"" title=""展開或收合下方預設工項類型主要特徵一覽表"">📋 特徵表</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','kinds','','','',1,8)"" title=""新增工項類型"">➕ 新增</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#0f766e;border-color:#5eead4;background:#f0fdfa;"" onclick=""editSelectedModalKindBySelectId('modalTypeKind','kinds')"" title=""修改目前選取的工項類型與基本規範"">✏️ 修改</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""deleteSelectedModalKindBySelectId('modalTypeKind','kinds')"" title=""刪除目前選取的工項類型"">🗑️ 刪除</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#4338ca;border-color:#a5b4fc;background:#eef2ff;"" onclick=""toggleModalKindFeatureTable()"" title=""展開或收合下方工項類型基本規範與 SP 範圍表"">📋 類型規範表</button>
                                 </span>
                             </label>
                             <select name=""defaultWorkItemKind"" id=""modalTypeKind"" onchange=""onModalKindSelectChange('modalTypeKind','modalTypeKindFeatureBanner')"" required style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">
@@ -10035,22 +10159,22 @@ public class portalController : Controller
                             </select>
                         </div>
                         <div>
-                            <label>投出 / 核定標準 Story Point</label>
+                            <label>投出 / 核定標準 Story Point（基本工項 SP）</label>
                             <input type=""number"" step=""0.5"" name=""standardStoryPoint"" value=""${escapeModalHtml(pt)}"" placeholder=""留空代表待盲投估算"" style=""font-weight:800;color:#1d4ed8;"" />
                         </div>
                     </div>
-                    <!-- 目前選取之預設工項類型主要特徵即時提示卡 -->
+                    <!-- 目前選取之工項類型基本規範與一般 SP 範圍即時提示卡 -->
                     <div id=""modalTypeKindFeatureBanner"" style=""margin-bottom:12px;""></div>
-                    <!-- 預設工項類型主要特徵一覽與快速增刪修查面板 -->
+                    <!-- 工項類型基本規範一覽與快速增刪修查面板 -->
                     <div id=""modalTypeKindFeatureTableWrap"" style=""margin-bottom:14px;""></div>
                     <div class=""form-row"">
                         <div>
-                            <label>代表工項代碼 (typeCode)</label>
-                            <input type=""text"" name=""typeCode"" value=""${escapeModalHtml(code)}"" placeholder=""例如：TYPE_DB_HEALTH_CHECK"" required />
+                            <label>基本工項代碼 (typeCode)</label>
+                            <input type=""text"" name=""typeCode"" value=""${escapeModalHtml(code)}"" placeholder=""例如：TYPE-DB-HC"" required />
                         </div>
                         <div>
                             <label>技術 / 業務分類屬性 (categoryName)</label>
-                            <input type=""text"" name=""categoryName"" list=""typeCategoryDatalist"" value=""${escapeModalHtml(cat || '一般分類')}"" required />
+                            <input type=""text"" name=""categoryName"" list=""typeCategoryDatalist"" value=""${escapeModalHtml(cat || '資料庫健檢與維運')}"" required />
                         </div>
                         <div>
                             <label>預設盲投撲克牌組</label>
@@ -10068,7 +10192,7 @@ public class portalController : Controller
                     <div style=""margin:8px 0 14px 0;"">
                         <label style=""display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;"">
                             <input type=""checkbox"" name=""syncExistingOpenWorkItem"" value=""true"" checked style=""width:auto;"" />
-                            <span>儲存後同步將標準點數與所屬預設工項類型套用至所有未結案工項</span>
+                            <span>儲存後同步將標準點數與所屬工項類型套用至所有未結案且未手動微調的一般工項（如：集保健檢）</span>
                         </label>
                     </div>
                     <div class=""sp-modal-footer"">
@@ -10076,14 +10200,14 @@ public class portalController : Controller
                         <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
                             ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""closeRecordEditModal(); triggerRevoteFromTarget('workItemType', '${escapeModalHtml(pk)}', 0, '${escapeModalHtml(code)} - ${escapeModalHtml(name)}', false, 'voting');"">🔄 重啟新一輪</button>` : ''}
                             ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#b45309;border-color:#fcd34d;background:#fffbeb;"" onclick=""openSessionSetupEditModal(0, 'workItemType', '${escapeModalHtml(pk)}', true, 'restartAll');"">🆕 全部重新開始(重設投票人與所有選項)</button>` : ''}
-                            <button type=""submit"" class=""btn btn-primary"">💾 儲存此代表工項屬性與預設類型</button>
+                            <button type=""submit"" class=""btn btn-primary"">💾 儲存此基本工項屬性與套用類型</button>
                         </div>
                     </div>
                 </form>
             `;
             openRecordModalShell(
-                isCreate ? '➕ 新增工項代表類型 (tbWorkItemType)' : '✏️ 單筆編輯投出 SP 的代表工項屬性与所屬預設類型 (tbWorkItemType)',
-                `<span class=""badge badge-user"">${code ? escapeModalHtml(code) + ' - ' + escapeModalHtml(name) : '新代表工項'}</span>`,
+                isCreate ? '➕ 新增基本工項 (3-2 tbWorkItemType：如資料庫健檢，無起訖時間)' : '✏️ 單筆編輯基本工項屬性與套用工項類型 (3-2 tbWorkItemType)',
+                `<span class=""badge badge-user"">${code ? escapeModalHtml(code) + ' - ' + escapeModalHtml(name) : '新基本工項'}</span>`,
                 bodyHtml
             );
             const kSel = document.getElementById('modalTypeKind');
@@ -10320,14 +10444,49 @@ public class portalController : Controller
             container.innerHTML = html;
         }
 
+        function onModalSetupKindChange() {
+            const kSel = document.getElementById('modalSetupWorkItemKind');
+            const banner = document.getElementById('modalSetupKindNormBanner');
+            if (!kSel) return;
+            const opt = kSel.options[kSel.selectedIndex];
+            if (!opt) return;
+            const kCode = opt.getAttribute('data-kind-code') || opt.value || 'project';
+            const kName = opt.getAttribute('data-kind-name') || opt.textContent || kCode;
+            const kIcon = opt.getAttribute('data-kind-icon') || '📌';
+            const kMin = parseFloat(opt.getAttribute('data-kind-min-pt') || '0.5');
+            const kMax = parseFloat(opt.getAttribute('data-kind-max-pt') || '21');
+            const kFeature = opt.getAttribute('data-kind-feature') || '';
+            const kEst = opt.getAttribute('data-kind-estimation') || '';
+            if (banner) {
+                banner.innerHTML = `<div style=""background:#f0f9ff;border:1px solid #93c5fd;border-radius:7px;padding:7px 10px;font-size:12px;color:#0f172a;margin-top:6px;line-height:1.45;"">
+                    <div><strong style=""color:#1e3a8a;"">${renderIconHtmlJs(kIcon, kName)} 【${escapeModalHtml(kName)}】工項基本規範與一般 Story Point 範圍：</strong><span class=""badge"" style=""background:#dbeafe;color:#1d4ed8;font-weight:800;margin-left:4px;"">一般 SP 範圍：${kMin} ~ ${kMax} pt</span></div>
+                    ${kFeature ? `<div style=""margin-top:2px;""><strong>⭐ 基本規範：</strong>${escapeModalHtml(kFeature)}</div>` : ''}
+                    ${kEst ? `<div style=""margin-top:2px;color:#1e40af;""><strong>📐 估算規範：</strong>${escapeModalHtml(kEst)}</div>` : ''}
+                </div>`;
+            }
+            const minInput = document.getElementById('modalSetupMinPt');
+            const maxInput = document.getElementById('modalSetupMaxPt');
+            if (minInput && !isNaN(kMin)) minInput.value = kMin;
+            if (maxInput && !isNaN(kMax)) maxInput.value = kMax;
+            updateModalSessionCardPreview();
+        }
+
         function onModalSessionTargetOptionChange() {
             const tKind = document.getElementById('modalSetupTargetKind')?.value || 'workItemType';
             const sel = document.getElementById(tKind === 'workItem' ? 'modalSetupWorkItemPk' : 'modalSetupWorkItemTypePk');
             const titleInput = document.getElementById('modalSetupTitleInput');
             if (!sel || !titleInput) return;
             const opt = sel.options[sel.selectedIndex];
-            if (opt && (!titleInput.value || titleInput.value.indexOf('【') === 0)) {
-                titleInput.value = (tKind === 'workItem' ? '【工項點數盲投】' : '【代表類型點數盲投】') + opt.text.split('(')[0].trim();
+            if (tKind === 'workItemType' && opt) {
+                const optKind = opt.getAttribute('data-kind');
+                const kSel = document.getElementById('modalSetupWorkItemKind');
+                if (optKind && kSel && kSel.value !== optKind) {
+                    kSel.value = optKind;
+                    onModalSetupKindChange();
+                }
+            }
+            if (opt && String(opt.value) !== '0' && (!titleInput.value || titleInput.value.indexOf('【') === 0)) {
+                titleInput.value = (tKind === 'workItem' ? '【一般工項點數盲投】' : '【基本工項點數盲投】') + opt.text.split('(')[0].replace(/^\[[^\]]+\]\s*/, '').trim();
             }
         }
 
@@ -10348,6 +10507,9 @@ public class portalController : Controller
             const tKind = targetKindOverride || (cfg ? cfg.targetKind : 'workItemType');
             const wiTypePk = (tKind === 'workItemType' && targetPkOverride) ? targetPkOverride : (cfg ? cfg.workItemTypePk : 0);
             const wiPk = (tKind === 'workItem' && targetPkOverride) ? targetPkOverride : (cfg ? cfg.workItemPk : 0);
+            const kindOptionsHtml = document.getElementById('setupWorkItemKind')
+                ? document.getElementById('setupWorkItemKind').innerHTML
+                : (document.getElementById('typeKind') ? document.getElementById('typeKind').innerHTML : '<option value=""project"">🏗️ 專案 (project)</option>');
             const typeOptionsHtml = document.getElementById('setupWorkItemTypePk') ? document.getElementById('setupWorkItemTypePk').innerHTML : '';
             const wiOptionsHtml = document.getElementById('setupWorkItemPk') ? document.getElementById('setupWorkItemPk').innerHTML : '';
             const deckOptionsHtml = document.getElementById('setupCardDeckPk') ? document.getElementById('setupCardDeckPk').innerHTML : '<option value=""1"">標準 Fibonacci 牌組</option>';
@@ -10360,8 +10522,8 @@ public class portalController : Controller
                     const matchOpt = targetPkOverride
                         ? Array.from(srcSel.options).find(o => String(o.value) === String(targetPkOverride))
                         : srcSel.options[0];
-                    if (matchOpt) {
-                        defaultTitle = (tKind === 'workItem' ? '【工項點數盲投】' : '【代表類型點數盲投】') + matchOpt.text.split('(')[0].trim();
+                    if (matchOpt && String(matchOpt.value) !== '0') {
+                        defaultTitle = (tKind === 'workItem' ? '【一般工項點數盲投】' : '【基本工項點數盲投】') + matchOpt.text.split('(')[0].replace(/^\[[^\]]+\]\s*/, '').trim();
                     }
                 }
             }
@@ -10416,18 +10578,27 @@ public class portalController : Controller
                     </div>
                     <div class=""form-row"">
                         <div>
-                            <label>1️⃣ 估算目標類型</label>
+                            <label>1️⃣ 估算標的層級（投票主要投基本工項）</label>
                             <select name=""targetKind"" id=""modalSetupTargetKind"" onchange=""const isWi=this.value==='workItem'; document.getElementById('modalSetupTypeBox').style.display=isWi?'none':''; document.getElementById('modalSetupWiBox').style.display=isWi?'':'none'; onModalSessionTargetOptionChange();"">
-                                <option value=""workItemType"" ${tKind === 'workItemType' ? 'selected' : ''}>🏷️ 工項代表類型 (tbWorkItemType)</option>
-                                <option value=""workItem"" ${tKind === 'workItem' ? 'selected' : ''}>📋 實際工項 (tbWorkItem)</option>
+                                <option value=""workItemType"" ${tKind === 'workItemType' ? 'selected' : ''}>🏷️ 基本工項 (3-2 tbWorkItemType，如：資料庫健檢 - 推薦主要投票標的)</option>
+                                <option value=""workItem"" ${tKind === 'workItem' ? 'selected' : ''}>📋 一般工項 (3-1 tbWorkItem，如：集保健檢 - 個別微調估算)</option>
                             </select>
                         </div>
                         <div id=""modalSetupTypeBox"" style=""grid-column: span 2; ${tKind === 'workItem' ? 'display:none;' : ''}"">
-                            <label>選擇工項代表類型</label>
-                            <select name=""workItemTypePk"" id=""modalSetupWorkItemTypePk"" onchange=""onModalSessionTargetOptionChange()"">${typeOptionsHtml}</select>
+                            <div style=""display:grid;grid-template-columns:1fr 1.2fr;gap:8px;"">
+                                <div>
+                                    <label>目標工項代表類型（專案、維運、顧問時數...）</label>
+                                    <select name=""defaultWorkItemKind"" id=""modalSetupWorkItemKind"" onchange=""onModalSetupKindChange()"" style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">${kindOptionsHtml}</select>
+                                </div>
+                                <div>
+                                    <label>目標基本工項（如：資料庫健檢）</label>
+                                    <select name=""workItemTypePk"" id=""modalSetupWorkItemTypePk"" onchange=""onModalSessionTargetOptionChange()"">${typeOptionsHtml}</select>
+                                </div>
+                            </div>
+                            <div id=""modalSetupKindNormBanner""></div>
                         </div>
                         <div id=""modalSetupWiBox"" style=""grid-column: span 2; ${tKind === 'workItem' ? '' : 'display:none;'}"">
-                            <label>選擇實際工項</label>
+                            <label>選擇一般工項（如：集保健檢）</label>
                             <select name=""workItemPk"" id=""modalSetupWorkItemPk"" onchange=""onModalSessionTargetOptionChange()"">${wiOptionsHtml}</select>
                         </div>
                     </div>
@@ -10553,15 +10724,27 @@ public class portalController : Controller
                 </form>
             `;
             openRecordModalShell(
-                isRevoteMode ? '🆕 重新投票（支援全部重新開始 ＆ 重新設定投票人與所有選項）' : (sPk > 0 ? '🃏 單筆編輯盲投議程回合設定' : '🃏 快速發起多人盲投估算議程'),
+                isRevoteMode ? '🆕 重新投票（支援全部重新開始 ＆ 重新設定投票人與所有選項）' : (sPk > 0 ? '🃏 單筆編輯盲投議程回合設定' : '🃏 快速發起多人盲投估算議程（主要投基本工項）'),
                 `<span class=""badge badge-user"">${sPk > 0 ? 'Session #' + sPk : '新盲投議程'}</span>`,
                 bodyHtml
             );
-            if (document.getElementById('modalSetupWorkItemTypePk') && wiTypePk) document.getElementById('modalSetupWorkItemTypePk').value = String(wiTypePk);
+            if (document.getElementById('modalSetupWorkItemTypePk') && wiTypePk) {
+                document.getElementById('modalSetupWorkItemTypePk').value = String(wiTypePk);
+                const tSel = document.getElementById('modalSetupWorkItemTypePk');
+                const selOpt = tSel.options[tSel.selectedIndex];
+                if (selOpt && selOpt.getAttribute('data-kind') && document.getElementById('modalSetupWorkItemKind')) {
+                    document.getElementById('modalSetupWorkItemKind').value = selOpt.getAttribute('data-kind');
+                }
+            }
             if (document.getElementById('modalSetupWorkItemPk') && wiPk) document.getElementById('modalSetupWorkItemPk').value = String(wiPk);
             if (cfg && document.getElementById('modalSetupDeckPk') && cfg.cardDeckPk) document.getElementById('modalSetupDeckPk').value = String(cfg.cardDeckPk);
             if (cfg && document.getElementById('modalSetupConsensusRule')) document.getElementById('modalSetupConsensusRule').value = cfg.consensusRule || 'nearestFibonacci';
             if (cfg && document.getElementById('modalSetupTimeSec') && cfg.roundTimeLimitSecond !== undefined) document.getElementById('modalSetupTimeSec').value = String(cfg.roundTimeLimitSecond);
+            onModalSetupKindChange();
+            if (cfg) {
+                if (document.getElementById('modalSetupMinPt')) document.getElementById('modalSetupMinPt').value = cfg.minStoryPoint;
+                if (document.getElementById('modalSetupMaxPt')) document.getElementById('modalSetupMaxPt').value = cfg.maxStoryPoint;
+            }
             updateModalSessionCardPreview();
             updateModalSessionParticipantCount();
         }
@@ -10709,7 +10892,9 @@ public class portalController : Controller
                         tr.getAttribute('data-tab-suffix') || 'kinds',
                         tr.getAttribute('data-kind-feature') || '',
                         tr.getAttribute('data-kind-estimation') || '',
-                        tr.getAttribute('data-kind-deliverable') || ''
+                        tr.getAttribute('data-kind-deliverable') || '',
+                        tr.getAttribute('data-kind-min-pt') || '1',
+                        tr.getAttribute('data-kind-max-pt') || '8'
                     );
                     return;
                 } else if (rowKind === 'workitemType') {
@@ -11851,13 +12036,15 @@ public class portalController : Controller
             });
         }
 
-        function loadWorkItemKindToForm(pk, code, name, icon, color, sortOrder, desc, tabSuffix, mainFeature, estimationTrait, deliverableTrait) {
+        function loadWorkItemKindToForm(pk, code, name, icon, color, sortOrder, desc, tabSuffix, mainFeature, estimationTrait, deliverableTrait, minPt, maxPt) {
             const sfx = tabSuffix || 'kinds';
             const pkEl = document.getElementById('wikPk_' + sfx);
             const codeEl = document.getElementById('wikCode_' + sfx);
             const nameEl = document.getElementById('wikName_' + sfx);
             const iconEl = document.getElementById('wikIcon_' + sfx);
             const colorEl = document.getElementById('wikColor_' + sfx);
+            const minPtEl = document.getElementById('wikMinPt_' + sfx);
+            const maxPtEl = document.getElementById('wikMaxPt_' + sfx);
             const sortEl = document.getElementById('wikSort_' + sfx);
             const featureEl = document.getElementById('wikFeature_' + sfx);
             const estEl = document.getElementById('wikEstimation_' + sfx);
@@ -11870,15 +12057,17 @@ public class portalController : Controller
             if (nameEl) nameEl.value = name || '';
             if (iconEl) iconEl.value = icon || '📌';
             if (colorEl) colorEl.value = color || 'blue';
+            if (minPtEl) minPtEl.value = (minPt !== undefined && minPt !== null && String(minPt) !== '') ? minPt : 1;
+            if (maxPtEl) maxPtEl.value = (maxPt !== undefined && maxPt !== null && String(maxPt) !== '') ? maxPt : 8;
             if (sortEl) sortEl.value = sortOrder || 40;
             if (featureEl) featureEl.value = mainFeature || '';
             if (estEl) estEl.value = estimationTrait || '';
             if (delivEl) delivEl.value = deliverableTrait || '';
             if (descEl) descEl.value = desc || '';
-            if (btnEl) btnEl.textContent = '💾 儲存修改預設工項類型 (' + code + ')';
-            if (titleEl) titleEl.innerHTML = '✏️ 正在修改預設工項類型：' + renderIconHtmlJs(icon || '📌', name) + ' ' + escapeModalHtml(name || '') + ' (' + escapeModalHtml(code || '') + ')';
+            if (btnEl) btnEl.textContent = '💾 儲存修改工項類型 (' + code + ')';
+            if (titleEl) titleEl.innerHTML = '✏️ 正在修改工項類型：' + renderIconHtmlJs(icon || '📌', name) + ' ' + escapeModalHtml(name || '') + ' (' + escapeModalHtml(code || '') + ')';
             renderWorkItemIconPickerUi(sfx, icon || '📌');
-            openWorkItemKindEditModal(pk, code, name, icon, color, sortOrder, desc, sfx, mainFeature, estimationTrait, deliverableTrait);
+            openWorkItemKindEditModal(pk, code, name, icon, color, sortOrder, desc, sfx, mainFeature, estimationTrait, deliverableTrait, minPt, maxPt);
         }
 
         function resetWorkItemKindForm(tabSuffix) {
@@ -11888,6 +12077,8 @@ public class portalController : Controller
             const nameEl = document.getElementById('wikName_' + sfx);
             const iconEl = document.getElementById('wikIcon_' + sfx);
             const colorEl = document.getElementById('wikColor_' + sfx);
+            const minPtEl = document.getElementById('wikMinPt_' + sfx);
+            const maxPtEl = document.getElementById('wikMaxPt_' + sfx);
             const sortEl = document.getElementById('wikSort_' + sfx);
             const featureEl = document.getElementById('wikFeature_' + sfx);
             const estEl = document.getElementById('wikEstimation_' + sfx);
@@ -11900,13 +12091,15 @@ public class portalController : Controller
             if (nameEl) nameEl.value = '';
             if (iconEl) iconEl.value = '📌';
             if (colorEl) colorEl.value = 'blue';
+            if (minPtEl) minPtEl.value = '1';
+            if (maxPtEl) maxPtEl.value = '8';
             if (sortEl) sortEl.value = '60';
             if (featureEl) featureEl.value = '';
             if (estEl) estEl.value = '';
             if (delivEl) delivEl.value = '';
             if (descEl) descEl.value = '';
-            if (btnEl) btnEl.textContent = '➕ 新增 / 儲存預設工項類型';
-            if (titleEl) titleEl.textContent = '➕ 新增或修改「預設工項類型」及三項主要特徵（亦可點擊列表「✏️ 修改」帶入修改）';
+            if (btnEl) btnEl.textContent = '➕ 新增 / 儲存工項類型與基本規範';
+            if (titleEl) titleEl.textContent = '➕ 新增或修改「工項類型」、一般 Story Point 範圍及基本規範（亦可點擊列表「✏️ 修改」帶入修改）';
             renderWorkItemIconPickerUi(sfx, '📌');
         }
 
@@ -11932,7 +12125,7 @@ public class portalController : Controller
 
             const lbl = document.getElementById('wikFilterCountLabel_' + sfx);
             if (lbl) {
-                lbl.textContent = '符合查詢：' + visibleCount + ' / ' + rows.length + ' 種預設工項類型';
+                lbl.textContent = '符合查詢：' + visibleCount + ' / ' + rows.length + ' 種工項類型';
             }
             refreshToolbarCountBadgeForTable('wikDataTable_' + sfx);
         }
@@ -11961,7 +12154,7 @@ public class portalController : Controller
                 filterWorkItemTypeTable();
                 document.getElementById('workItemTypeDataTable')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
-            showToastNotice('🏷️ 已篩選預設工項類型為「' + (kindName || kindCode) + '」的工項代表類型');
+            showToastNotice('🏷️ 已篩選套用工項類型為「' + (kindName || kindCode) + '」的基本工項');
         }
 
         function filterWorkItemsByKindCode(kindCode, kindName) {
@@ -11972,7 +12165,7 @@ public class portalController : Controller
                 filterWorkItemTable();
                 document.getElementById('workItemDataTable')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
-            showToastNotice('📋 已篩選預設工項類型為「' + (kindName || kindCode) + '」的實際工項紀錄');
+            showToastNotice('📋 已篩選工項類型為「' + (kindName || kindCode) + '」的一般工項紀錄');
         }
 
         function confirmDeleteWorkItemKind(pk, code, name, tabSuffix) {
@@ -11981,7 +12174,7 @@ public class portalController : Controller
                 workItemKindPk: pk || '',
                 kindCode: code || '',
                 returnTab: sfx
-            }, '確定要刪除預設工項類型「' + (code || '') + ' - ' + (name || '') + '」嗎？\n（系統至少會保留 1 個預設類型；若有代表類型或工項正在使用此類型，將自動安全移轉至備援類型）');
+            }, '確定要刪除工項類型「' + (code || '') + ' - ' + (name || '') + '」嗎？\n（系統至少會保留 1 個工項類型；若有基本工項或一般工項正在使用此類型，將自動安全移轉至備援類型）');
         }
 
         function onModalKindSelectChange(selectId, bannerId) {
@@ -11996,25 +12189,27 @@ public class portalController : Controller
             const kCode = opt.getAttribute('data-kind-code') || opt.value || '';
             const kName = opt.getAttribute('data-kind-name') || opt.textContent || kCode;
             const kIcon = opt.getAttribute('data-kind-icon') || '📌';
+            const kMinPt = opt.getAttribute('data-kind-min-pt') || '0.5';
+            const kMaxPt = opt.getAttribute('data-kind-max-pt') || '21';
             const kFeature = opt.getAttribute('data-kind-feature') || '依業務需求設定之標準工項類型';
-            const kEst = opt.getAttribute('data-kind-estimation') || '支援選擇工項代表類型自動帶入標準點數或發起團隊多人盲投估算';
-            const kDeliv = opt.getAttribute('data-kind-deliverable') || '具備明確起訖時間 (startDate ~ endDate)，達迄時自動轉態為已完成、扣減 Story Point 並寄信通知主管與 HR';
+            const kEst = opt.getAttribute('data-kind-estimation') || '支援選擇基本工項自動帶入標準點數或發起團隊多人盲投估算';
+            const kDeliv = opt.getAttribute('data-kind-deliverable') || '基本工項本身無起訖時間；套用至一般工項後具備明確起訖時間 (startDate ~ endDate)，達迄時自動轉態為已完成、扣減 Story Point 並寄信通知主管與 HR';
             const kDesc = opt.getAttribute('data-kind-desc') || '';
 
             banner.innerHTML = `
                 <div style=""background:#f0f9ff;border:1.5px solid #93c5fd;border-radius:9px;padding:10px 12px;font-size:12.5px;color:#0f172a;line-height:1.5;"">
                     <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:4px;"">
-                        <span style=""font-weight:800;color:#1e3a8a;display:inline-flex;align-items:center;gap:5px;"">${renderIconHtmlJs(kIcon, kName)} 目前所選預設工項類型【${escapeModalHtml(kName)} (${escapeModalHtml(kCode)})】主要特徵：</span>
-                        <span style=""font-size:11.5px;color:#475569;"">可點擊上方「➕ 新增 / ✏️ 修改 / 🗑️ 刪除」直接管理預設工項類型</span>
+                        <span style=""font-weight:800;color:#1e3a8a;display:inline-flex;align-items:center;gap:5px;"">${renderIconHtmlJs(kIcon, kName)} 目前套用工項類型【${escapeModalHtml(kName)} (${escapeModalHtml(kCode)})】基本規範：</span>
+                        <span class=""badge"" style=""background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd;font-size:12px;font-weight:800;"">📐 此類型一般 Story Point 範圍：${escapeModalHtml(kMinPt)} ~ ${escapeModalHtml(kMaxPt)} pt</span>
                     </div>
-                    <div><strong>⭐ 主要特徵 (核心工作性質)：</strong><span style=""color:#0f172a;font-weight:600;"">${escapeModalHtml(kFeature)}</span></div>
-                    <div><strong>📐 點數估算與計量特徵：</strong><span style=""color:#1e40af;"">${escapeModalHtml(kEst)}</span></div>
-                    <div><strong>⏰ 時程週期與交付/到期特徵：</strong><span style=""color:#334155;"">${escapeModalHtml(kDeliv)}</span></div>
-                    ${kDesc ? `<div><strong>📋 適用情境說明：</strong><span style=""color:#475569;"">${escapeModalHtml(kDesc)}</span></div>` : ''}
+                    <div><strong>⭐ 基本規範 (主要工作性質)：</strong><span style=""color:#0f172a;font-weight:600;"">${escapeModalHtml(kFeature)}</span></div>
+                    <div><strong>📐 一般 Story Point 範圍與計量規範：</strong><span style=""color:#1e40af;font-weight:700;"">${escapeModalHtml(kEst)}</span></div>
+                    <div><strong>⏰ 交付驗收與一般工項時程規範：</strong><span style=""color:#334155;"">${escapeModalHtml(kDeliv)}</span></div>
+                    ${kDesc ? `<div><strong>📋 適用情境補充說明：</strong><span style=""color:#475569;"">${escapeModalHtml(kDesc)}</span></div>` : ''}
                 </div>
             `;
 
-            // 同步高亮下方特徵表選中列
+            // 同步高亮下方規範表選中列
             document.querySelectorAll('.modal-wik-feature-row').forEach(tr => {
                 if (tr.getAttribute('data-kind-code') === kCode) {
                     tr.style.background = '#dbeafe';
@@ -12025,17 +12220,20 @@ public class portalController : Controller
                 }
             });
 
-            // 若是在工項新增/編輯 Modal 切換預設工項類型，自動連動選取對應的工項代表類型（專案、維運、顧問時數...等）
+            // 若是在一般工項新增/編輯 Modal 切換工項類型，自動連動選取對應的基本工項（如：資料庫健檢）
             if (selectId === 'modalWiKind') {
                 const mTypeSel = document.getElementById('modalWiTypeSelect');
                 if (mTypeSel && kCode) {
-                    const matchOpt = Array.from(mTypeSel.options).find(o => o.getAttribute('data-code') === kCode || o.getAttribute('data-kind') === kCode);
-                    if (matchOpt) {
-                        mTypeSel.value = matchOpt.value;
-                        const pt = matchOpt.getAttribute('data-pt') || '';
-                        const ptInput = document.getElementById('modalWiStoryPoint');
-                        if (pt && ptInput && !ptInput.value) {
-                            ptInput.value = pt;
+                    const curOpt = mTypeSel.options[mTypeSel.selectedIndex];
+                    if (!curOpt || String(curOpt.value) === '0' || curOpt.getAttribute('data-kind') !== kCode) {
+                        const matchOpt = Array.from(mTypeSel.options).find(o => String(o.value) !== '0' && o.getAttribute('data-kind') === kCode);
+                        if (matchOpt) {
+                            mTypeSel.value = matchOpt.value;
+                            const pt = matchOpt.getAttribute('data-pt') || '';
+                            const ptInput = document.getElementById('modalWiStoryPoint');
+                            if (pt && ptInput && !ptInput.value) {
+                                ptInput.value = pt;
+                            }
                         }
                     }
                 }
@@ -12055,10 +12253,12 @@ public class portalController : Controller
                 opt.getAttribute('data-kind-color') || 'blue',
                 opt.getAttribute('data-kind-sort') || '40',
                 opt.getAttribute('data-kind-desc') || '',
-                tabSuffix || 'types',
+                tabSuffix || 'kinds',
                 opt.getAttribute('data-kind-feature') || '',
                 opt.getAttribute('data-kind-estimation') || '',
-                opt.getAttribute('data-kind-deliverable') || ''
+                opt.getAttribute('data-kind-deliverable') || '',
+                opt.getAttribute('data-kind-min-pt') || '1',
+                opt.getAttribute('data-kind-max-pt') || '8'
             );
         }
 
@@ -12071,7 +12271,7 @@ public class portalController : Controller
                 opt.getAttribute('data-kind-pk') || '',
                 opt.getAttribute('data-kind-code') || opt.value || '',
                 opt.getAttribute('data-kind-name') || opt.value || '',
-                tabSuffix || 'types'
+                tabSuffix || 'kinds'
             );
         }
 
@@ -12093,7 +12293,7 @@ public class portalController : Controller
             const wrap = document.getElementById(wrapId);
             if (!sel || !wrap) return;
             const currentVal = sel.value;
-            const sfx = tabSuffix || 'types';
+            const sfx = tabSuffix || 'kinds';
             let rowsHtml = '';
             Array.from(sel.options).forEach(opt => {
                 const kPk = opt.getAttribute('data-kind-pk') || '';
@@ -12102,6 +12302,8 @@ public class portalController : Controller
                 const kIcon = opt.getAttribute('data-kind-icon') || '📌';
                 const kColor = opt.getAttribute('data-kind-color') || 'blue';
                 const kSort = opt.getAttribute('data-kind-sort') || '40';
+                const kMinPt = opt.getAttribute('data-kind-min-pt') || '0.5';
+                const kMaxPt = opt.getAttribute('data-kind-max-pt') || '21';
                 const kFeature = opt.getAttribute('data-kind-feature') || '';
                 const kEst = opt.getAttribute('data-kind-estimation') || '';
                 const kDeliv = opt.getAttribute('data-kind-deliverable') || '';
@@ -12111,13 +12313,14 @@ public class portalController : Controller
                 rowsHtml += `
                     <tr class=""modal-wik-feature-row"" data-kind-code=""${escapeModalHtml(kCode)}"" style=""${isSelected ? 'background:#dbeafe;font-weight:700;' : ''}cursor:pointer;"" onclick=""selectModalTypeKindFromTable('${escapeModalHtml(kCode)}')"">
                         <td style=""white-space:nowrap;""><strong style=""display:inline-flex;align-items:center;gap:5px;"">${renderIconHtmlJs(kIcon, kName)} ${escapeModalHtml(kName)}</strong><br/><code style=""font-size:11px;"">${escapeModalHtml(kCode)}</code></td>
+                        <td style=""white-space:nowrap;""><span class=""badge"" style=""background:#dbeafe;color:#1d4ed8;font-weight:800;"">${escapeModalHtml(kMinPt)} ~ ${escapeModalHtml(kMaxPt)} pt</span></td>
                         <td style=""font-size:12px;line-height:1.4;"">${escapeModalHtml(kFeature)}</td>
                         <td style=""font-size:12px;line-height:1.4;color:#1e3a8a;"">${escapeModalHtml(kEst)}</td>
                         <td style=""font-size:12px;line-height:1.4;color:#334155;"">${escapeModalHtml(kDeliv)}</td>
                         <td style=""white-space:nowrap;"">
                             <div style=""display:flex;gap:4px;flex-wrap:wrap;"">
-                                <button type=""button"" class=""btn btn-outline"" style=""padding:2px 6px;font-size:11px;color:#15803d;border-color:#86efac;background:#f0fdf4;"" onclick=""event.stopPropagation(); selectModalTypeKindFromTable('${escapeModalHtml(kCode)}')"">✅ 選用</button>
-                                <button type=""button"" class=""btn btn-outline"" style=""padding:2px 6px;font-size:11px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""event.stopPropagation(); openWorkItemKindEditModal('${escapeModalHtml(kPk)}','${escapeModalHtml(kCode)}','${escapeModalHtml(kName)}','${escapeModalHtml(kIcon)}','${escapeModalHtml(kColor)}','${escapeModalHtml(kSort)}','${escapeModalHtml(kDesc)}','${escapeModalHtml(sfx)}','${escapeModalHtml(kFeature)}','${escapeModalHtml(kEst)}','${escapeModalHtml(kDeliv)}')"">✏️ 修改</button>
+                                <button type=""button"" class=""btn btn-outline"" style=""padding:2px 6px;font-size:11px;color:#15803d;border-color:#86efac;background:#f0fdf4;"" onclick=""event.stopPropagation(); selectModalTypeKindFromTable('${escapeModalHtml(kCode)}')"">✅ 套用</button>
+                                <button type=""button"" class=""btn btn-outline"" style=""padding:2px 6px;font-size:11px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""event.stopPropagation(); openWorkItemKindEditModal('${escapeModalHtml(kPk)}','${escapeModalHtml(kCode)}','${escapeModalHtml(kName)}','${escapeModalHtml(kIcon)}','${escapeModalHtml(kColor)}','${escapeModalHtml(kSort)}','${escapeModalHtml(kDesc)}','${escapeModalHtml(sfx)}','${escapeModalHtml(kFeature)}','${escapeModalHtml(kEst)}','${escapeModalHtml(kDeliv)}','${escapeModalHtml(kMinPt)}','${escapeModalHtml(kMaxPt)}')"">✏️ 修改</button>
                                 <button type=""button"" class=""btn btn-outline"" style=""padding:2px 6px;font-size:11px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""event.stopPropagation(); confirmDeleteWorkItemKind('${escapeModalHtml(kPk)}','${escapeModalHtml(kCode)}','${escapeModalHtml(kName)}','${escapeModalHtml(sfx)}')"">🗑️ 刪除</button>
                             </div>
                         </td>
@@ -12127,18 +12330,19 @@ public class portalController : Controller
             wrap.innerHTML = `
                 <div id=""modalTypeKindFeatureTableInner"" style=""border:1px solid #cbd5e1;border-radius:10px;padding:10px 12px;background:#f8fafc;"">
                     <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px;"">
-                        <span style=""font-size:12.5px;font-weight:800;color:#0f172a;"">📋 預設工項類型主要特徵一覽表（點擊列即可套用，或直接執行增、刪、修、查）</span>
-                        <button type=""button"" class=""btn btn-primary"" style=""padding:3px 10px;font-size:11.5px;"" onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','${escapeModalHtml(sfx)}','','','')"">➕ 新增預設工項類型</button>
+                        <span style=""font-size:12.5px;font-weight:800;color:#0f172a;"">📋 工項類型基本規範與一般 Story Point 範圍表（點擊列即可套用至基本工項，或直接執行增、刪、修、查）</span>
+                        <button type=""button"" class=""btn btn-primary"" style=""padding:3px 10px;font-size:11.5px;"" onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','${escapeModalHtml(sfx)}','','','',1,8)"">➕ 新增工項類型</button>
                     </div>
                     <div style=""max-height:220px;overflow-y:auto;"">
                         <table style=""width:100%;font-size:12px;"">
                             <thead>
                                 <tr>
-                                    <th style=""width:125px;"">預設工項類型</th>
-                                    <th>⭐ 主要特徵 (核心工作性質)</th>
-                                    <th>📐 點數估算與計量特徵</th>
-                                    <th>⏰ 時程週期與交付/到期特徵</th>
-                                    <th style=""width:155px;"">操作 (選用/修/刪)</th>
+                                    <th style=""width:115px;"">工項類型 (3-3)</th>
+                                    <th style=""width:105px;"">一般 SP 範圍</th>
+                                    <th>⭐ 基本規範 (主要工作性質)</th>
+                                    <th>📐 點數估算與計量規範</th>
+                                    <th>⏰ 交付與一般工項時程規範</th>
+                                    <th style=""width:155px;"">操作 (套用/修/刪)</th>
                                 </tr>
                             </thead>
                             <tbody>${rowsHtml}</tbody>
@@ -12148,7 +12352,7 @@ public class portalController : Controller
             `;
         }
 
-        // 頁面載入後初始化預設工項類型代表圖示選擇器與 2-2 代表工項預設類型特徵預覽
+        // 頁面載入後初始化工項類型代表圖示選擇器與 3-2 基本工項套用類型基本規範預覽
         setTimeout(function () {
             ['kinds', 'workitems', 'types'].forEach(sfx => {
                 if (document.getElementById('wikIcon_' + sfx)) {
@@ -12173,7 +12377,7 @@ public class portalController : Controller
             document.getElementById('wiStatus').value = 'todo';
             document.getElementById('wiReason').value = '';
             if (document.getElementById('wiFormTitle')) {
-                document.getElementById('wiFormTitle').textContent = '➕ 建立/修改工項（設定工項類型、起訖時間與 Story Point）';
+                document.getElementById('wiFormTitle').textContent = '➕ 建立/修改一般工項（套用基本工項 Story Point、微調點數並設定起訖時間）';
             }
             if (document.getElementById('wiDurationQty')) {
                 document.getElementById('wiDurationQty').value = '1';
@@ -12205,7 +12409,7 @@ public class portalController : Controller
                 document.getElementById('wiEndDate').value = endIso;
             }
             if (document.getElementById('wiFormTitle')) {
-                document.getElementById('wiFormTitle').textContent = '✏️ 修改工項（正在編修：' + code + ' - ' + title + '）';
+                document.getElementById('wiFormTitle').textContent = '✏️ 修改一般工項（正在編修：' + code + ' - ' + title + '）';
             }
             openWorkItemEditModal(pk, code, title, typePk, pt, status, reason, kind, startIso, endIso, '', false);
         }
@@ -12222,21 +12426,21 @@ public class portalController : Controller
             if (document.getElementById('typeDesc')) document.getElementById('typeDesc').value = '';
             if (document.getElementById('typePt')) document.getElementById('typePt').value = '';
             if (document.getElementById('typeKind')) {
-                document.getElementById('typeKind').value = 'project';
+                document.getElementById('typeKind').value = 'maintenance';
                 onModalKindSelectChange('typeKind', 'mainTypeKindFeatureBanner');
             }
             if (document.getElementById('quickTypeEditSelector')) {
                 document.getElementById('quickTypeEditSelector').value = '';
             }
             if (document.getElementById('typeFormTitle')) {
-                document.getElementById('typeFormTitle').textContent = '➕ 新增代表工項（設定各項屬性與所屬預設工項類型）';
+                document.getElementById('typeFormTitle').textContent = '➕ 新增基本工項（如：資料庫健檢，無起訖時間，套用 3-3 工項類型取得基本規範與一般 SP 範圍）';
             }
             if (document.getElementById('typeCurrentModeBadge')) {
                 document.getElementById('typeCurrentModeBadge').textContent = '➕ 新增模式';
                 document.getElementById('typeCurrentModeBadge').className = 'badge badge-voting';
             }
             if (document.getElementById('typeSubmitBtn')) {
-                document.getElementById('typeSubmitBtn').textContent = '➕ 新增並儲存代表工項';
+                document.getElementById('typeSubmitBtn').textContent = '➕ 新增並儲存基本工項';
             }
             if (document.getElementById('btnTypeRevoteNextRound')) document.getElementById('btnTypeRevoteNextRound').style.display = 'none';
             if (document.getElementById('btnTypeRevoteRestartAll')) document.getElementById('btnTypeRevoteRestartAll').style.display = 'none';
@@ -12272,14 +12476,14 @@ public class portalController : Controller
                 document.getElementById('quickTypeEditSelector').value = String(pk || '');
             }
             if (document.getElementById('typeFormTitle')) {
-                document.getElementById('typeFormTitle').textContent = '🏷️ 正在編輯代表工項：' + (name || '') + ' (' + (code || '') + ')';
+                document.getElementById('typeFormTitle').textContent = '🏷️ 正在編輯基本工項：' + (name || '') + ' (' + (code || '') + ')';
             }
             if (document.getElementById('typeCurrentModeBadge')) {
                 document.getElementById('typeCurrentModeBadge').textContent = '✏️ 編輯模式 (PK #' + pk + ')';
                 document.getElementById('typeCurrentModeBadge').className = 'badge badge-finalized';
             }
             if (document.getElementById('typeSubmitBtn')) {
-                document.getElementById('typeSubmitBtn').textContent = '💾 儲存「' + (name || code) + '」代表工項屬性與預設類型';
+                document.getElementById('typeSubmitBtn').textContent = '💾 儲存「' + (name || code) + '」基本工項屬性與套用工項類型';
             }
             if (document.getElementById('btnTypeRevoteNextRound')) document.getElementById('btnTypeRevoteNextRound').style.display = '';
             if (document.getElementById('btnTypeRevoteRestartAll')) document.getElementById('btnTypeRevoteRestartAll').style.display = '';
@@ -12298,7 +12502,7 @@ public class portalController : Controller
 
             if (scrollToForm) {
                 document.getElementById('typeAttributeEditorCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                showToastNotice('✏️ 已載入代表工項「' + (name || code) + '」至上方編輯表單');
+                showToastNotice('✏️ 已載入基本工項「' + (name || code) + '」至上方編輯表單');
             }
         }
 
@@ -15331,34 +15535,34 @@ public class portalController : Controller
                 CategoryName = "🃏 多人即時盲投與回合設定",
                 RoleScope = "admin",
                 RoleBadge = "<span class='badge badge-admin'>👑 管理者主持適用</span>",
-                Title = "設定盲投回合（投什麼標的、高低點數上下限、誰可參與、共識演算法與快速範本）",
-                Keywords = "設定回合 盲投開始前設定 估算標的 自動建立代表類型 最低點數 最高點數 共識規則 nearestFibonacci 分歧門檻 倒數計時 受邀參與者 快速範本",
+                Title = "設定盲投回合（主要投基本工項、先選工項代表類型帶出規範與 SP 範圍、誰可參與與共識規則）",
+                Keywords = "設定回合 盲投開始前設定 估算標的 基本工項 資料庫健檢 目標工項代表類型 專案 維運 顧問時數 一般SP範圍 最低點數 最高點數 共識規則 nearestFibonacci 分歧門檻 倒數計時 受邀參與者 快速範本",
                 RouteUrl = "http://localhost:5088/?tab=roundSetup",
                 ImageFile = "/help/images/screen_04_round_setup.png",
                 ActionHtml = isStandalonePage
                     ? "<a href='/?tab=roundSetup' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>⚙️ 前往設定盲投回合</a>"
-                    : "<div style='display:flex;gap:6px;flex-wrap:wrap;'><button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('roundSetup')\">⚡ 切換至「⚙️ 設定回合」頁面</button>" +
+                    : "<div style='display:flex;gap:6px;flex-wrap:wrap;'><button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('roundSetup')\">⚡ 切換至「2. ⚙️ 設定回合 (1-2)」頁面</button>" +
                       (isAdmin ? "<button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12px;border-color:#2563eb;color:#1d4ed8;' onclick=\"openSessionSetupEditModal(0)\">🪟 直接彈出「快速發起盲投 Modal」</button>" : "") + "</div>",
-                Summary = "於盲投開始前完整設定本回合估算標的、允許出牌的最低/最高 Story Point 範圍、受邀參與成員名單、共識計算演算法與單回合思考倒數計時，並提供即時撲克牌面預覽與外鍵自動建立防呆。",
+                Summary = "投票主要投「3-2 基本工項（如：資料庫健檢）」。於盲投開始前先選擇「目標工項代表類型（專案、維運、顧問時數...）」自動帶出基本規範與該類型一般 Story Point 範圍上下限，再選擇或建立要投票的「目標基本工項」，設定受邀參與成員名單、共識演算法與單回合思考倒數計時。",
                 Steps = new[]
                 {
-                    "點擊頂部「<strong>⚙️ 設定回合</strong>」主選單，或於大廳點擊「<strong>⚡ 快速發起盲投議程 (彈出 Modal)</strong>」；可一鍵套用上方「<strong>📐 標準 Scrum 範本</strong>」、「<strong>🚀 快速閃電範本</strong>」或「<strong>🏛️ 嚴謹架構評審範本</strong>」。",
-                    "<strong>設定【1. 投什麼】</strong>：選擇「工項的代表類型 (<code>workItemType</code>)」或「個別特定工項 (<code>workItem</code>)」；若資料庫尚無項目，可直接選擇「<code>➕ 依下方盲投議程標題自動建立新代表類型/工項</code>」，系統會自動建立並綁定主鍵。",
-                    "<strong>設定【2. 點數上下限與規則】</strong>：選擇撲克牌組、設定最低點數 (<code>minStoryPoint</code>) 與最高點數 (<code>maxStoryPoint</code>)、共識計算規則（對齊費氏數列、算術平均、中位數、眾數等）與計時秒數，下方會即時預覽本回合可投出的撲克牌面。",
+                    "點擊頂部「<strong>2. ⚙️ 設定回合</strong>」主選單（或「1. 🃏 多人估算 ➔ 1-2. 設定盲投回合」），或於大廳點擊「<strong>⚡ 快速發起盲投議程 (彈出 Modal)</strong>」；可一鍵套用上方「<strong>📐 標準 Scrum 範本</strong>」、「<strong>🚀 快速閃電範本</strong>」或「<strong>🏛️ 嚴謹架構評審範本</strong>」。",
+                    "<strong>設定【1. 投什麼（主要投基本工項）】</strong>：預設選擇「<strong>🏷️ 基本工項 (3-2 <code>tbWorkItemType</code>，如：資料庫健檢)</strong>」。先選擇「<strong>目標工項代表類型（專案、維運、顧問時數、教育訓練、開發產品...）</strong>」，畫面即自動顯示該類型的一般工項基本規範與一般 Story Point 範圍（如維運 <code>0.5 ~ 5 pt</code>、專案 <code>3 ~ 21 pt</code>），接著選擇或自動建立要投票的「<strong>目標基本工項（如：資料庫健檢）</strong>」；若有特殊個案亦可切換為針對「📋 一般工項 (3-1，如：集保健檢)」進行個別微調盲投。",
+                    "<strong>設定【2. 點數上下限與規則】</strong>：切換目標工項代表類型時，系統會自動將該類型的一般 SP 範圍帶入本回合的最低點數 (<code>minStoryPoint</code>) 與最高點數 (<code>maxStoryPoint</code>)，主持人亦可依需求微調、選擇撲克牌組、共識計算規則（對齊費氏數列、算術平均、中位數、眾數等）與計時秒數，下方會即時預覽本回合可投出的撲克牌面。",
                     "<strong>設定【3. 誰可以參與】</strong>：支援「全選啟用員工」、「依部門批次勾選」或「僅勾選該工項負責員工」，最後點擊「<strong>🚀 儲存回合設定並開啟盲投桌面</strong>」。"
                 },
                 Callouts = new[]
                 {
-                    "① 一鍵套用敏捷估算範本 (標準 Scrum / 快速閃電 / 嚴謹評審)",
-                    "② 選擇估算標的 (支援依議程標題自動建立新代表類型或新工項)",
+                    "① 投票主要投「3-2 基本工項（如：資料庫健檢）」",
+                    "② 先選「目標工項代表類型（專案/維運/顧問時數...）」自動帶出基本規範與一般 SP 範圍",
                     "③ 設定最低/最高 Story Point、共識規則與即時撲克牌面預覽",
                     "④ 依部門或全選勾選受邀參與員工並儲存啟動盲投"
                 },
                 UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
                     <span class='badge' style='background:#1e293b;color:#fff;'>畫面元件示意：</span>
-                    <span style='background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;padding:3px 8px;border-radius:6px;font-weight:700;'>⚡ 範本：標準 Scrum (0.5~21pt)</span>
-                    <span style='background:#fff;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-weight:700;'>📉 最低：0.5 pt ～ 📈 最高：21 pt</span>
-                    <span style='background:#fff;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-weight:700;'>🏢 依部門快速勾選參與者</span>
+                    <span style='background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;padding:3px 8px;border-radius:6px;font-weight:700;'>🗂️ 目標工項代表類型：[ 🛠️ 維運 (0.5~5pt) ▼ ]</span>
+                    <span style='background:#f0fdf4;border:1px solid #86efac;color:#166534;padding:3px 8px;border-radius:6px;font-weight:700;'>🏷️ 目標基本工項：[ 資料庫健檢 ▼ ]</span>
+                    <span style='background:#fff;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-weight:700;'>📉 最低：0.5 pt ～ 📈 最高：5 pt</span>
                     <span style='background:#2563eb;color:#fff;padding:3px 9px;border-radius:6px;font-weight:800;'>🚀 儲存回合設定並開啟盲投桌面</span>
                 </div>"
             },
@@ -15370,34 +15574,34 @@ public class portalController : Controller
                 CategoryName = "🃏 多人即時盲投與回合設定",
                 RoleScope = "all",
                 RoleBadge = "<span class='badge badge-user'>🙋 全員適用 (依角色自動隔離)</span>",
-                Title = "事後查詢訂出 Story Point 的完整過程与點數異動稽核歷程",
-                Keywords = "估算過程 投票歷史 出牌明細 回合統計 點數異動歷程 tbPointHistory 稽核紀錄 定案決議說明",
+                Title = "事後查詢訂出 Story Point 的完整過程與點數異動稽核歷程",
+                Keywords = "估算過程 投票歷史 出牌明細 回合統計 點數異動歷程 tbPointHistory 稽核紀錄 定案決議說明 基本工項 一般工項",
                 RouteUrl = "http://localhost:5088/?tab=history",
                 ImageFile = "/help/images/screen_05_history.png",
                 ActionHtml = isStandalonePage
                     ? "<a href='/?tab=history' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>📜 前往估算過程查詢</a>"
                     : "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('history')\">⚡ 立即切換至「📜 1-3. 估算過程查詢」畫面</button>",
-                Summary = "完整保留並可隨時回溯每一場盲投議程的各回合統計、討論摘要、定案決議說明、每位參與者各回合投出的撲克牌與理由，以及工項與代表類型的 Story Point 異動稽核軌跡。",
+                Summary = "完整保留並可隨時回溯每一場盲投議程的各回合統計、討論摘要、定案決議說明、每位參與者各回合投出的撲克牌與理由，以及基本工項與一般工項的 Story Point 異動稽核軌跡。",
                 Steps = new[]
                 {
-                    "由頂部選單選擇「<strong>🃏 多人估算 ➔ 📜 1-3. 估算過程查詢</strong>」進入歷史稽核頁面。",
+                    "由頂部選單選擇「<strong>1. 🃏 多人估算 ➔ 📜 1-3. 估算過程查詢</strong>」進入歷史稽核頁面。",
                     "上方「<strong>歷次投票回合統計與討論過程</strong>」表格完整列出每場議程的第 1、2... 回合狀態、出牌人數、最低/最高/平均點數、回合討論紀錄與 <code>🏆 定案決議說明</code>。",
                     "中段「<strong>各回合參與者出牌明細</strong>」列出每一回合投出的撲克牌與估算理由（管理者可檢視全體具名紀錄；一般參與者依隱私保護僅顯示本人紀錄）。",
-                    "下方「<strong>Story Point 點數異動稽核歷程表 (tbPointHistory)</strong>」完整記錄每一次點數變更來源（如 <code>typeDefault</code> 自動帶入、<code>votingFinalize</code> 投票定案、<code>manualAdjust</code> 手動微調、<code>autoExpireDeduct</code> 到期自動扣點）及變更前後點數。"
+                    "下方「<strong>Story Point 點數異動稽核歷程表 (tbPointHistory)</strong>」完整記錄每一次點數變更來源（如 <code>typeDefault</code> 套用基本工項自動帶入、<code>votingFinalize</code> 盲投拍板定案、<code>manualAdjust</code> 一般工項手動微調、<code>autoExpireDeduct</code> 一般工項到期自動扣點）及變更前後點數。"
                 },
                 Callouts = new[]
                 {
                     "① 歷次投票回合統計表 (含最低/最高/平均點數與定案決議說明)",
                     "② 各回合參與者具名出牌點數與估算理由明細表",
-                    "③ Story Point 點數異動稽核歷程表 (變更前後點數與原因)",
+                    "③ Story Point 點數異動稽核歷程表 (基本工項與一般工項變更前後點數與原因)",
                     "④ 支援匯出 CSV / Excel / 互動式 HTML 歷史稽核報表"
                 },
                 UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
                     <span class='badge' style='background:#1e293b;color:#fff;'>異動來源標籤：</span>
-                    <span class='badge badge-user'>typeDefault 代表類型帶入</span>
+                    <span class='badge badge-user'>typeDefault 套用基本工項帶入</span>
                     <span class='badge badge-finalized'>votingFinalize 盲投拍板定案</span>
-                    <span class='badge badge-admin'>manualAdjust 管理者手動微調</span>
-                    <span class='badge' style='background:#fee2e2;color:#b91c1c;'>autoExpireDeduct 到期自動扣點</span>
+                    <span class='badge badge-admin'>manualAdjust 一般工項手動微調</span>
+                    <span class='badge' style='background:#fee2e2;color:#b91c1c;'>autoExpireDeduct 一般工項到期自動扣點</span>
                 </div>"
             },
             new
@@ -15405,35 +15609,36 @@ public class portalController : Controller
                 Id = "topic-workitem",
                 Num = "07",
                 Category = "workitem",
-                CategoryName = "📋 工項、代表類型與到期扣點",
+                CategoryName = "📋 一般工項、基本工項與工項類型三層管理",
                 RoleScope = "all",
                 RoleBadge = "<span class='badge badge-user'>🙋 全員適用 (管理員增刪修 / 員工查閱本人)</span>",
-                Title = "工項管理、選擇代表類型自動帶入點數、起訖時間快速設定與到期自動扣點寄信通知",
-                Keywords = "工項管理 新增工項 代表類型自動帶入 手動微調 起訖時間 天 周 月 季 年 到期自動扣點 Email 通知 部門經理 HR 員工指派 分攤比例 allocationPercent",
+                Title = "3-1. 一般工項與員工指派（如：集保健檢）：套用基本工項 SP、支援點數微調、專屬起訖時間與到期自動扣點寄信",
+                Keywords = "一般工項 集保健檢 套用基本工項 資料庫健檢 自動帶入 手動微調 起訖時間 天 周 月 季 年 到期自動扣點 Email 通知 部門經理 HR 員工指派 分攤比例 allocationPercent 3-1",
                 RouteUrl = "http://localhost:5088/?tab=workitems",
                 ImageFile = "/help/images/screen_06_workitems.png",
                 ActionHtml = isStandalonePage
-                    ? "<a href='/?tab=workitems' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>📋 前往工項管理</a>"
-                    : "<div style='display:flex;gap:6px;flex-wrap:wrap;'><button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('workitems')\">⚡ 切換至「📋 2-1. 工項管理」畫面</button>" +
-                      (isAdmin ? "<button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12px;border-color:#2563eb;color:#1d4ed8;' onclick=\"openWorkItemEditModal(0)\">🪟 直接彈出「新增工項與指派 Modal」</button>" : "") + "</div>",
-                Summary = "建立工項時選擇「工項代表類型」即可自動帶入標準 Story Point（亦允許管理員依複雜度手動微調），支援單一 Modal 同時指派負責員工與分攤配額，並提供起訖時間「數量 + 天/周/月/季/年」快速計算與到期自動轉態、扣點、寄發 Email 給部門主管與 HR。",
+                    ? "<a href='/?tab=workitems' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>📋 前往 3-1. 一般工項管理</a>"
+                    : "<div style='display:flex;gap:6px;flex-wrap:wrap;'><button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('workitems')\">⚡ 切換至「📋 3-1. 一般工項與員工指派」畫面</button>" +
+                      (isAdmin ? "<button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12px;border-color:#2563eb;color:#1d4ed8;' onclick=\"openWorkItemEditModal(0)\">🪟 直接彈出「新增一般工項與指派 Modal」</button>" : "") + "</div>",
+                Summary = "「3-1. 一般工項（如：集保健檢）」是實際指派給員工執行的工作實例。建立一般工項時選擇「3-2 基本工項（如：資料庫健檢）」即可自動帶入標準 Story Point 與所屬工項類型，同時允許依客戶規模或特殊需求微調 Story Point；全系統只有「一般工項」才有起訖時間（基本工項沒有），達到迄時自動轉為已完成、扣減 Story Point 並寄發 Email 給部門主管與 HR。",
                 Steps = new[]
                 {
-                    "在「<strong>📋 2-1. 工項與員工指派</strong>」頂部快捷指令列點擊「<strong>➕ 新增工項與指派 (彈出 Modal)</strong>」，或展開管理表單抽屜。",
-                    "選擇「<strong>🗂️ 工項類型</strong>（🏗️ 專案 / 🛠️ 維運 / ⏳ 顧問時數 / 🎓 教育訓練 / 🚀 開發產品）」與「<strong>🏷️ 工項代表類型</strong>」，系統自動將代表類型的標準點數帶入 <code>Story Point</code> 欄位（管理員亦可手動調整點數並填寫微調原因）。",
-                    "設定「<strong>📅 開始時間 (起時)</strong>」，並於「<strong>⚡ 起訖時間快速設定</strong>」輸入<strong>數量</strong>（如 <code>1</code>、<code>2</code>）與選擇<strong>單位（<code>天</code> / <code>周</code> / <code>月</code> / <code>季</code> / <code>年</code>）</strong>，系統自動算出「<strong>⏰ 結束時間 (迄時)</strong>」；下方可直接選擇負責員工與分攤比例 (<code>allocationPercent</code>)。",
-                    "<strong>到期自動轉態、扣減 Story Point 與 Email 通知</strong>：當系統時間達到工項的迄時 (<code>endDate</code>)，背景排程或點擊「<strong>⏰ 立即檢核到期工項</strong>」會自動將狀態轉為「已完成 (已到期扣點)」、將工項與負責員工/部門的有效 Story Point 扣減歸零（保留原核定點數與扣減紀錄），並透過 Email 自動寄信通知該部門所有<strong>部門主管 (<code>isDepartmentManager=1</code>)</strong> 與 <strong>HR 人資主管</strong>。"
+                    "在「<strong>3. 📋 工項管理 ➔ 3-1. 一般工項與員工指派</strong>」頂部快捷指令列點擊「<strong>➕ 新增一般工項與指派 (彈出 Modal)</strong>」，或展開管理表單抽屜。",
+                    "輸入一般工項名稱（例如：<code>集保健檢</code>），並選擇要套用的「<strong>🏷️ 基本工項（3-2，例如：資料庫健檢）</strong>」，系統即自動帶入該基本工項所屬的「<strong>🗂️ 工項類型（如：維運 / 專案）</strong>」與「<strong>標準 Story Point（如：3 pt）</strong>」；若該一般工項範圍較特殊，管理員仍可直接<strong>微調 Story Point 點數</strong>並填寫微調原因（微調後標記為「已微調」，未來基本工項重投時不會覆蓋此微調點數）。",
+                    "<strong>設定一般工項專屬起訖時間</strong>（基本工項無起訖時間，僅一般工項有起訖時間）：設定「<strong>📅 開始時間 (起時)</strong>」，並於「<strong>⚡ 起訖時間快速設定</strong>」輸入<strong>數量</strong>（如 <code>1</code>、<code>2</code>）與選擇<strong>單位（<code>天</code> / <code>周</code> / <code>月</code> / <code>季</code> / <code>年</code>）</strong>，系統自動算出「<strong>⏰ 結束時間 (迄時)</strong>」；下方可直接選擇負責員工與分攤比例 (<code>allocationPercent</code>)。",
+                    "<strong>到期自動轉態、扣減 Story Point 與 Email 通知</strong>：當系統時間達到一般工項的迄時 (<code>endDate</code>)，背景排程或點擊「<strong>⏰ 立即檢核到期工項</strong>」會自動將狀態轉為「已完成 (已到期扣點)」、將一般工項與負責員工/部門的有效 Story Point 扣減歸零（保留原核定點數與扣減紀錄），並透過 Email 自動寄信通知該部門所有<strong>部門主管 (<code>isDepartmentManager=1</code>)</strong> 與 <strong>HR 人資主管</strong>。"
                 },
                 Callouts = new[]
                 {
-                    "① 頂部快捷指令列：一鍵彈出新增工項 Modal 或多人配額指派 Modal",
-                    "② 選擇工項代表類型自動帶入標準 Story Point (或手動微調)",
-                    "③ 起訖時間快速設定：輸入【數量】+ 選擇【天/周/月/季/年】自動算迄時",
+                    "① 一般工項（如：集保健檢）套用基本工項（如：資料庫健檢）自動帶入標準 SP",
+                    "② 支援針對個別一般工項微調 Story Point 並記錄微調原因",
+                    "③ 只有一般工項才有起訖時間（基本工項無起訖），支援數量+天/周/月/季/年快設",
                     "④ 達到迄時自動轉已完成、扣除 Story Point 並寄 Email 給部門主管與 HR"
                 },
                 UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
-                    <span class='badge' style='background:#1e293b;color:#fff;'>起訖與到期機制示意：</span>
-                    <span style='background:#fff;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-weight:700;'>⚡ 快速設定：數量 [ 1 ] + 單位 [ 月 ▼ ] ➔ 自動算迄時</span>
+                    <span class='badge' style='background:#1e293b;color:#fff;'>一般工項套用與到期機制：</span>
+                    <span style='background:#eff6ff;color:#1e40af;border:1px solid #93c5fd;padding:3px 8px;border-radius:6px;font-weight:800;'>📋 一般工項：集保健檢 ➔ 套用基本工項【資料庫健檢 (3 pt)】(可微調 SP)</span>
+                    <span style='background:#fff;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-weight:700;'>⚡ 一般工項專屬起訖：數量 [ 1 ] + 單位 [ 月 ▼ ] ➔ 自動算迄時</span>
                     <span style='background:#fef3c7;color:#92400e;border:1px solid #f59e0b;padding:3px 8px;border-radius:6px;font-weight:800;'>⏰ 達迄時 ➔ 狀態轉 done + 點數扣減歸零 + 📧 寄信通知部門主管與 HR</span>
                 </div>"
             },
@@ -15478,39 +15683,39 @@ public class portalController : Controller
                 Id = "topic-types-kinds",
                 Num = "09",
                 Category = "workitem",
-                CategoryName = "📋 工項、代表類型與到期扣點",
+                CategoryName = "📋 一般工項、基本工項與工項類型三層管理",
                 RoleScope = "all",
                 RoleBadge = "<span class='badge badge-user'>🙋 全員可查閱 / 👑 管理員可增刪修</span>",
-                Title = "工項代表類型標準點數管理與工項類型（專案/維運/顧問時數/教育訓練/開發產品）CRUD",
-                Keywords = "工項代表類型 標準點數 同步既有工項 工項類型 專案 維運 顧問時數 教育訓練 開發產品 tbWorkItemType tbWorkItemKind",
+                Title = "3-2. 基本工項管理（如：資料庫健檢，無起訖時間，投票主要標的）與 3-3. 工項類型及基本規範（如：專案，告知一般 SP 範圍）",
+                Keywords = "基本工項 資料庫健檢 無起訖時間 投票主要標的 標準點數 同步既有工項 工項類型 基本規範 一般Story Point範圍 專案 維運 顧問時數 教育訓練 開發產品 tbWorkItemType tbWorkItemKind 3-2 3-3",
                 RouteUrl = "http://localhost:5088/?tab=types",
                 ImageFile = "/help/images/screen_08_types.png",
                 ActionHtml = isStandalonePage
-                    ? "<a href='/?tab=types' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>🏷️ 前往工項代表類型</a>"
-                    : "<div style='display:flex;gap:6px;flex-wrap:wrap;'><button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('types')\">⚡ 切換至「🏷️ 2-2. 工項代表類型」畫面</button>" +
-                      (isAdmin ? "<button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12px;border-color:#2563eb;color:#1d4ed8;' onclick=\"openWorkItemTypeEditModal(0)\">🪟 彈出「新增代表類型 Modal」</button>" : "") + "</div>",
-                Summary = "管理已透過盲投定案或核定標準 Story Point 的「工項代表類型 (tbWorkItemType)」供建立工項時自動帶入點數；同時提供「工項類型主檔 (tbWorkItemKind)」完整增刪修功能。",
+                    ? "<div style='display:flex;gap:6px;flex-wrap:wrap;'><a href='/?tab=types' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>🏷️ 前往 3-2. 基本工項管理</a><a href='/?tab=kinds' class='btn btn-outline' style='padding:6px 12px;font-size:12px;'>🗂️ 前往 3-3. 工項類型與基本規範</a></div>"
+                    : "<div style='display:flex;gap:6px;flex-wrap:wrap;'><button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('types')\">⚡ 切換至「🏷️ 3-2. 基本工項管理」</button><button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12px;border-color:#2563eb;color:#1d4ed8;' onclick=\"switchTab('kinds')\">🗂️ 切換至「3-3. 工項類型與基本規範」</button>" +
+                      (isAdmin ? "<button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12px;border-color:#15803d;color:#15803d;' onclick=\"openWorkItemTypeEditModal(0)\">🪟 彈出「新增基本工項 Modal」</button>" : "") + "</div>",
+                Summary = "系統採用清晰的三層設計：「3-3. 工項類型 (tbWorkItemKind，如：專案、維運、顧問時數)」定義一般工項基本規範與該類型的一般 Story Point 範圍上下限；「3-2. 基本工項 (tbWorkItemType，如：資料庫健檢)」沒有起訖時間，可套用 3-3 工項類型取得基本規範與一般 SP 範圍，並作為多人盲投的主要投票標的，投出標準 Story Point 後供「3-1. 一般工項（如：集保健檢）」直接套用與微調。",
                 Steps = new[]
                 {
-                    "切換至「<strong>🏷️ 2-2. 工項代表類型</strong>」頁籤，表格直接置頂列出所有代表類型的代碼、名稱、預設工項類型、複雜度驗收標準與標準 Story Point。",
-                    "管理員點擊頂部「<strong>➕ 新增工項代表類型 (彈出 Modal)</strong>」或在表格列按右鍵/雙擊編輯；若勾選「<strong>同步更新目前未完成且未曾手動微調之既有工項點數</strong>」，儲存時會自動更新關聯工項與員工分攤點數。",
-                    "點擊頂部「<strong>🗂️ 新增工項類型 (Modal)</strong>」或展開「工項類型增刪修管理」抽屜，可管理內建 5 大工項類型（<code>🏗️ 專案</code>、<code>🛠️ 維運</code>、<code>⏳ 顧問時數</code>、<code>🎓 教育訓練</code>、<code>🚀 開發產品</code>）或新增自訂工項類型、圖示與標籤配色。",
-                    "針對尚未定案的代表類型，可在表格列按滑鼠右鍵選擇「<strong>🃏 針對此代表類型發起多人盲投估算</strong>」直接開啟盲投回合設定 Modal。"
+                    "<strong>3-3. 工項類型與基本規範 (<code>tbWorkItemKind</code>)</strong>：切換至「<strong>3. 📋 工項管理 ➔ 3-3. 工項類型與基本規範</strong>」，可編輯管理各工項類型（內建 <code>🏗️ 專案 (3~21 pt)</code>、<code>🛠️ 維運 (0.5~5 pt)</code>、<code>⏳ 顧問時數 (1~8 pt)</code>、<code>🎓 教育訓練 (1~8 pt)</code>、<code>🚀 開發產品 (3~21 pt)</code> 及自訂類型），設定每一種類型的「<strong>一般工項基本規範（主要工作性質、點數估算規範、交付與時程規範）</strong>」以及「<strong>一般 Story Point 範圍上下限 (<code>minStoryPoint ~ maxStoryPoint</code>)</strong>」。",
+                    "<strong>3-2. 基本工項管理 (<code>tbWorkItemType</code>，如：資料庫健檢)</strong>：切換至「<strong>3. 📋 工項管理 ➔ 3-2. 基本工項管理</strong>」，專門編輯如「<code>資料庫健檢</code>」、「<code>資料庫效能調校</code>」等標準工作範本。<strong>基本工項沒有起訖時間</strong>（只有 3-1 一般工項才有起訖時間）。",
+                    "<strong>基本工項套用工項類型 (3-3 ➔ 3-2)</strong>：編輯基本工項時選擇套用哪一種「<strong>工項類型（如：專案或維運）</strong>」，畫面即自動帶出該類型的一般工項基本規範，並明確告知該類型的一般 Story Point 範圍（例如維運一般範圍為 <code>0.5 ~ 5 pt</code>、專案一般範圍為 <code>3 ~ 21 pt</code>）。",
+                    "<strong>多人盲投主要投基本工項，並供一般工項套用與微調 (3-2 ➔ 3-1)</strong>：對基本工項（如「資料庫健檢」）按滑鼠右鍵選擇「<strong>🃏 針對此基本工項發起多人盲投估算</strong>」，投出共識定案後即成為該基本工項的標準 Story Point；當建立「3-1 一般工項（如：集保健檢）」時即可一鍵套用此標準點數（且一般工項仍可微調 SP 並設定起訖時間）。"
                 },
                 Callouts = new[]
                 {
-                    "① 置頂快捷指令列：新增工項代表類型 Modal 與新增工項類型 Modal",
-                    "② 工項代表類型一覽表：顯示標準 Story Point、估算狀態與套用工項數",
-                    "③ 支援勾選「同步更新未完成且未微調之既有工項點數」",
-                    "④ 工項類型主檔 (tbWorkItemKind) 完整支援新增、修改與安全刪除轉移"
+                    "① 3-3 工項類型（如：專案、維運）：設定一般工項基本規範與告知一般 SP 範圍 (min~max pt)",
+                    "② 3-2 基本工項（如：資料庫健檢）：無起訖時間，套用 3-3 類型取得基本規範與 SP 範圍提示",
+                    "③ 投票主要投「3-2 基本工項」，定案後可同步更新未結案且未微調之 3-1 一般工項",
+                    "④ 3-1 一般工項（如：集保健檢）：套用基本工項 SP、支援個別微調 SP、具備專屬起訖時間"
                 },
                 UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
-                    <span class='badge' style='background:#1e293b;color:#fff;'>內建工項類型：</span>
-                    <span class='badge' style='background:#dbeafe;color:#1d4ed8;'>🏗️ 專案</span>
-                    <span class='badge' style='background:#fef3c7;color:#b45309;'>🛠️ 維運</span>
-                    <span class='badge' style='background:#f3e8ff;color:#6d28d9;'>⏳ 顧問時數</span>
-                    <span class='badge' style='background:#dcfce7;color:#15803d;'>🎓 教育訓練</span>
-                    <span class='badge' style='background:#ffe4e6;color:#be123c;'>🚀 開發產品</span>
+                    <span class='badge' style='background:#1e293b;color:#fff;'>三層架構連動示意：</span>
+                    <span class='badge' style='background:#dbeafe;color:#1d4ed8;padding:4px 8px;'>3-3 工項類型：🛠️ 維運 (一般規範：0.5 ~ 5 pt) ／ 🏗️ 專案 (一般規範：3 ~ 21 pt)</span>
+                    <span style='font-weight:900;color:#475569;'>➔ 套用類型規範 ➔</span>
+                    <span class='badge' style='background:#dcfce7;color:#15803d;padding:4px 8px;'>3-2 基本工項：資料庫健檢 (無起訖，盲投主要標的：3 pt)</span>
+                    <span style='font-weight:900;color:#475569;'>➔ 套用 SP ➔</span>
+                    <span class='badge' style='background:#fef3c7;color:#b45309;padding:4px 8px;'>3-1 一般工項：集保健檢 (套用 3 pt 可微調 + 有起訖時間)</span>
                 </div>"
             },
             new
@@ -15521,17 +15726,17 @@ public class portalController : Controller
                 CategoryName = "🖱️ 表格右鍵 Modal、排序鎖定與報表",
                 RoleScope = "all",
                 RoleBadge = "<span class='badge badge-user'>🙋 全員適用 (管理員看全公司 / 員工看個人)</span>",
-                Title = "員工與部門總 Story Point 統計、表頭排序與凍結鎖定、三格式報表匯出 (CSV / Excel / 互動 HTML)",
+                Title = "4. 統計報表：員工與部門總 Story Point 統計、表頭排序與凍結鎖定、三格式報表匯出 (CSV / Excel / 互動 HTML)",
                 Keywords = "統計報表 部門總點數 員工總點數 表頭排序 欄位鎖定 Sticky Header 凍結欄位 匯出 CSV 匯出 Excel 互動 HTML 報表 群組彙總",
                 RouteUrl = "http://localhost:5088/?tab=stats",
                 ImageFile = "/help/images/screen_09_stats_table.png",
                 ActionHtml = isStandalonePage
                     ? "<a href='/?tab=stats' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>📊 前往統計報表</a>"
-                    : "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('stats')\">⚡ 立即切換至「📊 3-1. 員工與部門統計」畫面</button>",
+                    : "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('stats')\">⚡ 立即切換至「📊 4. 統計報表」畫面</button>",
                 Summary = "即時彙總各部門與每位員工身上的待處理、進行中、已完成及總 Story Point 負載（含上一層主管與到期通知收件人）；全站表格皆具備表頭點擊排序、欄位凍結鎖定與三種格式報表匯出。",
                 Steps = new[]
                 {
-                    "<strong>部門與員工點數統計</strong>：切換至「<strong>📊 3-1. 員工與部門統計</strong>」（一般參與者顯示「我的個人分數統計」），即時查看各部門在職人數、總點數、人均負載，以及每位員工的上一層主管與分攤總點數。",
+                    "<strong>部門與員工點數統計</strong>：切換至頂部主選單「<strong>4. 📊 統計報表</strong>」（一般參與者顯示「我的個人分數統計」），即時查看各部門在職人數、總點數、人均負載，以及每位員工的上一層主管與分攤總點數。",
                     "<strong>表頭排序 (<code>⇅ / ▲ / ▼</code>)</strong>：點擊全系統任一表格的 <code>&lt;th&gt;</code> 表頭標題，即可切換升冪 (<code>▲</code>)、降冪 (<code>▼</code>) 或原始順序 (<code>⇅</code>)，自動識別 Story Point 點數、件數、日期與中文編號（按住 <code>Shift</code> 點擊支援多欄位階層排序）。",
                     "<strong>欄位凍結鎖定 (<code>📌 ➔ 🔒</code>) 與 Sticky 表頭</strong>：點擊表頭右側圖釘按鈕 <code>📌</code> 將其變為 <code>🔒</code>，該欄位整欄即固定於表格最左側，水平捲動時保持凍結不動；表格上方工具列亦可切換頂部表頭列垂直捲動鎖定。",
                     "<strong>三種格式報表匯出 (CSV / Excel / 互動 HTML)</strong>：點擊「<code>📥 匯出 CSV</code>」、「<code>📊 匯出 Excel (.xlsx)</code>」或「<code>🌐 匯出互動 HTML</code>」，其中互動 HTML 報表可獨立離線開啟並內建排序、多條件篩選與動態群組彙總統計表。"
@@ -15559,20 +15764,20 @@ public class portalController : Controller
                 CategoryName = "👥 組織主管階層、批次匯入與系統 Log",
                 RoleScope = "admin",
                 RoleBadge = "<span class='badge badge-admin'>👑 管理者適用</span>",
-                Title = "組織與員工帳密管理：同部門多位部門主管設定、樹狀遞迴階層（呈現上一層主管）與 CSV/Excel 批次匯入",
+                Title = "6. 組織與員工帳密管理：同部門多位部門主管設定、樹狀遞迴階層（呈現上一層主管）與 CSV/Excel 批次匯入",
                 Keywords = "員工管理 部門管理 部門主管 isDepartmentManager 樹狀階層 上一層主管 managerEmployeePk 批次匯入 CSV 範本 Excel 範本 啟用停用",
                 RouteUrl = "http://localhost:5088/?tab=employees",
                 ImageFile = "/help/images/screen_10_employees_org.png",
                 ActionHtml = isStandalonePage
                     ? "<a href='/?tab=employees' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>👥 前往員工與組織管理</a>"
                     : (isAdmin
-                        ? "<div style='display:flex;gap:6px;flex-wrap:wrap;'><button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('employees')\">⚡ 切換至「👥 4-1. 員工與組織管理」畫面</button><button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12px;border-color:#2563eb;color:#1d4ed8;' onclick=\"openEmployeeEditModal(0)\">🪟 彈出「新增員工帳號 Modal」</button></div>"
-                        : "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('myAccount')\">🔑 前往個人帳號設定</button>"),
+                        ? "<div style='display:flex;gap:6px;flex-wrap:wrap;'><button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('employees')\">⚡ 切換至「👥 6. 組織與員工管理」畫面</button><button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12px;border-color:#2563eb;color:#1d4ed8;' onclick=\"openEmployeeEditModal(0)\">🪟 彈出「新增員工帳號 Modal」</button></div>"
+                        : "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('myAccount')\">🔑 前往 5. 修改帳密設定</button>"),
                 Summary = "完整管理全公司部門與員工帳號（增、刪、修、查、啟用/停用），支援標記「是否為部門主管 (isDepartmentManager，同部門可設多位主管)」與「上一層主管 (managerEmployeePk)」樹狀遞迴階層，並提供 CSV 與 Excel 雙格式批次匯入。",
                 Steps = new[]
                 {
-                    "在「<strong>👥 4-1. 員工與組織管理</strong>」頂部點擊「<strong>➕ 新增員工帳號 (彈出 Modal)</strong>」或「<strong>🏢 新增/修改部門 (Modal)</strong>」，亦可於員工列表直接雙擊或按右鍵單筆編輯。",
-                    "<strong>部門主管與上一層主管設定</strong>：可勾選「<strong>⭐ 設為部門主管 (isDepartmentManager=1)</strong>」（同一個部門支援設定多位主管，工項到期時同部門所有主管與 HR 主管皆會收到通知信），並設定「<strong>🌲 上一層主管 (managerEmployeePk)</strong>」；員工列表與統計表僅精簡呈現每位員工的「上一層主管姓名」。",
+                    "在頂部主選單「<strong>6. 👥 組織與員工</strong>」點擊「<strong>➕ 新增員工帳號 (彈出 Modal)</strong>」或「<strong>🏢 新增/修改部門 (Modal)</strong>」，亦可於員工列表直接雙擊或按右鍵單筆編輯。",
+                    "<strong>部門主管與上一層主管設定</strong>：可勾選「<strong>⭐ 設為部門主管 (isDepartmentManager=1)</strong>」（同一個部門支援設定多位主管，一般工項到期時同部門所有主管與 HR 主管皆會收到通知信），並設定「<strong>🌲 上一層主管 (managerEmployeePk)</strong>」；員工列表與統計表僅精簡呈現每位員工的「上一層主管姓名」。",
                     "<strong>組織樹狀圖檢視</strong>：點擊頂部「<strong>🌳 組織與部門主管樹狀階層檢視</strong>」抽屜按鈕，可展開檢視 L1 頂層主管 ➔ L2 各部門主管 ➔ L3 部門成員的視覺化卡片，並可點擊卡片上「<code>🏢 修改部門</code>」直接彈出部門編輯 Modal。",
                     "<strong>CSV / Excel 批次匯入員工</strong>：點擊「<strong>📤 批次匯入員工 (CSV / Excel)</strong>」抽屜，可下載標準 CSV 或 Excel (<code>.xlsx</code>) 範本，上傳檔案或貼上文字即可批次新增/更新員工與自動建立部門。"
                 },
@@ -15598,21 +15803,21 @@ public class portalController : Controller
                 CategoryName = "👥 組織主管階層、批次匯入與系統 Log",
                 RoleScope = "admin",
                 RoleBadge = "<span class='badge badge-admin'>👑 管理者與維運適用</span>",
-                Title = "系統防崩潰保護、錯誤 Log 查詢中心 (tbLog) 與 PowerShell 多 Tab GUI 管理工具",
+                Title = "7. 系統防崩潰保護、錯誤 Log 查詢中心 (tbLog) 與 PowerShell 多 Tab GUI 管理工具",
                 Keywords = "系統 Log 錯誤 Log tbLog 防崩潰 不當機 StackTrace 錯誤測試 PowerShell uiMain.ps1 Console 模組 DPAPI 加密連線",
                 RouteUrl = "http://localhost:5088/?tab=logs",
                 ImageFile = "/help/images/screen_12_logs.png",
                 ActionHtml = isStandalonePage
                     ? "<a href='/?tab=logs' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>🛡️ 前往系統 Log 查詢中心</a>"
                     : (isAdmin
-                        ? "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('logs')\">⚡ 立即切換至「🛡️ 5-1. 系統 Log 查詢」畫面</button>"
+                        ? "<button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('logs')\">⚡ 立即切換至「🛡️ 7. 系統 Log 查詢」畫面</button>"
                         : "<span class='badge badge-admin'>🔒 系統 Log 僅限管理者帳號存取</span>"),
                 Summary = "採用三層式防崩潰保護架構（SQL TRY-CATCH + Controller 攔截 + 全域 Exception Middleware）確保發生任何錯誤絕不當機，並同步提供管理者系統 Log 查詢中心與 Windows PowerShell 多 Tab GUI 桌面管理工具。",
                 Steps = new[]
                 {
-                    "<strong>查詢與過濾系統 Log</strong>：管理者點擊頂部「<strong>🛡️ 系統 Log</strong>」進入查詢中心，可透過「關鍵字」、「Log 嚴重層級（<code>1-錯誤</code>、<code>2-警告</code>、<code>3-資訊</code>、<code>4-除錯</code>）」、「來源模組」或點擊「<strong>❌ 只看錯誤異常</strong>」快速定位問題；長篇錯誤可點擊 <code>🔍 點擊展開 StackTrace 錯誤堆疊明細</code>。",
+                    "<strong>查詢與過濾系統 Log</strong>：管理者點擊頂部「<strong>7. 🛡️ 系統 Log</strong>」進入查詢中心，可透過「關鍵字」、「Log 嚴重層級（<code>1-錯誤</code>、<code>2-警告</code>、<code>3-資訊</code>、<code>4-除錯</code>）」、「來源模組」或點擊「<strong>❌ 只看錯誤異常</strong>」快速定位問題；長篇錯誤可點擊 <code>🔍 點擊展開 StackTrace 錯誤堆疊明細</code>。",
                     "<strong>管理者一鍵防崩潰測試</strong>：於上方測試面板選擇「情境 A：Controller 例外」、「情境 B：SQL 預存程序參數異常」或「情境 C：全域 Middleware 例外」並點擊「<strong>⚡ 立即觸發測試錯誤</strong>」，即可驗證系統攔截錯誤不當機且完整寫入 <code>storyPoint.tbLog</code> 與本機 CSV。",
-                    "<strong>啟動 PowerShell 多 Tab 圖形化管理工具</strong>：於終端機執行 <code>pwsh -NoProfile -File c:\\temp\\storyPoint\\ps\\ui\\uiMain.ps1 -uiMode full</code>，通過員工帳號登入驗證後即可使用桌面版多頁籤介面（含盲投、代表類型、工項、員工、報表與<strong>📖 線上說明與搜尋</strong>頁籤）。",
+                    "<strong>啟動 PowerShell 多 Tab 圖形化管理工具</strong>：於終端機執行 <code>pwsh -NoProfile -File c:\\temp\\storyPoint\\ps\\ui\\uiMain.ps1 -uiMode full</code>，通過員工帳號登入驗證後即可使用桌面版多頁籤介面（含盲投、基本工項、工項類型、一般工項、員工、報表與<strong>📖 線上說明與搜尋</strong>頁籤）。",
                     "<strong>正式環境連線加密</strong>：執行 <code>pwsh -NoProfile -File c:\\temp\\storyPoint\\ps\\setEncryptedConfig.ps1</code> 可將 SQL 連線字串以 Windows DPAPI 加密寫入 <code>config.json</code>。"
                 },
                 Callouts = new[]
@@ -15641,8 +15846,14 @@ public class portalController : Controller
             new
             {
                 Q = "Q0-2. 如何具體評估一個工項的複雜度？如何透過 Story Point 讓團隊與個人的工作量透明？",
-                A = "評估複雜度時請綜合考量三大維度：<strong>① 技術複雜度 (Complexity)</strong>、<strong>② 工作投入規模 (Effort / Volume)</strong>、<strong>③ 未知風險與不確定性 (Risk / Uncertainty)</strong>，並以費氏數列（<code>1 點極簡基準</code>、<code>2~3 點標準常規</code>、<code>5~8 點中高複雜度</code>、<code>13~21 點大型高風險建議拆解</code>）進行相對比較。定案後搭配本系統的「<strong>重要性權重乘數 (<code>weightMultiplier</code>)</strong>」計算加權總分，即可在「📊 統計報表」即時透明呈現每位成員與各部門的「<strong>進行中點數（當前在途負載）</strong>」與「<strong>已完成點數（累積實質貢獻）</strong>」，主管能據此公平調配資源、避免勞逸不均。",
+                A = "評估複雜度時請綜合考量三大維度：<strong>① 技術複雜度 (Complexity)</strong>、<strong>② 工作投入規模 (Effort / Volume)</strong>、<strong>③ 未知風險與不確定性 (Risk / Uncertainty)</strong>，並以費氏數列（<code>1 點極簡基準</code>、<code>2~3 點標準常規</code>、<code>5~8 點中高複雜度</code>、<code>13~21 點大型高風險建議拆解</code>）進行相對比較。定案後搭配本系統的「<strong>重要性權重乘數 (<code>weightMultiplier</code>)</strong>」計算加權總分，即可在「4. 📊 統計報表」即時透明呈現每位成員與各部門的「<strong>進行中點數（當前在途負載）</strong>」與「<strong>已完成點數（累積實質貢獻）</strong>」，主管能據此公平調配資源、避免勞逸不均。",
                 Keywords = "如何評估複雜度 複雜度評估 三大維度 技術複雜度 工作規模 未知風險 費氏數列 團隊工作量 個人工作量 透明 進行中點數 已完成點數 權重"
+            },
+            new
+            {
+                Q = "Q0-3. 「3-3 工項類型（如：專案）」、「3-2 基本工項（如：資料庫健檢）」與「3-1 一般工項（如：集保健檢）」三者有什麼不同？投票是投哪一個？誰有起訖時間？",
+                A = "本系統將工項管理明確劃分為三層：<br/>① <strong>3-3. 工項類型與基本規範 (<code>tbWorkItemKind</code>，如：專案、維運、顧問時數、教育訓練、開發產品)</strong>：定義該類型的「<strong>一般工項基本規範</strong>」並告知該類型「<strong>一般的 Story Point 範圍上下限</strong>」（例如：專案 <code>3 ~ 21 pt</code>、維運 <code>0.5 ~ 5 pt</code>、顧問時數 <code>1 ~ 8 pt</code>）。<br/>② <strong>3-2. 基本工項管理 (<code>tbWorkItemType</code>，如：資料庫健檢)</strong>：代表可重複套用的標準工作項目。<strong>基本工項沒有起訖時間</strong>，它可以套用 3-3 工項類型以取得基本規範與一般 SP 範圍提示，而且<strong>多人盲投（投票）主要是投「基本工項」</strong>，投出共識後即成為該基本工項的標準 Story Point。<br/>③ <strong>3-1. 一般工項與員工指派 (<code>tbWorkItem</code>，如：集保健檢)</strong>：代表實際指派給員工執行的具體工項。建立一般工項時直接<strong>套用基本工項（如資料庫健檢）的 Story Point</strong>，且<strong>一般工項仍可依實際狀況微調 Story Point</strong>；此外，<strong>只有一般工項才有起訖時間 (<code>startDate ~ endDate</code>)</strong> 與到期自動轉態、扣減點數及寄信通知主管/HR 的機制。",
+                Keywords = "三層架構 3-1 3-2 3-3 一般工項 集保健檢 基本工項 資料庫健檢 工項類型 專案 維運 顧問時數 基本規範 一般Story Point範圍 投票 起訖時間 微調"
             },
             new
             {
@@ -15670,15 +15881,15 @@ public class portalController : Controller
             },
             new
             {
-                Q = "Q5. 如何在不捲動網頁的情況下快速修改表格中的某筆工項、員工或部門資料？",
+                Q = "Q5. 如何在不捲動網頁的情況下快速修改表格中的某筆一般工項、基本工項、工項類型、員工或部門資料？",
                 A = "在全系統任何資料表格 (<code>&lt;table&gt;</code>) 的任一列上，直接「<strong>雙擊滑鼠左鍵 (Double Click)</strong>」、或按「<strong>滑鼠右鍵 (Right Click)</strong>」點選選單中的「<code>✏️ 單筆編輯...（彈出 Modal 視窗）</code>」（亦可單擊選取列後按鍵盤 <code>Enter</code> 或 <code>F2</code>），系統會直接原地彈出置中的 Modal 對話框進行編輯與儲存，絕不會將網頁捲動到最上方。",
                 Keywords = "滑鼠右鍵 雙擊 Modal 視窗 不捲動 單筆編輯 表格修改 Enter F2"
             },
             new
             {
-                Q = "Q6. 工項的「起訖時間快速設定」怎麼用？到期後系統會自動做什麼？",
-                A = "新增或單筆編輯工項時，設定好「開始時間（起時）」後，在「<strong>起訖時間快速設定</strong>」輸入<strong>數量</strong>（預設 1）並選擇<strong>單位（天 / 周 / 月 / 季 / 年）</strong>，系統會自動計算並填入「結束時間（迄時）」。當系統時間到達或超過工項的迄時 (<code>endDate</code>)，系統會自動將工項轉為「<strong>已完成 (已到期扣點)</strong>」、將該工項與負責員工/部門身上的有效 Story Point 扣減歸零（完整保留原點數與扣點紀錄），並自動寄發 Email 通知該部門所有<strong>部門主管</strong>與 <strong>HR 人資主管</strong>。",
-                Keywords = "起訖時間 快速設定 天 周 月 季 年 到期 自動扣點 Email 寄信 部門主管 HR"
+                Q = "Q6. 一般工項的「起訖時間快速設定」怎麼用？到期後系統會自動做什麼？",
+                A = "新增或單筆編輯「3-1 一般工項（如：集保健檢）」時（註：3-2 基本工項沒有起訖時間），設定好「開始時間（起時）」後，在「<strong>起訖時間快速設定</strong>」輸入<strong>數量</strong>（預設 1）並選擇<strong>單位（天 / 周 / 月 / 季 / 年）</strong>，系統會自動計算並填入「結束時間（迄時）」。當系統時間到達或超過一般工項的迄時 (<code>endDate</code>)，系統會自動將該一般工項轉為「<strong>已完成 (已到期扣點)</strong>」、將該工項與負責員工/部門身上的有效 Story Point 扣減歸零（完整保留原點數與扣點紀錄），並自動寄發 Email 通知該部門所有<strong>部門主管</strong>與 <strong>HR 人資主管</strong>。",
+                Keywords = "起訖時間 快速設定 天 周 月 季 年 到期 自動扣點 Email 寄信 部門主管 HR 一般工項"
             },
             new
             {
@@ -15689,7 +15900,7 @@ public class portalController : Controller
             new
             {
                 Q = "Q8. 每個員工都可以自己修改登入帳號與密碼嗎？",
-                A = "是的！不論是管理者或一般參與者，登入後皆可隨時點擊畫面右上角或主選單的「<strong>🔑 修改我的帳密</strong>」，修改自己本人的登入帳號 (<code>loginAccount</code>) 與登入密碼。儲存後系統會自動更新資料庫與當前瀏覽器登入 Cookie，無須重新登入即可繼續使用。",
+                A = "是的！不論是管理者或一般參與者，登入後皆可隨時點擊畫面右上角或主選單的「<strong>5. 🔑 修改帳密</strong>」，修改自己本人的登入帳號 (<code>loginAccount</code>) 與登入密碼。儲存後系統會自動更新資料庫與當前瀏覽器登入 Cookie，無須重新登入即可繼續使用。",
                 Keywords = "修改我的帳密 修改密碼 修改登入帳號 個人密碼"
             }
         };
@@ -15701,10 +15912,10 @@ public class portalController : Controller
                 <div>
                     <h2 style='margin:0;font-size:21px;font-weight:800;display:flex;align-items:center;gap:10px;'>
                         <span>📖 系統線上說明與操作畫面搜尋手冊</span>
-                        <span class='badge' style='background:#0d9488;color:#fff;font-size:12px;'>支援全文關鍵字即時檢索 + 12 幅實機操作畫面詳解</span>
+                        <span class='badge' style='background:#0d9488;color:#fff;font-size:12px;'>支援全文關鍵字即時檢索 + 13 大主題與三層工項架構詳解</span>
                     </h2>
                     <div style='font-size:13px;color:#cbd5e1;margin-top:5px;'>
-                        輸入任何功能關鍵字（如：<strong>盲投</strong>、<strong>待參與</strong>、<strong>自動翻牌</strong>、<strong>滑鼠右鍵</strong>、<strong>Modal</strong>、<strong>到期扣點</strong>、<strong>部門主管</strong>、<strong>排序鎖定</strong>、<strong>修改帳密</strong>），系統將即時過濾操作畫面與步驟並以黃底高亮標示關鍵字。
+                        輸入任何功能關鍵字（如：<strong>基本工項</strong>、<strong>資料庫健檢</strong>、<strong>一般工項</strong>、<strong>集保健檢</strong>、<strong>工項類型</strong>、<strong>基本規範</strong>、<strong>盲投</strong>、<strong>自動翻牌</strong>、<strong>滑鼠右鍵</strong>、<strong>到期扣點</strong>），系統將即時過濾操作畫面與步驟並以黃底高亮標示關鍵字。
                     </div>
                 </div>
                 <div style='display:flex;gap:8px;flex-wrap:wrap;'>
@@ -15718,18 +15929,18 @@ public class portalController : Controller
             <div class='help-search-grid'>
                 <div class='help-search-input-wrap'>
                     <span style='position:absolute;left:12px;font-size:17px;pointer-events:none;'>🔍</span>
-                    <input type='text' id='helpSearchInput' class='help-search-input' value='{safeInitQ}' placeholder='請輸入關鍵字搜尋說明與操作畫面（支援多關鍵字空白分隔，例如：盲投 自動翻牌 / 右鍵 Modal / 到期 寄信）...' oninput='filterOnlineHelpTopics()' autocomplete='off' />
+                    <input type='text' id='helpSearchInput' class='help-search-input' value='{safeInitQ}' placeholder='請輸入關鍵字搜尋說明與操作畫面（支援多關鍵字空白分隔，例如：基本工項 資料庫健檢 / 一般工項 集保健檢 / 工項類型 基本規範）...' oninput='filterOnlineHelpTopics()' autocomplete='off' />
                 </div>
                 <div>
                     <select id='helpCategorySelect' onchange='filterOnlineHelpTopics()' title='依功能模組分類篩選線上說明'>
-                        <option value=''>📂 全部章節分類 (13 主題 + FAQ)</option>
+                        <option value=''>📂 全部章節分類 (13 主題 + 11 則 FAQ)</option>
                         <option value='concept' {(safeInitCat == "concept" ? "selected" : "")}>💡 Story Point 核心概念、複雜度評估與工作量透明 (1)</option>
                         <option value='auth' {(safeInitCat == "auth" ? "selected" : "")}>🔐 登入驗證、登出與個人帳密 (2)</option>
                         <option value='voting' {(safeInitCat == "voting" ? "selected" : "")}>🃏 多人即時盲投、獨立網頁與回合設定 (4)</option>
-                        <option value='workitem' {(safeInitCat == "workitem" ? "selected" : "")}>📋 工項管理、代表類型與到期扣點寄信 (2)</option>
+                        <option value='workitem' {(safeInitCat == "workitem" ? "selected" : "")}>📋 3-1 一般工項、3-2 基本工項與 3-3 工項類型基本規範 (2)</option>
                         <option value='table' {(safeInitCat == "table" ? "selected" : "")}>🖱️ 表格右鍵 Modal、表頭排序鎖定與統計報表 (2)</option>
                         <option value='org' {(safeInitCat == "org" ? "selected" : "")}>👥 組織部門主管階層、批次匯入與系統 Log (2)</option>
-                        <option value='faq' {(safeInitCat == "faq" ? "selected" : "")}>❓ 常見問題快速解答 FAQ (10)</option>
+                        <option value='faq' {(safeInitCat == "faq" ? "selected" : "")}>❓ 常見問題快速解答 FAQ (11)</option>
                     </select>
                 </div>
                 <div>
@@ -15748,8 +15959,11 @@ public class portalController : Controller
             <div style='display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:12px;'>
                 <span style='font-size:12px;font-weight:800;color:#93c5fd;'>🔥 熱門搜尋關鍵字：</span>
                 <span class='help-quick-tag' style='background:#f59e0b;color:#0f172a;border-color:#fde68a;' onclick=""applyHelpQuickKeyword('Story Point 概念 用途')"">💡 Story Point 概念與用途</span>
-                <span class='help-quick-tag' style='background:#f59e0b;color:#0f172a;border-color:#fde68a;' onclick=""applyHelpQuickKeyword('評估複雜度 費氏數列')"">📐 如何評估複雜度</span>
-                <span class='help-quick-tag' style='background:#f59e0b;color:#0f172a;border-color:#fde68a;' onclick=""applyHelpQuickKeyword('工作量透明 進行中點數')"">📊 團隊與個人工作量透明</span>
+                <span class='help-quick-tag' style='background:#f59e0b;color:#0f172a;border-color:#fde68a;' onclick=""applyHelpQuickKeyword('基本工項 資料庫健檢 無起訖時間')"">🏷️ 3-2 基本工項 (資料庫健檢)</span>
+                <span class='help-quick-tag' style='background:#f59e0b;color:#0f172a;border-color:#fde68a;' onclick=""applyHelpQuickKeyword('一般工項 集保健檢 微調 起訖時間')"">📋 3-1 一般工項 (集保健檢)</span>
+                <span class='help-quick-tag' style='background:#f59e0b;color:#0f172a;border-color:#fde68a;' onclick=""applyHelpQuickKeyword('工項類型 基本規範 一般 Story Point 範圍')"">🗂️ 3-3 工項類型與基本規範</span>
+                <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('評估複雜度 費氏數列')"">📐 如何評估複雜度</span>
+                <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('工作量透明 進行中點數')"">📊 團隊與個人工作量透明</span>
                 <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('待參與 參與中')"">📂 待參與 vs 參與中</span>
                 <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('自動翻牌')"">⚡ 全員投完自動翻牌</span>
                 <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('撲克牌 疑問牌')"">🃏 撲克牌面中文意義 (? / ☕)</span>
@@ -15758,9 +15972,7 @@ public class portalController : Controller
                 <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('部門主管 上一層主管')"">🌳 多位部門主管與上一層主管</span>
                 <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('表頭排序 欄位鎖定')"">📌 表頭排序與凍結鎖定</span>
                 <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('修改帳密')"">🔑 修改個人登入帳號與密碼</span>
-                <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('批次匯入 互動 HTML')"">📊 CSV/Excel 匯入與互動 HTML 報表</span>
                 <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('防崩潰 系統 Log')"">🛡️ 防崩潰保護與系統 Log</span>
-                <span class='help-quick-tag' onclick=""applyHelpQuickKeyword('登出系統')"">🚪 全站安全登出</span>
             </div>
         </div>");
 
@@ -15769,7 +15981,7 @@ public class portalController : Controller
         <div id='helpSearchStatusBar' style='background:#eff6ff;border:1.5px solid #93c5fd;border-radius:10px;padding:10px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;font-size:13.5px;font-weight:700;color:#1e3a8a;'>
             <div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>
                 <button type='button' id='btnToggleHelpTocSidebar' class='btn btn-outline' style='padding:4px 10px;font-size:12px;background:#ffffff;color:#1e3a8a;border-color:#60a5fa;font-weight:800;' onclick='toggleHelpTocSidebar()' title='縮合或展開左側線上說明章節目錄側邊欄'>◀ 縮合左側章節目錄</button>
-                <span id='helpSearchStatusText'>📊 目前顯示全部 <strong>13</strong> 個核心說明與操作主題（含 Story Point 概念與複雜度評估 + 12 幅實機操作畫面）及 <strong>10</strong> 則常見問題 FAQ。</span>
+                <span id='helpSearchStatusText'>📊 目前顯示全部 <strong>13</strong> 個核心說明與操作主題（含 Story Point 概念、三層工項架構 + 12 幅實機操作畫面）及 <strong>11</strong> 則常見問題 FAQ。</span>
             </div>
             <div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>
                 <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;background:#ffffff;color:#334155;border-color:#cbd5e1;' onclick='setAllHelpTopicsCollapsed(false)'>🔽 全部展開主題</button>

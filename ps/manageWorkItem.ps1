@@ -1,28 +1,29 @@
-﻿<#
+<#
 .SYNOPSIS
-    工項代表類型、實際工項與員工賦予設定管理 Console 模組 (manageWorkItem.ps1)
+    一般工項 (3-1)、基本工項 (3-2)、工項類型與基本規範 (3-3) 及員工賦予設定管理 Console 模組 (manageWorkItem.ps1)
 .DESCRIPTION
     提供：
-    1. 查詢與維護「工項代表類型 (tbWorkItemType)」(投票時投工項的代表類型)
-    2. 建立與修改「實際工項 (tbWorkItem)」(選擇已賦予 Story Point 的工項代表類型即自動帶入點數，或手動調整)
-    3. 管理者修改「員工賦予的工項 (tbWorkItemAssignment)」(設定負責員工與點數分攤比例)
+    1. 查詢與維護「3-3. 工項類型與基本規範 (tbWorkItemKind)」(如：專案、維運、顧問時數、教育訓練、開發產品，定義一般工項基本規範與告知一般 Story Point 範圍上下限)
+    2. 查詢與維護「3-2. 基本工項 (tbWorkItemType)」(如：資料庫健檢，無起訖時間，可套用 3-3 工項類型取得基本規範與 SP 範圍，為多人盲投的主要投票標的)
+    3. 建立與修改「3-1. 一般工項 (tbWorkItem)」(如：集保健檢，套用基本工項的 Story Point、可微調 Story Point，只有一般工項才有起訖時間)
+    4. 管理者修改「員工賦予的一般工項 (tbWorkItemAssignment)」(設定負責員工與點數分攤比例)
 .PARAMETER actionType
     執行動作：
     - 'listWorkItemIcon'   : 查詢代表圖示庫 (tbWorkItemIcon，含內建 SVG 彩色圖示、Emoji 與使用者自訂上傳圖示)
     - 'uploadWorkItemIcon' : 自行上傳並新增代表圖示至代表圖示庫 (tbWorkItemIcon) 與 Web 圖示目錄
     - 'deleteWorkItemIcon' : 刪除自訂上傳的代表圖示
-    - 'listWorkItemKind'   : 查詢工項類型設定 (專案/維運/顧問時數/教育訓練/開發產品/自訂類型)
-    - 'upsertWorkItemKind' : 新增或修改工項類型 (支援指定 -iconFilePath 同時上傳自訂圖示)
-    - 'deleteWorkItemKind' : 刪除工項類型
-    - 'listWorkItemType'   : 查詢工項代表類型與標準 Story Point
-    - 'upsertWorkItemType' : 新增或修改工項代表類型 (支援同步既有工項點數)
-    - 'deleteWorkItemType' : 刪除工項代表類型
-    - 'listWorkItem'       : 查詢各工項的 Story Point 與指派員工明細
-    - 'upsertWorkItem'     : 建立或修改工項 (自動帶入代表類型點數或手動微調)
-    - 'deleteWorkItem'     : 刪除實際工項
-    - 'assignWorkItem'     : 修改員工賦予的工項與分攤比例
-    - 'removeAssignment'   : 移除員工身上的指定工項
-    - 'processExpired'     : 檢核並處理達到迄時之工項
+    - 'listWorkItemKind'   : 查詢 3-3 工項類型與基本規範 (專案/維運/顧問時數/教育訓練/開發產品/自訂類型)
+    - 'upsertWorkItemKind' : 新增或修改 3-3 工項類型、基本規範與一般 Story Point 範圍 (-minStoryPoint, -maxStoryPoint)
+    - 'deleteWorkItemKind' : 刪除 3-3 工項類型
+    - 'listWorkItemType'   : 查詢 3-2 基本工項 (如：資料庫健檢) 與標準 Story Point
+    - 'upsertWorkItemType' : 新增或修改 3-2 基本工項 (支援同步既有一般工項點數)
+    - 'deleteWorkItemType' : 刪除 3-2 基本工項
+    - 'listWorkItem'       : 查詢 3-1 各一般工項 (如：集保健檢) 的 Story Point 與指派員工明細
+    - 'upsertWorkItem'     : 建立或修改 3-1 一般工項 (套用基本工項點數或手動微調，並設定起訖時間)
+    - 'deleteWorkItem'     : 刪除 3-1 一般工項
+    - 'assignWorkItem'     : 修改員工賦予的一般工項與分攤比例
+    - 'removeAssignment'   : 移除員工身上的指定一般工項
+    - 'processExpired'     : 檢核並處理達到迄時之一般工項
 .NOTES
     檔案名稱: manageWorkItem.ps1
     建立者  : Antigravity Senior Full-Stack Engineer
@@ -75,6 +76,12 @@ param(
 
     [parameter(mandatory = $false)]
     [string]$timeAndDeliverableTrait = '',
+
+    [parameter(mandatory = $false)]
+    [nullable[decimal]]$minStoryPoint = $null,
+
+    [parameter(mandatory = $false)]
+    [nullable[decimal]]$maxStoryPoint = $null,
 
     [parameter(mandatory = $false)]
     [int]$workItemTypePk = 0,
@@ -310,6 +317,8 @@ switch ($actionType) {
             mainFeatureSummary = $(if (-not [string]::isnullorempty($mainFeatureSummary)) { $mainFeatureSummary } else { $null })
             estimationTrait = $(if (-not [string]::isnullorempty($estimationTrait)) { $estimationTrait } else { $null })
             timeAndDeliverableTrait = $(if (-not [string]::isnullorempty($timeAndDeliverableTrait)) { $timeAndDeliverableTrait } else { $null })
+            minStoryPoint = $minStoryPoint
+            maxStoryPoint = $maxStoryPoint
             description = $description
             isActive = $true
             operatorAccount = $operatorAccount
