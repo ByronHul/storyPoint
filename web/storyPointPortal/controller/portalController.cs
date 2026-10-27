@@ -784,7 +784,8 @@ public class portalController : Controller
             }
 
             bool isUpdatingExisting = votingSessionPk.HasValue && votingSessionPk.Value > 0;
-            if (!isUpdatingExisting)
+            bool hasTargetEntity = (workItemTypePk.HasValue && workItemTypePk.Value > 0) || (workItemPk.HasValue && workItemPk.Value > 0);
+            if (!isUpdatingExisting && !hasTargetEntity)
             {
                 restartAllRounds = false;
                 openNextRound = false;
@@ -7461,8 +7462,8 @@ public class portalController : Controller
                         </label>
                         <div style='display:flex;gap:8px;flex-wrap:wrap;'>
                             <button type='button' class='btn btn-outline' id='btnTypeDeleteCurrent' style='padding:7px 12px;font-size:12.5px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;{(initTypePk > 0 ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeDelete()"">🗑️ 刪除此基本工項 (Delete)</button>
-                            <button type='button' class='btn btn-outline' id='btnTypeRevoteNextRound' style='padding:7px 12px;font-size:12.5px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;{(initTypePk > 0 && string.IsNullOrWhiteSpace(initTypePt) ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeRevote('nextRound')"">🔄 重啟新一輪盲投</button>
-                            <button type='button' class='btn btn-outline' id='btnTypeRevoteRestartAll' style='padding:7px 12px;font-size:12.5px;color:#b45309;border-color:#fcd34d;background:#fffbeb;{(initTypePk > 0 && string.IsNullOrWhiteSpace(initTypePt) ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeRevote('restartAll')"">🃏 重新盲投設定 (全部重新開始)</button>
+                            <button type='button' class='btn btn-outline' id='btnTypeRevoteNextRound' style='padding:7px 12px;font-size:12.5px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;{(initTypePk > 0 ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeRevote('nextRound')"">🔄 重啟新一輪盲投</button>
+                            <button type='button' class='btn btn-outline' id='btnTypeRevoteRestartAll' style='padding:7px 12px;font-size:12.5px;color:#b45309;border-color:#fcd34d;background:#fffbeb;{(initTypePk > 0 ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeRevote('restartAll')"">🃏 重新盲投設定 (全部重新開始)</button>
                             <button type='submit' class='btn btn-primary' id='typeSubmitBtn' style='padding:8px 18px;font-size:13.5px;'>💾 {(initTypePk > 0 ? $"儲存「{h(initTypeName)}」基本工項與套用類型" : "新增並儲存基本工項")}</button>
                         </div>
                     </div>
@@ -7568,7 +7569,7 @@ public class portalController : Controller
                 data-type-pt='{h(ptJs)}'
                 data-type-kind='{h(dKind)}'
                 data-type-deck-pk='{tDeckPk}'
-                data-type-status='{(hasStdPt ? "finalized" : "pending")}'
+                data-type-status='{(tEstStatus == "voting" ? "voting" : (hasStdPt ? "finalized" : "pending"))}'
                 data-type-est-status='{h(tEstStatus)}'
                 data-type-last-session-pk='{tLastSessPk}'
                 onclick=""selectTypeRowForInlineEdit(this, event)""
@@ -8711,9 +8712,9 @@ public class portalController : Controller
             initialTopic: Request.Query["topic"].ToString()));
         sb.Append("</div>"); // end Tab 8 (help)
 
-        // 建立前端設定回合所需的進行中議程設定與工項指派對應 JSON（已定案議程已決定 SP，不再列入重新設定選單）
+        // 建立前端設定回合與重新投票所需的議程設定與工項指派對應 JSON
         var sessionMetaJsonList = new List<string>();
-        foreach (DataRow sRow in allOngoingSessions)
+        foreach (DataRow sRow in sessionTable.Rows)
         {
             int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
             var pList = new List<int>();
@@ -9314,6 +9315,10 @@ public class portalController : Controller
             if (!sel) return;
             const sPk = sel.value;
             if (!sPk || !sessionConfigMap[sPk]) {
+                const typePkInput = document.getElementById('setupWorkItemTypePk');
+                const wiPkInput = document.getElementById('setupWorkItemPk');
+                if (typePkInput) typePkInput.value = '0';
+                if (wiPkInput) wiPkInput.value = '0';
                 if (revoteModeSel) revoteModeSel.value = 'createNewSession';
                 if (submitBtn) submitBtn.innerHTML = '🚀 儲存回合設定並啟動多人盲投議程';
                 if (deleteBtn) deleteBtn.style.display = 'none';
@@ -9377,17 +9382,32 @@ public class portalController : Controller
             switchTab('roundSetup');
             let sPk = sessionPk ? Number(sessionPk) : 0;
             if (sPk <= 0 && targetPk && typeof sessionConfigMap !== 'undefined') {
-                const matchKey = Object.keys(sessionConfigMap).find(k => {
+                const candidateKeys = Object.keys(sessionConfigMap).filter(k => {
                     const item = sessionConfigMap[k];
-                    if (!item || item.sessionStatus === 'finalized') return false;
+                    if (!item) return false;
                     if (targetKind === 'workItem') return Number(item.workItemPk) === Number(targetPk);
                     return Number(item.workItemTypePk) === Number(targetPk);
                 });
-                if (matchKey) sPk = Number(matchKey);
+                candidateKeys.sort((a, b) => {
+                    const itemA = sessionConfigMap[a];
+                    const itemB = sessionConfigMap[b];
+                    const activeA = itemA && itemA.sessionStatus !== 'finalized' ? 0 : 1;
+                    const activeB = itemB && itemB.sessionStatus !== 'finalized' ? 0 : 1;
+                    if (activeA !== activeB) return activeA - activeB;
+                    return Number(b) - Number(a);
+                });
+                if (candidateKeys.length > 0) sPk = Number(candidateKeys[0]);
             }
             const sel = document.getElementById('setupSessionSelector');
             const revoteModeSel = document.getElementById('setupRevoteMode');
-            if (sel && sPk > 0 && sessionConfigMap[sPk] && sessionConfigMap[sPk].sessionStatus !== 'finalized') {
+            if (sel && sPk > 0 && sessionConfigMap[sPk]) {
+                const cfg = sessionConfigMap[sPk];
+                if (!Array.from(sel.options).some(o => String(o.value) === String(sPk))) {
+                    const dynOpt = document.createElement('option');
+                    dynOpt.value = String(sPk);
+                    dynOpt.textContent = '🔄 重新投票議程：' + (cfg.code || ('Session #' + sPk)) + ' - ' + (cfg.title || '');
+                    sel.appendChild(dynOpt);
+                }
                 sel.value = String(sPk);
                 onSetupSessionSelectChange();
                 if (revoteModeSel) {
@@ -9408,7 +9428,7 @@ public class portalController : Controller
                     autoFillSetupTitle();
                 }
                 if (revoteModeSel) {
-                    revoteModeSel.value = 'createNewSession';
+                    revoteModeSel.value = defaultRevoteMode || (targetPk ? 'restartAll' : 'createNewSession');
                 }
             }
             showToastNotice('⚙️ 已載入盲投回合設定精靈，您可設定投票人名單與所有選項後啟動盲投議程！');
@@ -10843,8 +10863,8 @@ public class portalController : Controller
                             ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""submitDynamicPostAction('/workitem/type/delete', { workItemTypePk: '${escapeModalHtml(pk)}', typeCode: '${escapeModalHtml(code)}', returnTab: getCurrentActiveTabName() || 'types' }, '確定要刪除基本工項／代表類型「${escapeModalHtml(code)} - ${escapeModalHtml(name)}」嗎？');"">🗑️ 刪除此基本工項</button>` : ''}
                         </div>
                         <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
-                            ${(!isCreate && (!pt || String(pt).trim() === '')) ? `<button type=""button"" class=""btn btn-outline"" style=""color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""closeRecordEditModal(); triggerRevoteFromTarget('workItemType', '${escapeModalHtml(pk)}', 0, '${escapeModalHtml(code)} - ${escapeModalHtml(name)}', false, 'voting');"">🔄 重啟新一輪</button>` : ''}
-                            ${(!isCreate && (!pt || String(pt).trim() === '')) ? `<button type=""button"" class=""btn btn-outline"" style=""color:#b45309;border-color:#fcd34d;background:#fffbeb;"" onclick=""openSessionSetupEditModal(0, 'workItemType', '${escapeModalHtml(pk)}', true, 'restartAll');"">🆕 全部重新開始(重設投票人與所有選項)</button>` : ''}
+                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""closeRecordEditModal(); triggerRevoteFromTarget('workItemType', '${escapeModalHtml(pk)}', 0, '${escapeModalHtml(code)} - ${escapeModalHtml(name)}', false, 'voting');"">🔄 重啟新一輪</button>` : ''}
+                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#b45309;border-color:#fcd34d;background:#fffbeb;"" onclick=""openSessionSetupEditModal(0, 'workItemType', '${escapeModalHtml(pk)}', true, 'restartAll');"">🆕 全部重新開始(重設投票人與所有選項)</button>` : ''}
                             <button type=""submit"" class=""btn btn-primary"">💾 儲存此基本工項屬性與套用類型</button>
                         </div>
                     </div>
@@ -11193,18 +11213,28 @@ public class portalController : Controller
 
         function openSessionSetupEditModal(sessionPk, targetKindOverride, targetPkOverride, isRevoteMode, defaultRevoteOption) {
             let sPk = sessionPk ? Number(sessionPk) : 0;
+            const allowFinalizedLookup = !!(isRevoteMode || defaultRevoteOption || targetPkOverride);
             if (sPk <= 0 && targetPkOverride && typeof sessionConfigMap !== 'undefined') {
-                const matchKey = Object.keys(sessionConfigMap).find(k => {
+                const candidateKeys = Object.keys(sessionConfigMap).filter(k => {
                     const item = sessionConfigMap[k];
-                    if (!item || item.sessionStatus === 'finalized') return false;
+                    if (!item) return false;
+                    if (!allowFinalizedLookup && item.sessionStatus === 'finalized') return false;
                     if (targetKindOverride === 'workItem') return Number(item.workItemPk) === Number(targetPkOverride);
                     return Number(item.workItemTypePk) === Number(targetPkOverride);
                 });
-                if (matchKey) {
-                    sPk = Number(matchKey);
+                candidateKeys.sort((a, b) => {
+                    const itemA = sessionConfigMap[a];
+                    const itemB = sessionConfigMap[b];
+                    const activeA = itemA && itemA.sessionStatus !== 'finalized' ? 0 : 1;
+                    const activeB = itemB && itemB.sessionStatus !== 'finalized' ? 0 : 1;
+                    if (activeA !== activeB) return activeA - activeB;
+                    return Number(b) - Number(a);
+                });
+                if (candidateKeys.length > 0) {
+                    sPk = Number(candidateKeys[0]);
                 }
             }
-            const cfg = (sPk > 0 && typeof sessionConfigMap !== 'undefined' && sessionConfigMap[sPk] && sessionConfigMap[sPk].sessionStatus !== 'finalized') ? sessionConfigMap[sPk] : null;
+            const cfg = (sPk > 0 && typeof sessionConfigMap !== 'undefined' && sessionConfigMap[sPk] && (allowFinalizedLookup || sessionConfigMap[sPk].sessionStatus !== 'finalized')) ? sessionConfigMap[sPk] : null;
             if (!cfg) {
                 sPk = 0;
             }
@@ -11937,19 +11967,17 @@ public class portalController : Controller
                         openWorkItemTypeEditModal(tPk, tCode, tName, tCat, tDesc, tPt, tKind, tDeckPk);
                     }));
 
-                    if (!tPt || String(tPt).trim() === '') {
-                        spContextMenuEl.appendChild(createCtxMenuItem('🆕', '重新投票 — 全部重新開始（重新設定投票人名單與所有相關選項）', '全部重新開始', 'primary-action', function () {
-                            openSessionSetupEditModal(tLastSessionPk, 'workItemType', tPk, true, 'restartAll');
-                        }));
+                    spContextMenuEl.appendChild(createCtxMenuItem('🆕', '重新投票 — 全部重新開始（重新設定投票人名單與所有相關選項）', '全部重新開始', 'primary-action', function () {
+                        openSessionSetupEditModal(tLastSessionPk, 'workItemType', tPk, true, 'restartAll');
+                    }));
 
-                        spContextMenuEl.appendChild(createCtxMenuItem('🔄', '重新投票 — 重啟新一輪盲投（沿用原設定直接開啟下一輪）', '重啟新一輪', 'primary-action', function () {
-                            triggerRevoteFromTarget('workItemType', tPk, tLastSessionPk, tCode + ' - ' + tName, false, 'voting');
-                        }));
+                    spContextMenuEl.appendChild(createCtxMenuItem('🔄', '重新投票 — 重啟新一輪盲投（沿用原設定直接開啟下一輪）', '重啟新一輪', 'primary-action', function () {
+                        triggerRevoteFromTarget('workItemType', tPk, tLastSessionPk, tCode + ' - ' + tName, false, 'voting');
+                    }));
 
-                        spContextMenuEl.appendChild(createCtxMenuItem('⚙️', '前往「1-2. 設定盲投回合」完整頁面重新設定並開始', '完整設定頁', '', function () {
-                            openFullRoundSetupTabForTarget(tLastSessionPk, 'workItemType', tPk, 'restartAll');
-                        }));
-                    }
+                    spContextMenuEl.appendChild(createCtxMenuItem('⚙️', '前往「1-2. 設定盲投回合」完整頁面重新設定並開始', '完整設定頁', '', function () {
+                        openFullRoundSetupTabForTarget(tLastSessionPk, 'workItemType', tPk, 'restartAll');
+                    }));
 
                     spContextMenuEl.appendChild(createCtxMenuItem('🔍', '檢視套用此代表類型的所有工項', '工項篩選', '', function () {
                         switchTab('workitems');
@@ -13251,7 +13279,7 @@ public class portalController : Controller
                 document.getElementById('typeSubmitBtn').textContent = '💾 儲存「' + (name || code) + '」基本工項屬性與套用工項類型';
             }
             if (document.getElementById('btnTypeDeleteCurrent')) document.getElementById('btnTypeDeleteCurrent').style.display = pk ? '' : 'none';
-            const canRevoteType = !!(pk && (!pt || String(pt).trim() === ''));
+            const canRevoteType = !!(pk && String(pk).trim() !== '' && String(pk) !== '0');
             if (document.getElementById('btnTypeRevoteNextRound')) document.getElementById('btnTypeRevoteNextRound').style.display = canRevoteType ? '' : 'none';
             if (document.getElementById('btnTypeRevoteRestartAll')) document.getElementById('btnTypeRevoteRestartAll').style.display = canRevoteType ? '' : 'none';
 

@@ -2022,23 +2022,23 @@ begin
                 where kindName = cast(@resolvedKind as nvarchar(128));
             end
 
-            -- 若為發起新盲投議程 (@sessionPk <= 0)，且傳入之 @workItemTypePk 已拍板定案，或使用者輸入之新基本工項名稱 (@autoTypeName) 與該筆紀錄名稱不同，
-            -- 則不可覆寫既有已定案之基本工項，應自動轉為依 @autoTypeName 建立或對應未定案之基本工項
-            if isnull(@sessionPk, 0) <= 0 and isnull(@workItemTypePk, 0) > 0
+            -- 若為發起新盲投議程 (@sessionPk <= 0) 且非重新投票模式，若使用者輸入之新基本工項名稱 (@autoTypeName) 與傳入之 @workItemTypePk 名稱及代碼完全不符，
+            -- 則視為使用者欲建立另一項基本工項，自動轉為依 @autoTypeName 對應或新建基本工項；若為重新投票或名稱相符則保留既有 @workItemTypePk 進行重投
+            if isnull(@sessionPk, 0) <= 0
+               and isnull(@workItemTypePk, 0) > 0
+               and isnull(@restartAllRounds, 0) = 0
+               and isnull(@openNextRound, 0) = 0
+               and isnull(@resetCurrentRoundVotes, 0) = 0
             begin
                 if exists (
                     select 1
                     from storyPoint.tbWorkItemType as wit
                     where wit.pk = @workItemTypePk
-                      and (
-                          wit.estimationStatus = 'finalized'
-                          or wit.standardStoryPoint is not null
-                          or (
-                              @autoTypeName <> N''
-                              and wit.typeName <> @autoTypeName
-                              and wit.typeCode <> @autoTypeName
-                          )
-                      )
+                      and @autoTypeName <> N''
+                      and wit.typeName <> @autoTypeName
+                      and wit.typeCode <> @autoTypeName
+                      and charindex(wit.typeName, isnull(@sessionTitle, N'')) <= 0
+                      and charindex(wit.typeCode, isnull(@sessionTitle, N'')) <= 0
                 )
                 begin
                     set @workItemTypePk = null;
@@ -2064,13 +2064,14 @@ begin
                     select top 1 @workItemTypePk = wit.pk
                     from storyPoint.tbWorkItemType as wit
                     where wit.isActive = 1
-                      and wit.estimationStatus <> 'finalized'
-                      and wit.standardStoryPoint is null
                       and (
                           wit.typeName = @autoTypeName
                           or wit.typeCode = @autoTypeName
                       )
-                    order by case when @resolvedKind is not null and wit.defaultWorkItemKind = @resolvedKind then 0 else 1 end asc, wit.pk desc;
+                    order by
+                        case when wit.estimationStatus <> 'finalized' and wit.standardStoryPoint is null then 0 else 1 end asc,
+                        case when @resolvedKind is not null and wit.defaultWorkItemKind = @resolvedKind then 0 else 1 end asc,
+                        wit.pk desc;
                 end
 
                 if @workItemTypePk is not null and @resolvedKind is not null
@@ -2275,7 +2276,7 @@ begin
             where pk = @workItemPk;
         end
 
-        -- 若執行重新投票（全部重新開始 / 重啟新一輪 / 重設當前回合）但未顯式傳入 @sessionPk，僅反查該標的「尚未拍板定案 (sessionStatus <> 'finalized')」之最新進行中議程；已定案議程代表已結束，不可再重開
+        -- 若執行重新投票（全部重新開始 / 重啟新一輪 / 重設當前回合）但未顯式傳入 @sessionPk，反查該標的之最新議程（優先取未定案議程，若已定案則取最新一筆議程重新開啟）
         if isnull(@sessionPk, 0) <= 0 and (isnull(@restartAllRounds, 0) = 1 or isnull(@openNextRound, 0) = 1 or isnull(@resetCurrentRoundVotes, 0) = 1)
         begin
             if @targetKind = 'workItemType' and isnull(@workItemTypePk, 0) > 0
@@ -2284,8 +2285,7 @@ begin
                 from storyPoint.tbVotingSession as vs
                 where vs.targetKind = 'workItemType'
                   and vs.workItemTypePk = @workItemTypePk
-                  and vs.sessionStatus <> 'finalized'
-                order by vs.pk desc;
+                order by case when vs.sessionStatus <> 'finalized' then 0 else 1 end asc, vs.pk desc;
             end
             else if @targetKind = 'workItem' and isnull(@workItemPk, 0) > 0
             begin
@@ -2293,13 +2293,20 @@ begin
                 from storyPoint.tbVotingSession as vs
                 where vs.targetKind = 'workItem'
                   and vs.workItemPk = @workItemPk
-                  and vs.sessionStatus <> 'finalized'
-                order by vs.pk desc;
+                order by case when vs.sessionStatus <> 'finalized' then 0 else 1 end asc, vs.pk desc;
             end
         end
 
         if @sessionPk > 0 and exists (select 1 from storyPoint.tbVotingSession where pk = @sessionPk)
         begin
+            if isnull(@restartAllRounds, 0) = 0
+               and isnull(@openNextRound, 0) = 0
+               and isnull(@resetCurrentRoundVotes, 0) = 0
+               and exists (select 1 from storyPoint.tbVotingSession where pk = @sessionPk and sessionStatus = 'finalized')
+            begin
+                set @openNextRound = 1;
+            end
+
             update storyPoint.tbVotingSession
             set sessionTitle = @sessionTitle,
                 targetKind = @targetKind,
@@ -2565,6 +2572,36 @@ begin
             values (
                 @sessionPk, 1, 'voting', 0, sysdatetime()
             );
+
+            if @targetKind = 'workItemType' and @workItemTypePk is not null
+            begin
+                declare @oldTypePtNewSess decimal(8,2) = null;
+                select @oldTypePtNewSess = standardStoryPoint
+                from storyPoint.tbWorkItemType
+                where pk = @workItemTypePk;
+
+                update storyPoint.tbWorkItemType
+                set standardStoryPoint = null,
+                    estimationStatus = 'voting',
+                    lastVotingSessionPk = @sessionPk,
+                    updatedAt = sysdatetime()
+                where pk = @workItemTypePk;
+
+                if @oldTypePtNewSess is not null
+                begin
+                    insert into storyPoint.tbPointHistory (
+                        targetKind, workItemTypePk, workItemPk, votingSessionPk,
+                        oldStoryPoint, newStoryPoint, changeSource, changeReason,
+                        changedByEmployeePk, changedAt
+                    )
+                    values (
+                        'workItemType', @workItemTypePk, null, @sessionPk,
+                        @oldTypePtNewSess, 0.00, 'revoteRestartAll',
+                        isnull(nullif(ltrim(rtrim(@roundGoalNote)), N''), N'重新發起基本工項點數盲投議程'),
+                        @hostEmployeePk, sysdatetime()
+                    );
+                end
+            end
         end
 
         if @targetKind = 'workItemType' and @workItemTypePk is not null

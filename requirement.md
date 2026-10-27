@@ -606,17 +606,16 @@
         * 點數異動稽核歷程 (`pointHistory`) 與系統 Log (`systemLog`) ➔ 呼叫 `/history/delete` (`storyPoint.spDeletePointHistory`) 或 `/admin/log/delete` (`storyPoint.spDeleteSystemLog`)。
     3. **PowerShell 多 Tab GUI (`ps/common.ps1` `enableGridHeaderSortAndLock`) 同步支援**：在 `DataGridView` 選取任一資料列按下鍵盤 `Delete` 鍵時，同步觸發 `$onDeleteRow` 詢問確認並執行刪除。
 
-### 2.31 新增基本工項與一般工項盲投議程之參照設定規範（基本工項只要參照類型；一般工項應設定要參照的基本工項）
+### 2.31 新增基本工項與一般工項盲投議程之參照設定規範（新建立與投基本工項不需要參考既有基本工項，只要參照類型；一般工項才設定要參照的基本工項）
 * **核心需求**：
-    1. **若是新增「基本工項 (`targetKind = 'workItemType'`)」的投票，只要設定「參照工項類型 (`defaultWorkItemKind`，如：專案、維運、顧問時數、教育訓練、開發產品...)」**：
+    1. **新建立與投「基本工項 (`targetKind = 'workItemType'`)」時，不需要參考既有基本工項，只要設定「參照工項類型 (`defaultWorkItemKind`，如：專案、維運、顧問時數、教育訓練、開發產品...)」**：
         * 於「1-2. 設定盲投回合 (`#pane-roundSetup`)」與「快速發起/重設盲投議程 Modal (`openSessionSetupEditModal`)」中，當估算標的類型選擇「**🏷️ 投『基本工項』**」時：
-            * 左欄為「**目標基本工項 (如：資料庫健檢｜無起訖時間)** (`#setupWorkItemTypePk`)」，可選擇既有基本工項重投，或選擇「`➕ 依下方「盲投議程標題」自動建立新基本工項（只要參照右方類型）`」。
-            * 右欄為「**參照工項類型 (專案、維運、顧問時數...｜新增基本工項只要參照類型)** (`#setupWorkItemKind`)」；切換參照工項類型時，即時顯示該類型之一般工項基本規範與一般 Story Point 範圍上下限，並保持「自動建立新基本工項」選項不會被跳回既有基本工項。
-        * 後端 `storyPoint.spCreateVotingSession` 自動擷取乾淨的新基本工項名稱（自動剝除 `【基本工項盲投...】` 前綴與 `標準點數訂定` 後綴），並以所選之 `@defaultWorkItemKind` 建立或更新該基本工項 (`storyPoint.tbWorkItemType`)。
+            * **不顯示「目標基本工項」下拉選單**（新建立與投基本工項不需要參考既有基本工項，`workItemTypePk` 設為隱藏欄位 `<input type="hidden">`）。
+            * 僅需選擇「**參照工項類型 (專案、維運、顧問時數、教育訓練、開發產品...｜帶出基本規範與一般 SP 範圍)** (`#setupWorkItemKind`)」，並於下方「**盲投議程標題（要投票的基本工項名稱，如：資料庫健檢）** (`#setupSessionTitle`)」直接輸入新基本工項名稱。
+        * 後端 `storyPoint.spCreateVotingSession` 自動擷取乾淨的新基本工項名稱，並以所選之 `@defaultWorkItemKind` 建立專屬之基本工項 (`storyPoint.tbWorkItemType`)。
     2. **若是新增「一般工項 (`targetKind = 'workItem'`)」的投票，應該設定「該一般工項要參照的基本工項 (`referencedWorkItemTypePk`，如：資料庫健檢)」**：
         * 當估算標的類型選擇「**📋 投『一般工項』**」時：
-            * 左欄為「**目標一般工項 (如：集保健檢｜具起訖時間)** (`#setupWorkItemPk`)」，可選擇既有一般工項微調重投，或選擇「`➕ 依下方「盲投議程標題」自動建立新一般工項（請設定右方要參照的基本工項）`」。
-            * 右欄為「**該一般工項要參照的基本工項 (如：資料庫健檢｜決定所屬類型與基準點數)** (`#setupItemRefTypePk`, `name='referencedWorkItemTypePk'`)」；選擇既有一般工項時自動帶出其參照的基本工項，選擇新增一般工項時由使用者設定要參照的基本工項，並於下方橫幅 (`#setupItemRefNormBanner`) 即時顯示所參照基本工項的標準點數、所屬工項類型、基本規範與一般 SP 範圍，同步帶入本回合允許點數上下限。
+            * 由使用者選擇「**參照的基本工項 (如：資料庫健檢｜決定所屬工項類型、基本規範與基準點數)** (`#setupItemRefTypePk`, `name='referencedWorkItemTypePk'`)」，並於下方橫幅 (`#setupItemRefNormBanner`) 即時顯示所參照基本工項的標準點數、所屬工項類型、基本規範與一般 SP 範圍，同步帶入本回合允許點數上下限。
         * 後端 `POST /voting/create` (`portalController.cs`) 與 `storyPoint.spCreateVotingSession` (`sql/storedProcedure.sql`) 完整接收並保存 `@refBasicTypePk`（所參照的基本工項 PK），在建立新一般工項 (`storyPoint.tbWorkItem`) 時自動寫入 `workItemTypePk = @refBasicTypePk`、承接該基本工項之 `workItemKind` 與 `defaultTypePoint` / `storyPoint`，並於 `storyPoint.vwVotingSessionSummary` 與 `storyPoint.spGetVotingProcessHistory` 輸出 `referencedWorkItemTypePk`、`referencedWorkItemTypeCode`、`referencedWorkItemTypeName`。
 
 ### 2.32 即時呈現已經有哪些人進場了（盲投 Session 進場人員名單、座位進場狀態與大廳即時進場同步）
@@ -649,7 +648,19 @@
         * 在「`2. 設定回合` (`#pane-roundSetup`)」的「`1. 選擇目標盲投議程` (`#setupSessionSelector`)」下拉選單與下方「`📋 各投票議程的回合設定總覽` (`#roundSetupSessionTable`)」中，**僅列出進行中（未定案）之盲投議程**，完全排除「`🔄 已定案議程`」。
         * 當盲投議程拍板定案 (`controlAction = 'finalize'`) 時，後端立即釋放該議程所有參與者之活躍分頁鎖定 (`sqlDataService.releaseAllLeasesForSession`)，使該議程同步從即時盲投大廳之「待參與／參與中」結束移除，僅保留於「`1-3. 估算過程查詢`」供歷史稽核查閱。
     3. **建立新基本工項盲投議程時嚴格禁止覆寫既有基本工項 (`storyPoint.spCreateVotingSession`)**：
-        * 當發起新的基本工項盲投議程 (`@sessionPk <= 0`) 時，即使前端傳入既有 `@workItemTypePk`，若該筆基本工項已經定案 (`estimationStatus = 'finalized'` 或 `standardStoryPoint is not null`)，或標題解析出的新基本工項名稱 (`@autoTypeName`) 與該筆基本工項名稱不同，預存程序 `storyPoint.spCreateVotingSession` 一律自動將 `@workItemTypePk` 視為新基本工項，獨立建立專屬之 `storyPoint.tbWorkItemType` 紀錄（且不重用任何 `sessionStatus = 'finalized'` 之舊議程），確保新投完的基本工項（如 `test`）與既有基本工項（如 `資料庫健檢`）各自獨立顯示於「`3-2. 基本工項管理`」表格中。
+        * 當發起新的基本工項盲投議程 (`@sessionPk <= 0` 且非重新投票模式) 時，若標題解析出的新基本工項名稱 (`@autoTypeName`) 與傳入之基本工項名稱完全不同，預存程序 `storyPoint.spCreateVotingSession` 自動將 `@workItemTypePk` 視為新基本工項，獨立建立專屬之 `storyPoint.tbWorkItemType` 紀錄，確保新投完的基本工項（如 `test`）與既有基本工項（如 `資料庫健檢`）各自獨立顯示於「`3-2. 基本工項管理`」表格中。
+
+### 2.34 基本工項 (`3-2. 基本工項管理` / `storyPoint.tbWorkItemType`) 全面支援重新投票
+* **核心需求**：於「**3-2. 基本工項管理 (`/?tab=types`)**」中，所有基本工項（不論是「待投票定案」或「已拍板定案具標準 Story Point，如：`TYPE-DB-HC - 資料庫健檢 13.00 pt`」）皆可隨時發起**重新投票**：
+    1. **滑鼠右鍵快捷選單 (`rowKind === 'workitemType'`)**：
+        * 在任何一筆基本工項資料列上按滑鼠右鍵，固定顯示三種重新投票操作（不受是否已有 `standardStoryPoint` 限制）：
+            * `🆕 重新投票 — 全部重新開始（重新設定投票人名單與所有相關選項）`
+            * `🔄 重新投票 — 重啟新一輪盲投（沿用原設定直接開啟下一輪）`
+            * `⚙️ 前往「1-2. 設定盲投回合」完整頁面重新設定並開始`
+    2. **上方屬性編輯表單與單筆編輯 Modal 視窗 (`openWorkItemTypeEditModal`)**：
+        * 選取任何既有基本工項 (`pk > 0`) 時，上方編輯表單與單筆編輯 Modal 皆顯示「`🔄 重啟新一輪盲投`」與「`🃏 重新盲投設定 (全部重新開始)` / `🆕 全部重新開始(重設投票人與所有選項)`」按鈕。
+    3. **後端控制器與預存程序 (`portalController.cs`、`storyPoint.spCreateVotingSession`、`storyPoint.spControlVotingSession`)**：
+        * 針對已定案基本工項發起「重啟新一輪」或「全部重新開始」時，自動載入該基本工項之原盲投議程（或為種子基本工項自動建立盲投議程），將基本工項狀態重設為 `estimationStatus = 'voting'`、`standardStoryPoint = null`，並將重投前之標準點數完整記錄於 `storyPoint.tbPointHistory` 稽核歷程表。
 
 ---
 
