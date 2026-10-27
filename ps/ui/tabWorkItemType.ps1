@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Azure 多人參與 Story Point 系統 - [Tab 2] 工項代表類型與預設工項類型管理頁籤 (tabWorkItemType.ps1)
 .DESCRIPTION

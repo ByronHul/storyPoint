@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     工項代表類型、實際工項與員工賦予設定管理 Console 模組 (manageWorkItem.ps1)
 .DESCRIPTION
@@ -268,7 +268,8 @@ switch ($actionType) {
             $delVal = [string]$ds.tables[0].rows[0].deletedIconValue
             if ($delVal.startswith('/icons/custom/')) {
                 $delFileName = [system.io.path]::getfilename($delVal)
-                $delFullPath = join-path -path $script:projectRoot -childpath "web\storyPointPortal\wwwroot\icons\custom\$delFileName"
+                $repoRoot = split-path -path $psscriptroot -parent
+                $delFullPath = join-path -path $repoRoot -childpath "web\storyPointPortal\wwwroot\icons\custom\$delFileName"
                 if (test-path -literalpath $delFullPath) {
                     remove-item -literalpath $delFullPath -force -erroraction silentlycontinue
                 }
