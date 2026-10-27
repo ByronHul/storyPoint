@@ -33,6 +33,7 @@ drop table if exists storyPoint.tbPreserveWorkItemAssignment;
 drop table if exists storyPoint.tbPreserveWorkItem;
 drop table if exists storyPoint.tbPreserveWorkItemType;
 drop table if exists storyPoint.tbPreserveWorkItemKind;
+drop table if exists storyPoint.tbPreserveWorkItemIcon;
 drop table if exists storyPoint.tbPreserveCardDeck;
 drop table if exists storyPoint.tbPreserveEmployee;
 drop table if exists storyPoint.tbPreserveDepartment;
@@ -77,6 +78,17 @@ begin
     from storyPoint.tbCardDeck;
 end
 
+if object_id('storyPoint.tbWorkItemIcon', 'u') is not null
+begin
+    select
+        pk, iconCode, iconName, iconCategory, iconKind, iconValue,
+        mimeType, iconDataBase64, sortOrder, isCustomUpload,
+        isActive, uploadedBy, createdAt, updatedAt
+    into storyPoint.tbPreserveWorkItemIcon
+    from storyPoint.tbWorkItemIcon;
+end
+go
+
 if object_id('storyPoint.tbWorkItemKind', 'u') is not null
 begin
     if col_length('storyPoint.tbWorkItemKind', 'mainFeatureSummary') is null
@@ -85,6 +97,7 @@ begin
         alter table storyPoint.tbWorkItemKind add estimationTrait nvarchar(256) null;
     if col_length('storyPoint.tbWorkItemKind', 'timeAndDeliverableTrait') is null
         alter table storyPoint.tbWorkItemKind add timeAndDeliverableTrait nvarchar(256) null;
+    alter table storyPoint.tbWorkItemKind alter column badgeIcon nvarchar(512) not null;
 end
 go
 
@@ -279,6 +292,7 @@ drop table if exists storyPoint.tbWorkItemAssignment;
 drop table if exists storyPoint.tbWorkItem;
 drop table if exists storyPoint.tbWorkItemType;
 drop table if exists storyPoint.tbWorkItemKind;
+drop table if exists storyPoint.tbWorkItemIcon;
 drop table if exists storyPoint.tbCardDeck;
 drop table if exists storyPoint.tbEmployee;
 drop table if exists storyPoint.tbDepartment;
@@ -366,13 +380,34 @@ create table storyPoint.tbCardDeck (
     constraint uqTbCardDeckCode unique nonclustered (deckCode asc)
 );
 
+-- 4.4 代表圖示庫資料表 (storyPoint.tbWorkItemIcon)
+-- 提供多種預設代表圖示 (Emoji 符號圖示、彩色 SVG 向量圖示) 並支援使用者自行上傳新增代表圖示
+create table storyPoint.tbWorkItemIcon (
+    pk int identity(1,1) not null,
+    iconCode varchar(64) not null,
+    iconName nvarchar(128) not null,
+    iconCategory nvarchar(64) not null constraint dfTbWorkItemIconCategory default (N'預設代表圖示'),
+    iconKind varchar(32) not null constraint dfTbWorkItemIconKind default ('emoji'),
+    iconValue nvarchar(512) not null,
+    mimeType varchar(64) null,
+    iconDataBase64 nvarchar(max) null,
+    sortOrder int not null constraint dfTbWorkItemIconSortOrder default (100),
+    isCustomUpload bit not null constraint dfTbWorkItemIconIsCustom default (0),
+    isActive bit not null constraint dfTbWorkItemIconIsActive default (1),
+    uploadedBy varchar(128) null,
+    createdAt datetime2(3) not null constraint dfTbWorkItemIconCreatedAt default (sysdatetime()),
+    updatedAt datetime2(3) not null constraint dfTbWorkItemIconUpdatedAt default (sysdatetime()),
+    constraint pkTbWorkItemIcon primary key clustered (pk asc),
+    constraint uqTbWorkItemIconCode unique nonclustered (iconCode asc)
+);
+
 -- 4.5 預設工項類型與主要特徵設定資料表 (storyPoint.tbWorkItemKind)
 -- 支援增刪修查預設工項類型並記載主要特徵（預設含：project 專案、maintenance 維運、consultingHour 顧問時數、training 教育訓練、productDevelopment 開發產品，並可自訂新增）
 create table storyPoint.tbWorkItemKind (
     pk int identity(1,1) not null,
     kindCode varchar(64) not null,
     kindName nvarchar(128) not null,
-    badgeIcon nvarchar(32) not null constraint dfTbWorkItemKindIcon default (N'📌'),
+    badgeIcon nvarchar(512) not null constraint dfTbWorkItemKindIcon default (N'📌'),
     badgeColor varchar(32) not null constraint dfTbWorkItemKindColor default ('blue'),
     sortOrder int not null constraint dfTbWorkItemKindSortOrder default (100),
     mainFeatureSummary nvarchar(512) null,
@@ -650,6 +685,22 @@ begin
     set identity_insert storyPoint.tbCardDeck off;
 end
 
+if object_id('storyPoint.tbPreserveWorkItemIcon', 'u') is not null
+begin
+    set identity_insert storyPoint.tbWorkItemIcon on;
+    insert into storyPoint.tbWorkItemIcon (
+        pk, iconCode, iconName, iconCategory, iconKind, iconValue,
+        mimeType, iconDataBase64, sortOrder, isCustomUpload,
+        isActive, uploadedBy, createdAt, updatedAt
+    )
+    select
+        pk, iconCode, iconName, iconCategory, iconKind, iconValue,
+        mimeType, iconDataBase64, sortOrder, isCustomUpload,
+        isActive, uploadedBy, createdAt, updatedAt
+    from storyPoint.tbPreserveWorkItemIcon;
+    set identity_insert storyPoint.tbWorkItemIcon off;
+end
+
 if object_id('storyPoint.tbPreserveWorkItemKind', 'u') is not null
 begin
     set identity_insert storyPoint.tbWorkItemKind on;
@@ -868,6 +919,7 @@ drop table if exists storyPoint.tbPreserveWorkItemAssignment;
 drop table if exists storyPoint.tbPreserveWorkItem;
 drop table if exists storyPoint.tbPreserveWorkItemType;
 drop table if exists storyPoint.tbPreserveWorkItemKind;
+drop table if exists storyPoint.tbPreserveWorkItemIcon;
 drop table if exists storyPoint.tbPreserveCardDeck;
 drop table if exists storyPoint.tbPreserveEmployee;
 drop table if exists storyPoint.tbPreserveDepartment;

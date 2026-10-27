@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     工項代表類型、實際工項與員工賦予設定管理 Console 模組 (manageWorkItem.ps1)
 .DESCRIPTION
@@ -8,8 +8,11 @@
     3. 管理者修改「員工賦予的工項 (tbWorkItemAssignment)」(設定負責員工與點數分攤比例)
 .PARAMETER actionType
     執行動作：
+    - 'listWorkItemIcon'   : 查詢代表圖示庫 (tbWorkItemIcon，含內建 SVG 彩色圖示、Emoji 與使用者自訂上傳圖示)
+    - 'uploadWorkItemIcon' : 自行上傳並新增代表圖示至代表圖示庫 (tbWorkItemIcon) 與 Web 圖示目錄
+    - 'deleteWorkItemIcon' : 刪除自訂上傳的代表圖示
     - 'listWorkItemKind'   : 查詢工項類型設定 (專案/維運/顧問時數/教育訓練/開發產品/自訂類型)
-    - 'upsertWorkItemKind' : 新增或修改工項類型
+    - 'upsertWorkItemKind' : 新增或修改工項類型 (支援指定 -iconFilePath 同時上傳自訂圖示)
     - 'deleteWorkItemKind' : 刪除工項類型
     - 'listWorkItemType'   : 查詢工項代表類型與標準 Story Point
     - 'upsertWorkItemType' : 新增或修改工項代表類型 (支援同步既有工項點數)
@@ -28,8 +31,23 @@
 [cmdletbinding()]
 param(
     [parameter(mandatory = $false)]
-    [validateset('listWorkItemKind', 'upsertWorkItemKind', 'deleteWorkItemKind', 'listWorkItemType', 'upsertWorkItemType', 'deleteWorkItemType', 'listWorkItem', 'upsertWorkItem', 'deleteWorkItem', 'assignWorkItem', 'removeAssignment', 'processExpired')]
+    [validateset('listWorkItemIcon', 'uploadWorkItemIcon', 'deleteWorkItemIcon', 'listWorkItemKind', 'upsertWorkItemKind', 'deleteWorkItemKind', 'listWorkItemType', 'upsertWorkItemType', 'deleteWorkItemType', 'listWorkItem', 'upsertWorkItem', 'deleteWorkItem', 'assignWorkItem', 'removeAssignment', 'processExpired')]
     [string]$actionType = 'listWorkItem',
+
+    [parameter(mandatory = $false)]
+    [int]$workItemIconPk = 0,
+
+    [parameter(mandatory = $false)]
+    [string]$iconCode = '',
+
+    [parameter(mandatory = $false)]
+    [string]$iconName = '',
+
+    [parameter(mandatory = $false)]
+    [string]$iconCategory = '自訂上傳圖示',
+
+    [parameter(mandatory = $false)]
+    [string]$iconFilePath = '',
 
     [parameter(mandatory = $false)]
     [int]$workItemKindPk = 0,
@@ -150,7 +168,115 @@ param(
 
 . (join-path -path $psscriptroot -childpath 'common.ps1')
 
+function saveCustomWorkItemIconFromFile {
+    param(
+        [string]$sourceFilePath,
+        [string]$customName,
+        [string]$customCategory = '自訂上傳圖示',
+        [string]$opAccount = $env:username
+    )
+    if ([string]::isnullorempty($sourceFilePath) -or -not (test-path -literalpath $sourceFilePath)) {
+        throw "找不到指定的圖示檔案：$sourceFilePath"
+    }
+    $fileInfo = get-item -literalpath $sourceFilePath
+    $ext = $fileInfo.extension.tolowerinvariant()
+    $allowedExts = @('.png', '.svg', '.jpg', '.jpeg', '.webp', '.ico', '.gif')
+    if ($allowedExts -notcontains $ext) {
+        throw "不支援的圖示檔案格式 ($ext)，請選擇 PNG、SVG、JPG、WEBP、ICO 或 GIF 圖檔。"
+    }
+    if ($fileInfo.length -gt 2097152) {
+        throw '圖示檔案大小不可超過 2 MB。'
+    }
+
+    $bytes = [system.io.file]::readallbytes($fileInfo.fullname)
+    $b64 = [convert]::tobase64string($bytes)
+    $mimeType = switch ($ext) {
+        '.svg'  { 'image/svg+xml' }
+        '.png'  { 'image/png' }
+        '.jpg'  { 'image/jpeg' }
+        '.jpeg' { 'image/jpeg' }
+        '.webp' { 'image/webp' }
+        '.ico'  { 'image/x-icon' }
+        '.gif'  { 'image/gif' }
+        default { 'application/octet-stream' }
+    }
+
+    $stamp = (get-date).tostring('yyyyMMddHHmmssfff')
+    $rawStem = [system.io.path]::getfilenamewithoutextension($fileInfo.name) -replace '[^a-zA-Z0-9_-]', ''
+    if ([string]::isnullorempty($rawStem)) { $rawStem = 'icon' }
+    if ($rawStem.length -gt 24) { $rawStem = $rawStem.substring(0, 24) }
+    $savedFileName = "custom_${rawStem}_${stamp}${ext}"
+    $relUrl = "/icons/custom/$savedFileName"
+
+    $repoRoot = split-path -path $psscriptroot -parent
+    $customDir = join-path -path $repoRoot -childpath 'web\storyPointPortal\wwwroot\icons\custom'
+    if (-not (test-path -literalpath $customDir)) {
+        $null = new-item -itemtype directory -path $customDir -force
+    }
+    $destPath = join-path -path $customDir -childpath $savedFileName
+    [system.io.file]::writeallbytes($destPath, $bytes)
+
+    $resolvedName = if (-not [string]::isnullorempty($customName)) { $customName } else { [system.io.path]::getfilenamewithoutextension($fileInfo.name) }
+    $resolvedCat = if (-not [string]::isnullorempty($customCategory)) { $customCategory } else { '自訂上傳圖示' }
+    $genCode = "custom_$stamp"
+
+    $dsIcon = invokeStoredProcedureDataSet -procedureName 'storyPoint.spUpsertWorkItemIcon' -parameters @{
+        iconPk = $null
+        iconCode = $genCode
+        iconName = $resolvedName
+        iconCategory = $resolvedCat
+        iconKind = 'customUpload'
+        iconValue = $relUrl
+        mimeType = $mimeType
+        iconDataBase64 = $b64
+        sortOrder = 5
+        isCustomUpload = $true
+        operatorAccount = $opAccount
+    }
+    writeSystemLog -logLevel 3 -sourceScript 'manageWorkItem.ps1' -objectName 'uploadWorkItemIcon' `
+        -executionResult "上傳自訂代表圖示成功：$resolvedName ($relUrl)" -operatorAccount $opAccount
+    return ,$dsIcon.tables[0]
+}
+
 switch ($actionType) {
+    'listWorkItemIcon' {
+        $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spGetStoryPointDashboard' -parameters @{}
+        $iconTable = $ds.tables[9]
+        if (-not [string]::isnullorempty($keyword)) {
+            $kwEsc = $keyword.replace("'", "''")
+            $dv = $iconTable.defaultview
+            $dv.rowfilter = "iconCode like '%$kwEsc%' or iconName like '%$kwEsc%' or iconCategory like '%$kwEsc%' or iconValue like '%$kwEsc%'"
+            $iconTable = $dv.totable()
+        }
+        writeSystemLog -logLevel 3 -sourceScript 'manageWorkItem.ps1' -objectName 'listWorkItemIcon' `
+            -executionResult "查詢代表圖示庫完成，共 $($iconTable.rows.count) 筆代表圖示" -operatorAccount $operatorAccount
+        return ,$iconTable
+    }
+
+    'uploadWorkItemIcon' {
+        $savedIconDt = saveCustomWorkItemIconFromFile -sourceFilePath $iconFilePath -customName $iconName -customCategory $iconCategory -opAccount $operatorAccount
+        return ,$savedIconDt
+    }
+
+    'deleteWorkItemIcon' {
+        $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spDeleteWorkItemIcon' -parameters @{
+            iconPk = $(if ($workItemIconPk -gt 0) { $workItemIconPk } else { $null })
+            iconCode = $(if (-not [string]::isnullorempty($iconCode)) { $iconCode } else { $null })
+            operatorAccount = $operatorAccount
+        }
+        if ($ds.tables.count -gt 0 -and $ds.tables[0].rows.count -gt 0) {
+            $delVal = [string]$ds.tables[0].rows[0].deletedIconValue
+            if ($delVal.startswith('/icons/custom/')) {
+                $delFileName = [system.io.path]::getfilename($delVal)
+                $delFullPath = join-path -path $script:projectRoot -childpath "web\storyPointPortal\wwwroot\icons\custom\$delFileName"
+                if (test-path -literalpath $delFullPath) {
+                    remove-item -literalpath $delFullPath -force -erroraction silentlycontinue
+                }
+            }
+        }
+        return ,$ds.tables[0]
+    }
+
     'listWorkItemKind' {
         $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spGetStoryPointDashboard' -parameters @{}
         $kindTable = $ds.tables[8]
@@ -166,11 +292,18 @@ switch ($actionType) {
     }
 
     'upsertWorkItemKind' {
+        $resolvedBadgeIcon = $badgeIcon
+        if (-not [string]::isnullorempty($iconFilePath) -and (test-path -literalpath $iconFilePath)) {
+            $upDt = saveCustomWorkItemIconFromFile -sourceFilePath $iconFilePath -customName $(if (-not [string]::isnullorempty($iconName)) { $iconName } else { $kindName }) -customCategory $iconCategory -opAccount $operatorAccount
+            if ($null -ne $upDt -and $upDt.rows.count -gt 0) {
+                $resolvedBadgeIcon = [string]$upDt.rows[0].iconValue
+            }
+        }
         $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spUpsertWorkItemKind' -parameters @{
             workItemKindPk = $(if ($workItemKindPk -gt 0) { $workItemKindPk } else { $null })
             kindCode = $kindCode
             kindName = $kindName
-            badgeIcon = $badgeIcon
+            badgeIcon = $resolvedBadgeIcon
             badgeColor = $badgeColor
             sortOrder = $sortOrder
             mainFeatureSummary = $(if (-not [string]::isnullorempty($mainFeatureSummary)) { $mainFeatureSummary } else { $null })

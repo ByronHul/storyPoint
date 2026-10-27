@@ -452,3 +452,168 @@ begin
     where kindCode = 'productDevelopment';
 end
 go
+
+-- ============================================================================
+-- 4.1 同步預設工項類型 (tbWorkItemKind：專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品...等) 至工項代表類型 (tbWorkItemType)
+--     確保「目標工項代表類型」下拉選單直接帶入專案、維運、顧問時數、教育訓練、開發產品...等代表類型，
+--     並自動清理過往誤由盲投議程標題產生的 TYPE_20* 暫存紀錄
+-- ============================================================================
+declare @defaultDeckPk int = (
+    select top 1 pk
+    from storyPoint.tbCardDeck
+    where isActive = 1
+    order by isDefault desc, pk asc
+);
+
+update wit
+set wit.typeName = wik.kindName,
+    wit.categoryName = wik.kindName,
+    wit.defaultWorkItemKind = wik.kindCode,
+    wit.description = isnull(nullif(ltrim(rtrim(wik.mainFeatureSummary)), N''), isnull(wik.description, wit.description)),
+    wit.isActive = wik.isActive,
+    wit.updatedAt = sysdatetime()
+from storyPoint.tbWorkItemType as wit
+inner join storyPoint.tbWorkItemKind as wik
+    on wit.typeCode = wik.kindCode;
+
+insert into storyPoint.tbWorkItemType (
+    typeCode, typeName, categoryName, defaultWorkItemKind, description,
+    standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
+)
+select
+    wik.kindCode,
+    wik.kindName,
+    wik.kindName,
+    wik.kindCode,
+    isnull(nullif(ltrim(rtrim(wik.mainFeatureSummary)), N''), isnull(wik.description, wik.kindName)),
+    null,
+    @defaultDeckPk,
+    'pending',
+    1,
+    sysdatetime(),
+    sysdatetime()
+from storyPoint.tbWorkItemKind as wik
+where wik.isActive = 1
+  and not exists (
+      select 1
+      from storyPoint.tbWorkItemType as wit
+      where wit.typeCode = wik.kindCode
+  )
+order by wik.sortOrder asc, wik.pk asc;
+
+declare @projectTypePk int = (
+    select top 1 pk
+    from storyPoint.tbWorkItemType
+    where typeCode = 'project'
+    order by pk asc
+);
+
+if @projectTypePk is not null
+begin
+    update wi
+    set wi.workItemTypePk = isnull(kindWit.pk, @projectTypePk),
+        wi.updatedAt = sysdatetime()
+    from storyPoint.tbWorkItem as wi
+    left join storyPoint.tbWorkItemType as curWit
+        on wi.workItemTypePk = curWit.pk
+    left join storyPoint.tbWorkItemType as kindWit
+        on kindWit.typeCode = wi.workItemKind
+    where curWit.pk is null
+       or curWit.typeCode like 'TYPE[_]20%'
+       or curWit.typeCode like 'TYPE[_]DEF[_]%';
+
+    update vs
+    set vs.workItemTypePk = isnull(kindWit.pk, @projectTypePk),
+        vs.updatedAt = sysdatetime()
+    from storyPoint.tbVotingSession as vs
+    inner join storyPoint.tbWorkItemType as oldWit
+        on vs.workItemTypePk = oldWit.pk
+    left join storyPoint.tbWorkItemType as kindWit
+        on kindWit.typeCode = oldWit.defaultWorkItemKind
+    where oldWit.typeCode like 'TYPE[_]20%'
+       or oldWit.typeCode like 'TYPE[_]DEF[_]%';
+
+    update ph
+    set ph.workItemTypePk = isnull(kindWit.pk, @projectTypePk)
+    from storyPoint.tbPointHistory as ph
+    inner join storyPoint.tbWorkItemType as oldWit
+        on ph.workItemTypePk = oldWit.pk
+    left join storyPoint.tbWorkItemType as kindWit
+        on kindWit.typeCode = oldWit.defaultWorkItemKind
+    where oldWit.typeCode like 'TYPE[_]20%'
+       or oldWit.typeCode like 'TYPE[_]DEF[_]%';
+
+    delete from storyPoint.tbWorkItemType
+    where typeCode like 'TYPE[_]20%'
+       or typeCode like 'TYPE[_]DEF[_]%';
+end
+go
+
+-- ============================================================================
+-- 5. 代表圖示庫預設清單 (storyPoint.tbWorkItemIcon：提供多種內建 Emoji 與彩色 SVG 代表圖示，並支援自行上傳新增)
+-- ============================================================================
+declare @presetIconTable table (
+    iconCode varchar(64) not null,
+    iconName nvarchar(128) not null,
+    iconCategory nvarchar(64) not null,
+    iconKind varchar(32) not null,
+    iconValue nvarchar(512) not null,
+    mimeType varchar(64) null,
+    sortOrder int not null
+);
+
+insert into @presetIconTable (iconCode, iconName, iconCategory, iconKind, iconValue, mimeType, sortOrder)
+values
+    -- (A) 內建彩色向量 SVG 代表圖示 (12 款)
+    ('svg_project_blueprint', N'專案藍圖 (彩色圖示)', N'彩色向量圖示 (SVG)', 'presetSvg', N'/icons/presets/project-blueprint.svg', 'image/svg+xml', 10),
+    ('svg_maintenance_gear', N'系統維運齒輪 (彩色圖示)', N'彩色向量圖示 (SVG)', 'presetSvg', N'/icons/presets/maintenance-gear.svg', 'image/svg+xml', 20),
+    ('svg_consulting_clock', N'顧問專業時數 (彩色圖示)', N'彩色向量圖示 (SVG)', 'presetSvg', N'/icons/presets/consulting-clock.svg', 'image/svg+xml', 30),
+    ('svg_training_cap', N'教育訓練學位帽 (彩色圖示)', N'彩色向量圖示 (SVG)', 'presetSvg', N'/icons/presets/training-cap.svg', 'image/svg+xml', 40),
+    ('svg_product_rocket', N'產品研發火箭 (彩色圖示)', N'彩色向量圖示 (SVG)', 'presetSvg', N'/icons/presets/product-rocket.svg', 'image/svg+xml', 50),
+    ('svg_database_server', N'SQL 資料庫叢集 (彩色圖示)', N'彩色向量圖示 (SVG)', 'presetSvg', N'/icons/presets/database-server.svg', 'image/svg+xml', 60),
+    ('svg_cloud_azure', N'Azure 雲端服務 (彩色圖示)', N'彩色向量圖示 (SVG)', 'presetSvg', N'/icons/presets/cloud-azure.svg', 'image/svg+xml', 70),
+    ('svg_security_shield', N'資安防護盾牌 (彩色圖示)', N'彩色向量圖示 (SVG)', 'presetSvg', N'/icons/presets/security-shield.svg', 'image/svg+xml', 80),
+    ('svg_bi_analytics', N'BI 商業智慧圖表 (彩色圖示)', N'彩色向量圖示 (SVG)', 'presetSvg', N'/icons/presets/bi-analytics.svg', 'image/svg+xml', 90),
+    ('svg_ai_brain', N'AI 智能引擎 (彩色圖示)', N'彩色向量圖示 (SVG)', 'presetSvg', N'/icons/presets/ai-brain.svg', 'image/svg+xml', 100),
+    ('svg_api_integration', N'API 跨系統整合 (彩色圖示)', N'彩色向量圖示 (SVG)', 'presetSvg', N'/icons/presets/api-integration.svg', 'image/svg+xml', 110),
+    ('svg_support_headset', N'技術支援客服 (彩色圖示)', N'彩色向量圖示 (SVG)', 'presetSvg', N'/icons/presets/support-headset.svg', 'image/svg+xml', 120),
+    -- (B) 內建常用符號與 Emoji 代表圖示 (24 款)
+    ('emoji_project', N'專案建置', N'核心工項符號', 'emoji', N'🏗️', null, 210),
+    ('emoji_maintenance', N'系統維運', N'核心工項符號', 'emoji', N'🛠️', null, 220),
+    ('emoji_consulting', N'顧問時數', N'核心工項符號', 'emoji', N'⏳', null, 230),
+    ('emoji_training', N'教育訓練', N'核心工項符號', 'emoji', N'🎓', null, 240),
+    ('emoji_product', N'開發產品', N'核心工項符號', 'emoji', N'🚀', null, 250),
+    ('emoji_pin', N'標準通用', N'核心工項符號', 'emoji', N'📌', null, 260),
+    ('emoji_code', N'軟體開發', N'技術與架構符號', 'emoji', N'💻', null, 270),
+    ('emoji_database', N'資料庫與倉儲', N'技術與架構符號', 'emoji', N'🗄️', null, 280),
+    ('emoji_cloud', N'雲端架構', N'技術與架構符號', 'emoji', N'☁️', null, 290),
+    ('emoji_security', N'資安合規', N'技術與架構符號', 'emoji', N'🛡️', null, 300),
+    ('emoji_bi', N'數據分析與報表', N'技術與架構符號', 'emoji', N'📊', null, 310),
+    ('emoji_ai', N'AI 與自動化', N'技術與架構符號', 'emoji', N'🤖', null, 320),
+    ('emoji_performance', N'效能調校', N'技術與架構符號', 'emoji', N'⚡', null, 330),
+    ('emoji_api', N'API 介面整合', N'技術與架構符號', 'emoji', N'🔗', null, 340),
+    ('emoji_mobile', N'行動與前端應用', N'技術與架構符號', 'emoji', N'📱', null, 350),
+    ('emoji_bugfix', N'問題修復與除錯', N'管理與支援符號', 'emoji', N'🔧', null, 360),
+    ('emoji_qa', N'測試與品質驗證', N'管理與支援符號', 'emoji', N'🧪', null, 370),
+    ('emoji_release', N'版本封裝與部署', N'管理與支援符號', 'emoji', N'📦', null, 380),
+    ('emoji_support', N'客戶駐點與支援', N'管理與支援符號', 'emoji', N'📞', null, 390),
+    ('emoji_doc', N'技術文件與規範', N'管理與支援符號', 'emoji', N'📑', null, 400),
+    ('emoji_milestone', N'策略目標與里程碑', N'管理與支援符號', 'emoji', N'🎯', null, 410),
+    ('emoji_admin', N'部門行政與內控', N'管理與支援符號', 'emoji', N'🏢', null, 420),
+    ('emoji_poc', N'創新研發與 POC', N'管理與支援符號', 'emoji', N'💡', null, 430),
+    ('emoji_audit', N'健檢與問題排查', N'管理與支援符號', 'emoji', N'🔍', null, 440);
+
+insert into storyPoint.tbWorkItemIcon (
+    iconCode, iconName, iconCategory, iconKind, iconValue,
+    mimeType, iconDataBase64, sortOrder, isCustomUpload, isActive, uploadedBy
+)
+select
+    src.iconCode, src.iconName, src.iconCategory, src.iconKind, src.iconValue,
+    src.mimeType, null, src.sortOrder, 0, 1, 'system'
+from @presetIconTable as src
+where not exists (
+    select 1
+    from storyPoint.tbWorkItemIcon as tgt
+    where tgt.iconCode = src.iconCode
+);
+go

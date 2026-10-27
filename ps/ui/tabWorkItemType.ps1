@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Azure 多人參與 Story Point 系統 - [Tab 2] 工項代表類型與預設工項類型管理頁籤 (tabWorkItemType.ps1)
 .DESCRIPTION
@@ -29,16 +29,130 @@ process {
     $workItemScript = join-path -path $psRootPath -childpath 'manageWorkItem.ps1'
     $votingScript = join-path -path $psRootPath -childpath 'manageVotingSession.ps1'
     $tabPage = new-object system.windows.forms.tabpage
-    $tabPage.text = '2. 預設工項類型與代表類型'
+    $tabPage.text = '2-2 代表工項 / 2-3 預設類型'
     $tabPage.padding = new-object system.windows.forms.padding(8)
 
+    $script:currentWorkItemTypePk = 0
+
     # =========================================================================
-    # 上半部：預設工項類型 (tbWorkItemKind) 增刪修查與主要特徵一覽表
+    # 上半部 (2-2)：工項代表類型 (tbWorkItemType) — 編輯投出 SP 的代表工項各種屬性與所屬預設類型
+    # =========================================================================
+    $grpType = new-object system.windows.forms.groupbox
+    $grpType.text = '🏷️ 2-2. 工項代表類型：編輯投出 SP 的代表工項屬性（如：資料庫健檢）與所屬預設類型 (tbWorkItemType)'
+    $grpType.location = new-object system.drawing.point(10, 8)
+    $grpType.size = new-object system.drawing.size(1135, 315)
+
+    $lblName = new-object system.windows.forms.label
+    $lblName.text = '代表工項名稱：'
+    $lblName.location = new-object system.drawing.point(12, 24)
+    $lblName.autosize = $true
+
+    $txtName = new-object system.windows.forms.textbox
+    $txtName.location = new-object system.drawing.point(108, 21)
+    $txtName.width = 185
+    $txtName.text = '資料庫健檢'
+
+    $lblDefKind = new-object system.windows.forms.label
+    $lblDefKind.text = '屬於預設類型：'
+    $lblDefKind.location = new-object system.drawing.point(302, 24)
+    $lblDefKind.autosize = $true
+
+    $cmbDefaultKind = new-object system.windows.forms.combobox
+    $cmbDefaultKind.location = new-object system.drawing.point(398, 21)
+    $cmbDefaultKind.width = 135
+    $cmbDefaultKind.dropdownstyle = 'DropDownList'
+
+    $lblCategory = new-object system.windows.forms.label
+    $lblCategory.text = '分類屬性：'
+    $lblCategory.location = new-object system.drawing.point(542, 24)
+    $lblCategory.autosize = $true
+
+    $txtCategory = new-object system.windows.forms.textbox
+    $txtCategory.location = new-object system.drawing.point(612, 21)
+    $txtCategory.width = 135
+    $txtCategory.text = '資料庫健檢與維運'
+
+    $lblPoint = new-object system.windows.forms.label
+    $lblPoint.text = '投出 SP：'
+    $lblPoint.location = new-object system.drawing.point(755, 24)
+    $lblPoint.autosize = $true
+
+    $txtPoint = new-object system.windows.forms.textbox
+    $txtPoint.location = new-object system.drawing.point(818, 21)
+    $txtPoint.width = 50
+    $txtPoint.text = '8'
+
+    $lblCode = new-object system.windows.forms.label
+    $lblCode.text = '代碼：'
+    $lblCode.location = new-object system.drawing.point(876, 24)
+    $lblCode.autosize = $true
+
+    $txtCode = new-object system.windows.forms.textbox
+    $txtCode.location = new-object system.drawing.point(920, 21)
+    $txtCode.width = 110
+    $txtCode.text = 'TYPE_20261023034516'
+
+    $chkSync = new-object system.windows.forms.checkbox
+    $chkSync.text = '同步工項'
+    $chkSync.location = new-object system.drawing.point(1038, 22)
+    $chkSync.checked = $true
+    $chkSync.autosize = $true
+
+    $lblTypeDesc = new-object system.windows.forms.label
+    $lblTypeDesc.text = '工作與驗收屬性：'
+    $lblTypeDesc.location = new-object system.drawing.point(12, 54)
+    $lblTypeDesc.autosize = $true
+
+    $txtTypeDesc = new-object system.windows.forms.textbox
+    $txtTypeDesc.location = new-object system.drawing.point(118, 51)
+    $txtTypeDesc.width = 435
+    $txtTypeDesc.text = '透過 script 收集狀態，分析健康狀態，提供健檢報告並完成現場或線上報告'
+
+    $btnSave = new-object system.windows.forms.button
+    $btnSave.text = '💾 儲存代表工項屬性'
+    $btnSave.location = new-object system.drawing.point(562, 49)
+    $btnSave.size = new-object system.drawing.size(150, 28)
+    $btnSave.backcolor = [system.drawing.color]::fromargb(37, 99, 235)
+    $btnSave.forecolor = [system.drawing.color]::white
+
+    $btnRefresh = new-object system.windows.forms.button
+    $btnRefresh.text = '🔄 重新整理清單'
+    $btnRefresh.location = new-object system.drawing.point(718, 49)
+    $btnRefresh.size = new-object system.drawing.size(125, 28)
+
+    $btnRevote = new-object system.windows.forms.button
+    $btnRevote.text = '🔄 重新投票(開新輪)'
+    $btnRevote.location = new-object system.drawing.point(849, 49)
+    $btnRevote.size = new-object system.drawing.size(135, 28)
+    $btnRevote.backcolor = [system.drawing.color]::fromargb(239, 246, 255)
+    $btnRevote.forecolor = [system.drawing.color]::fromargb(29, 78, 216)
+
+    $btnRestartAll = new-object system.windows.forms.button
+    $btnRestartAll.text = '🆕 全部重投(第1輪)'
+    $btnRestartAll.location = new-object system.drawing.point(990, 49)
+    $btnRestartAll.size = new-object system.drawing.size(132, 28)
+    $btnRestartAll.backcolor = [system.drawing.color]::fromargb(238, 242, 255)
+    $btnRestartAll.forecolor = [system.drawing.color]::fromargb(67, 56, 202)
+
+    $gridType = new-object system.windows.forms.datagridview
+    $gridType.location = new-object system.drawing.point(12, 84)
+    $gridType.size = new-object system.drawing.size(1110, 220)
+    $gridType.readonly = $true
+    $gridType.allowusertoaddrows = $false
+    $gridType.autosizecolumnsmode = 'Fill'
+
+    $grpType.controls.addrange(@(
+        $lblName, $txtName, $lblDefKind, $cmbDefaultKind, $lblCategory, $txtCategory, $lblPoint, $txtPoint, $lblCode, $txtCode, $chkSync,
+        $lblTypeDesc, $txtTypeDesc, $btnSave, $btnRefresh, $btnRevote, $btnRestartAll, $gridType
+    ))
+
+    # =========================================================================
+    # 下半部 (2-3)：預設工項類型 (tbWorkItemKind) 增刪修查與主要特徵一覽表
     # =========================================================================
     $grpKind = new-object system.windows.forms.groupbox
-    $grpKind.text = '🗂️ 一、預設工項類型增、刪、修、查管理與主要特徵一覽表 (tbWorkItemKind)'
-    $grpKind.location = new-object system.drawing.point(10, 8)
-    $grpKind.size = new-object system.drawing.size(1135, 285)
+    $grpKind.text = '🗂️ 2-3. 預設工項類型與特徵：增、刪、修、查管理與主要特徵一覽表 (tbWorkItemKind)'
+    $grpKind.location = new-object system.drawing.point(10, 330)
+    $grpKind.size = new-object system.drawing.size(1135, 290)
 
     $lblKindCode = new-object system.windows.forms.label
     $lblKindCode.text = '類型代碼：'
@@ -61,50 +175,58 @@ process {
     $txtKindName.text = '專案'
 
     $lblKindIcon = new-object system.windows.forms.label
-    $lblKindIcon.text = '圖示：'
-    $lblKindIcon.location = new-object system.drawing.point(415, 24)
+    $lblKindIcon.text = '代表圖示：'
+    $lblKindIcon.location = new-object system.drawing.point(410, 24)
     $lblKindIcon.autosize = $true
 
-    $txtKindIcon = new-object system.windows.forms.textbox
-    $txtKindIcon.location = new-object system.drawing.point(460, 21)
-    $txtKindIcon.width = 45
-    $txtKindIcon.text = '🏗️'
+    $cmbKindIcon = new-object system.windows.forms.combobox
+    $cmbKindIcon.location = new-object system.drawing.point(478, 21)
+    $cmbKindIcon.width = 145
+    $cmbKindIcon.dropdownstyle = 'DropDown'
+    $cmbKindIcon.text = '🏗️'
+
+    $btnUploadIcon = new-object system.windows.forms.button
+    $btnUploadIcon.text = '📤 上傳圖示'
+    $btnUploadIcon.location = new-object system.drawing.point(628, 19)
+    $btnUploadIcon.size = new-object system.drawing.size(92, 26)
+    $btnUploadIcon.backcolor = [system.drawing.color]::fromargb(240, 253, 244)
+    $btnUploadIcon.forecolor = [system.drawing.color]::fromargb(21, 128, 61)
 
     $lblKindColor = new-object system.windows.forms.label
     $lblKindColor.text = '顏色：'
-    $lblKindColor.location = new-object system.drawing.point(515, 24)
+    $lblKindColor.location = new-object system.drawing.point(726, 24)
     $lblKindColor.autosize = $true
 
     $cmbKindColor = new-object system.windows.forms.combobox
-    $cmbKindColor.location = new-object system.drawing.point(560, 21)
-    $cmbKindColor.width = 85
+    $cmbKindColor.location = new-object system.drawing.point(770, 21)
+    $cmbKindColor.width = 75
     $cmbKindColor.dropdownstyle = 'DropDownList'
     [void]$cmbKindColor.items.addrange(@('blue', 'amber', 'purple', 'green', 'red', 'rose', 'teal', 'slate'))
     $cmbKindColor.selectedindex = 0
 
     $lblKindSort = new-object system.windows.forms.label
     $lblKindSort.text = '排序：'
-    $lblKindSort.location = new-object system.drawing.point(655, 24)
+    $lblKindSort.location = new-object system.drawing.point(852, 24)
     $lblKindSort.autosize = $true
 
     $txtKindSort = new-object system.windows.forms.textbox
-    $txtKindSort.location = new-object system.drawing.point(700, 21)
-    $txtKindSort.width = 45
+    $txtKindSort.location = new-object system.drawing.point(895, 21)
+    $txtKindSort.width = 40
     $txtKindSort.text = '10'
 
     $lblKindKw = new-object system.windows.forms.label
-    $lblKindKw.text = '🔍 關鍵字查詢：'
-    $lblKindKw.location = new-object system.drawing.point(755, 24)
+    $lblKindKw.text = '🔍查詢：'
+    $lblKindKw.location = new-object system.drawing.point(942, 24)
     $lblKindKw.autosize = $true
 
     $txtKindKw = new-object system.windows.forms.textbox
-    $txtKindKw.location = new-object system.drawing.point(855, 21)
-    $txtKindKw.width = 165
+    $txtKindKw.location = new-object system.drawing.point(998, 21)
+    $txtKindKw.width = 65
 
     $btnSearchKind = new-object system.windows.forms.button
     $btnSearchKind.text = '查詢'
-    $btnSearchKind.location = new-object system.drawing.point(1028, 19)
-    $btnSearchKind.size = new-object system.drawing.size(92, 26)
+    $btnSearchKind.location = new-object system.drawing.point(1068, 19)
+    $btnSearchKind.size = new-object system.drawing.size(55, 26)
 
     $lblMainFeature = new-object system.windows.forms.label
     $lblMainFeature.text = '⭐主要特徵：'
@@ -167,110 +289,39 @@ process {
 
     $gridKind = new-object system.windows.forms.datagridview
     $gridKind.location = new-object system.drawing.point(12, 114)
-    $gridKind.size = new-object system.drawing.size(1110, 160)
+    $gridKind.size = new-object system.drawing.size(1110, 165)
     $gridKind.readonly = $true
     $gridKind.allowusertoaddrows = $false
     $gridKind.autosizecolumnsmode = 'Fill'
 
     $grpKind.controls.addrange(@(
-        $lblKindCode, $txtKindCode, $lblKindName, $txtKindName, $lblKindIcon, $txtKindIcon,
+        $lblKindCode, $txtKindCode, $lblKindName, $txtKindName, $lblKindIcon, $cmbKindIcon, $btnUploadIcon,
         $lblKindColor, $cmbKindColor, $lblKindSort, $txtKindSort, $lblKindKw, $txtKindKw, $btnSearchKind,
         $lblMainFeature, $txtMainFeature, $lblEstTrait, $txtEstTrait, $lblDelivTrait, $txtDelivTrait,
         $lblKindDesc, $txtKindDesc, $btnSaveKind, $btnDeleteKind, $btnResetKind, $gridKind
     ))
 
-    # =========================================================================
-    # 下半部：工項代表類型 (tbWorkItemType) 管理與標準 Story Point 清單
-    # =========================================================================
-    $grpType = new-object system.windows.forms.groupbox
-    $grpType.text = '🏷️ 二、工項代表類型與標準 Story Point 管理 (tbWorkItemType)'
-    $grpType.location = new-object system.drawing.point(10, 300)
-    $grpType.size = new-object system.drawing.size(1135, 320)
-
-    $lblCode = new-object system.windows.forms.label
-    $lblCode.text = '代表類型代碼：'
-    $lblCode.location = new-object system.drawing.point(12, 24)
-    $lblCode.autosize = $true
-
-    $txtCode = new-object system.windows.forms.textbox
-    $txtCode.location = new-object system.drawing.point(108, 21)
-    $txtCode.width = 140
-    $txtCode.text = 'TYPE_STD_CRUD'
-
-    $lblName = new-object system.windows.forms.label
-    $lblName.text = '類型名稱：'
-    $lblName.location = new-object system.drawing.point(258, 24)
-    $lblName.autosize = $true
-
-    $txtName = new-object system.windows.forms.textbox
-    $txtName.location = new-object system.drawing.point(328, 21)
-    $txtName.width = 195
-    $txtName.text = '標準單表 CRUD API 與預存程序'
-
-    $lblDefKind = new-object system.windows.forms.label
-    $lblDefKind.text = '預設工項類型：'
-    $lblDefKind.location = new-object system.drawing.point(532, 24)
-    $lblDefKind.autosize = $true
-
-    $cmbDefaultKind = new-object system.windows.forms.combobox
-    $cmbDefaultKind.location = new-object system.drawing.point(625, 21)
-    $cmbDefaultKind.width = 135
-    $cmbDefaultKind.dropdownstyle = 'DropDownList'
-
-    $lblPoint = new-object system.windows.forms.label
-    $lblPoint.text = '標準點數：'
-    $lblPoint.location = new-object system.drawing.point(770, 24)
-    $lblPoint.autosize = $true
-
-    $txtPoint = new-object system.windows.forms.textbox
-    $txtPoint.location = new-object system.drawing.point(838, 21)
-    $txtPoint.width = 55
-    $txtPoint.text = '3'
-
-    $chkSync = new-object system.windows.forms.checkbox
-    $chkSync.text = '同步未完成工項'
-    $chkSync.location = new-object system.drawing.point(905, 22)
-    $chkSync.autosize = $true
-
-    $btnSave = new-object system.windows.forms.button
-    $btnSave.text = '💾 儲存代表類型'
-    $btnSave.location = new-object system.drawing.point(12, 54)
-    $btnSave.size = new-object system.drawing.size(150, 28)
-    $btnSave.backcolor = [system.drawing.color]::fromargb(37, 99, 235)
-    $btnSave.forecolor = [system.drawing.color]::white
-
-    $btnRefresh = new-object system.windows.forms.button
-    $btnRefresh.text = '🔄 重新整理代表類型清單'
-    $btnRefresh.location = new-object system.drawing.point(172, 54)
-    $btnRefresh.size = new-object system.drawing.size(185, 28)
-
-    $btnRevote = new-object system.windows.forms.button
-    $btnRevote.text = '🔄 重新投票(開新輪)'
-    $btnRevote.location = new-object system.drawing.point(368, 54)
-    $btnRevote.size = new-object system.drawing.size(165, 28)
-    $btnRevote.backcolor = [system.drawing.color]::fromargb(239, 246, 255)
-    $btnRevote.forecolor = [system.drawing.color]::fromargb(29, 78, 216)
-
-    $btnRestartAll = new-object system.windows.forms.button
-    $btnRestartAll.text = '🆕 全部重新開始(第1輪)'
-    $btnRestartAll.location = new-object system.drawing.point(542, 54)
-    $btnRestartAll.size = new-object system.drawing.size(180, 28)
-    $btnRestartAll.backcolor = [system.drawing.color]::fromargb(238, 242, 255)
-    $btnRestartAll.forecolor = [system.drawing.color]::fromargb(67, 56, 202)
-
-    $gridType = new-object system.windows.forms.datagridview
-    $gridType.location = new-object system.drawing.point(12, 90)
-    $gridType.size = new-object system.drawing.size(1110, 218)
-    $gridType.readonly = $true
-    $gridType.allowusertoaddrows = $false
-    $gridType.autosizecolumnsmode = 'Fill'
-
-    $grpType.controls.addrange(@(
-        $lblCode, $txtCode, $lblName, $txtName, $lblDefKind, $cmbDefaultKind, $lblPoint, $txtPoint, $chkSync,
-        $btnSave, $btnRefresh, $btnRevote, $btnRestartAll, $gridType
-    ))
+    $loadIconData = {
+        $curIconVal = $cmbKindIcon.text
+        $dtIcon = & $workItemScript -actionType 'listWorkItemIcon'
+        $cmbKindIcon.items.clear()
+        if ($null -ne $dtIcon) {
+            foreach ($ir in $dtIcon.rows) {
+                $valStr = [string]$ir.iconValue
+                if (-not [string]::isnullorempty($valStr) -and -not $cmbKindIcon.items.contains($valStr)) {
+                    [void]$cmbKindIcon.items.add($valStr)
+                }
+            }
+        }
+        if (-not [string]::isnullorempty($curIconVal)) {
+            $cmbKindIcon.text = $curIconVal
+        } elseif ($cmbKindIcon.items.count -gt 0) {
+            $cmbKindIcon.selectedindex = 0
+        }
+    }
 
     $loadKindData = {
+        & $loadIconData
         $dtKind = & $workItemScript -actionType 'listWorkItemKind' -keyword $txtKindKw.text
         $gridKind.datasource = $dtKind
         $cmbDefaultKind.items.clear()
@@ -281,7 +332,7 @@ process {
             $cmbDefaultKind.selectedindex = 0
         }
         if ($null -ne $statusLabel) {
-            $statusLabel.text = "已載入 $($dtKind.rows.count) 種預設工項類型與主要特徵"
+            $statusLabel.text = "已載入 $($dtKind.rows.count) 種預設工項類型與主要特徵（代表圖示庫共 $($cmbKindIcon.items.count) 種圖示）"
         }
     }
 
@@ -300,7 +351,7 @@ process {
             $txtKindCode.text = [string]$rowItem.kindCode
             $txtKindName.text = [string]$rowItem.kindName
             if ($rowItem.table.columns.contains('badgeIcon') -and $rowItem.badgeIcon -ne [dbnull]::value) {
-                $txtKindIcon.text = [string]$rowItem.badgeIcon
+                $cmbKindIcon.text = [string]$rowItem.badgeIcon
             }
             if ($rowItem.table.columns.contains('badgeColor') -and $rowItem.badgeColor -ne [dbnull]::value) {
                 $cmbKindColor.text = [string]$rowItem.badgeColor
@@ -335,21 +386,46 @@ process {
         }
     }
 
-    enableGridHeaderSortAndLock -grid $gridType -statusLabel $statusLabel -onEditRow {
+    $applyTypeRowToForm = {
         param($rowItem)
         if ($null -ne $rowItem) {
+            if ($rowItem.table.columns.contains('workItemTypePk') -and $rowItem.workItemTypePk -ne [dbnull]::value) {
+                $script:currentWorkItemTypePk = [int]$rowItem.workItemTypePk
+            } else {
+                $script:currentWorkItemTypePk = 0
+            }
             $txtCode.text = [string]$rowItem.typeCode
             $txtName.text = [string]$rowItem.typeName
             if ($rowItem.table.columns.contains('defaultWorkItemKind') -and $rowItem.defaultWorkItemKind -ne [dbnull]::value) {
                 $cmbDefaultKind.text = [string]$rowItem.defaultWorkItemKind
             }
+            if ($rowItem.table.columns.contains('categoryName') -and $rowItem.categoryName -ne [dbnull]::value) {
+                $txtCategory.text = [string]$rowItem.categoryName
+            }
             if ($rowItem.table.columns.contains('standardStoryPoint') -and $rowItem.standardStoryPoint -ne [dbnull]::value) {
                 $txtPoint.text = [string]$rowItem.standardStoryPoint
+            } else {
+                $txtPoint.text = ''
+            }
+            if ($rowItem.table.columns.contains('description') -and $rowItem.description -ne [dbnull]::value) {
+                $txtTypeDesc.text = [string]$rowItem.description
             }
             if ($null -ne $statusLabel) {
-                $statusLabel.text = "✏️ 已透過滑鼠快捷選單載入代表類型【$($rowItem.typeCode) - $($rowItem.typeName)】至下方表單"
+                $statusLabel.text = "✏️ 已載入代表工項【$($rowItem.typeName) ($($rowItem.typeCode))】至 2-2 屬性編輯表單"
             }
         }
+    }
+
+    $gridType.add_cellclick({
+        param($sender, $e)
+        if ($e.rowindex -ge 0 -and $null -ne $gridType.rows[$e.rowindex].databounditem) {
+            & $applyTypeRowToForm $gridType.rows[$e.rowindex].databounditem.row
+        }
+    })
+
+    enableGridHeaderSortAndLock -grid $gridType -statusLabel $statusLabel -onEditRow {
+        param($rowItem)
+        & $applyTypeRowToForm $rowItem
     } -onDeleteRow {
         param($rowItem)
         if ($null -ne $rowItem) {
@@ -385,6 +461,22 @@ process {
         }
     }
 
+    $btnUploadIcon.add_click({
+        $dlg = new-object system.windows.forms.openfiledialog
+        $dlg.title = '選擇要自行上傳新增的代表圖示檔案 (PNG / SVG / JPG / WEBP / ICO / GIF)'
+        $dlg.filter = '圖示檔案 (*.png;*.svg;*.jpg;*.jpeg;*.webp;*.ico;*.gif)|*.png;*.svg;*.jpg;*.jpeg;*.webp;*.ico;*.gif'
+        if ($dlg.showdialog() -eq [system.windows.forms.dialogresult]::ok) {
+            $customName = if (-not [string]::isnullorempty($txtKindName.text)) { "$($txtKindName.text)圖示" } else { [system.io.path]::getfilenamewithoutextension($dlg.filename) }
+            $upDt = & $workItemScript -actionType 'uploadWorkItemIcon' -iconFilePath $dlg.filename -iconName $customName
+            & $loadIconData
+            if ($null -ne $upDt -and $upDt.rows.count -gt 0) {
+                $cmbKindIcon.text = [string]$upDt.rows[0].iconValue
+                if ($null -ne $statusLabel) {
+                    $statusLabel.text = "📤 已成功上傳並新增自訂代表圖示：$($upDt.rows[0].iconName) ($($upDt.rows[0].iconValue))"
+                }
+            }
+        }
+    })
     $btnSearchKind.add_click($loadKindData)
     $btnResetKind.add_click({
         $txtKindKw.text = ''
@@ -393,7 +485,7 @@ process {
     $btnSaveKind.add_click({
         $sortVal = if (-not [string]::isnullorempty($txtKindSort.text)) { [int]$txtKindSort.text } else { 100 }
         $null = & $workItemScript -actionType 'upsertWorkItemKind' `
-            -kindCode $txtKindCode.text -kindName $txtKindName.text -badgeIcon $txtKindIcon.text `
+            -kindCode $txtKindCode.text -kindName $txtKindName.text -badgeIcon $cmbKindIcon.text `
             -badgeColor $cmbKindColor.text -sortOrder $sortVal `
             -mainFeatureSummary $txtMainFeature.text -estimationTrait $txtEstTrait.text `
             -timeAndDeliverableTrait $txtDelivTrait.text -description $txtKindDesc.text
@@ -439,13 +531,16 @@ process {
     $btnSave.add_click({
         $ptVal = if (-not [string]::isnullorempty($txtPoint.text)) { [decimal]$txtPoint.text } else { $null }
         $selKind = if (-not [string]::isnullorempty($cmbDefaultKind.text)) { $cmbDefaultKind.text } else { 'project' }
+        $catVal = if (-not [string]::isnullorempty($txtCategory.text)) { $txtCategory.text } else { '一般代表類型' }
         $null = & $workItemScript -actionType 'upsertWorkItemType' `
-            -typeCode $txtCode.text -typeName $txtName.text -defaultWorkItemKind $selKind `
+            -workItemTypePk $script:currentWorkItemTypePk `
+            -typeCode $txtCode.text -typeName $txtName.text -categoryName $catVal `
+            -defaultWorkItemKind $selKind -description $txtTypeDesc.text `
             -standardStoryPoint $ptVal -syncExistingOpenWorkItem $chkSync.checked
         & $loadTypeData
     })
 
-    $tabPage.controls.addrange(@($grpKind, $grpType))
+    $tabPage.controls.addrange(@($grpType, $grpKind))
 
     return $tabPage
 }

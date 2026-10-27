@@ -1268,6 +1268,62 @@ begin
             set @targetPk = scope_identity();
         end
 
+        -- 同步確保 storyPoint.tbWorkItemKind 與工項代表類型保持一致
+        if exists (select 1 from storyPoint.tbWorkItemKind where kindCode = @typeCode)
+        begin
+            update storyPoint.tbWorkItemKind
+            set kindName = @typeName,
+                description = isnull(nullif(ltrim(rtrim(@description)), N''), description),
+                isActive = isnull(@isActive, 1),
+                updatedAt = sysdatetime()
+            where kindCode = @typeCode;
+        end
+        else if @typeCode not like 'TYPE_20%' and @typeCode not like 'TYPE_DEF_%'
+        begin
+            insert into storyPoint.tbWorkItemKind (
+                kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+                mainFeatureSummary, estimationTrait, timeAndDeliverableTrait,
+                description, isActive, createdAt, updatedAt
+            )
+            values (
+                @typeCode,
+                @typeName,
+                case
+                    when @cleanKind = 'maintenance' then N'🛠️'
+                    when @cleanKind = 'consultingHour' then N'⏳'
+                    when @cleanKind = 'training' then N'🎓'
+                    when @cleanKind = 'productDevelopment' then N'🚀'
+                    else N'🏗️'
+                end,
+                case
+                    when @cleanKind = 'maintenance' then 'amber'
+                    when @cleanKind = 'consultingHour' then 'purple'
+                    when @cleanKind = 'training' then 'green'
+                    when @cleanKind = 'productDevelopment' then 'red'
+                    else 'blue'
+                end,
+                100,
+                isnull(nullif(ltrim(rtrim(@description)), N''), concat(@typeName, N'專屬工作性質、標準化執行流程與跨團隊協作特徵')),
+                N'依技術複雜度、工作投入規模與風險不確定性綜合估算 (常見 1 ~ 13 pt)',
+                N'具備明確起訖時間設定｜交付驗收成果｜達迄時自動轉已完成、扣點並通知部門主管與 HR',
+                isnull(nullif(ltrim(rtrim(@description)), N''), concat(@typeName, N'工項，具備明確起訖時間設定，達迄時自動轉為已完成並扣除 Story Point 及寄發通知信。')),
+                isnull(@isActive, 1),
+                sysdatetime(),
+                sysdatetime()
+            );
+        end
+
+        -- 若管理者勾選同步更新未完成之既有工項，先同步所屬預設工項類型 (workItemKind)
+        if @syncExistingOpenWorkItem = 1
+        begin
+            update storyPoint.tbWorkItem
+            set workItemKind = @cleanKind,
+                updatedAt = sysdatetime()
+            where workItemTypePk = @targetPk
+              and executionStatus <> 'done'
+              and isActive = 1;
+        end
+
         -- 若點數有變更且有設定標準點數，寫入點數歷程表
         if @standardStoryPoint is not null and isnull(@oldPoint, -1) <> @standardStoryPoint
         begin
@@ -1288,54 +1344,54 @@ begin
                 @changedByEmployeePk,
                 sysdatetime()
             );
+        end
 
-            -- 若管理者勾選同步更新未完成且未手動調整過之既有工項
-            if @syncExistingOpenWorkItem = 1
-            begin
-                insert into storyPoint.tbPointHistory (
-                    targetKind, workItemTypePk, workItemPk, votingSessionPk,
-                    oldStoryPoint, newStoryPoint, changeSource, changeReason,
-                    changedByEmployeePk, changedAt
-                )
-                select
-                    'workItem',
-                    @targetPk,
-                    wi.pk,
-                    null,
-                    wi.storyPoint,
-                    @standardStoryPoint,
-                    'typeSync',
-                    N'隨工項代表類型標準 Story Point 變更同步更新',
-                    @changedByEmployeePk,
-                    sysdatetime()
-                from storyPoint.tbWorkItem as wi
-                where wi.workItemTypePk = @targetPk
-                  and wi.isManualAdjusted = 0
-                  and wi.executionStatus <> 'done'
-                  and wi.isActive = 1
-                  and wi.storyPoint <> @standardStoryPoint;
+        -- 若管理者勾選同步更新未完成且未手動調整過之既有工項點數
+        if @syncExistingOpenWorkItem = 1 and @standardStoryPoint is not null
+        begin
+            insert into storyPoint.tbPointHistory (
+                targetKind, workItemTypePk, workItemPk, votingSessionPk,
+                oldStoryPoint, newStoryPoint, changeSource, changeReason,
+                changedByEmployeePk, changedAt
+            )
+            select
+                'workItem',
+                @targetPk,
+                wi.pk,
+                null,
+                wi.storyPoint,
+                @standardStoryPoint,
+                'typeSync',
+                N'隨工項代表類型標準 Story Point 變更同步更新',
+                @changedByEmployeePk,
+                sysdatetime()
+            from storyPoint.tbWorkItem as wi
+            where wi.workItemTypePk = @targetPk
+              and wi.isManualAdjusted = 0
+              and wi.executionStatus <> 'done'
+              and wi.isActive = 1
+              and wi.storyPoint <> @standardStoryPoint;
 
-                update storyPoint.tbWorkItem
-                set defaultTypePoint = @standardStoryPoint,
-                    storyPoint = @standardStoryPoint,
-                    updatedAt = sysdatetime()
-                where workItemTypePk = @targetPk
-                  and isManualAdjusted = 0
-                  and executionStatus <> 'done'
-                  and isActive = 1;
+            update storyPoint.tbWorkItem
+            set defaultTypePoint = @standardStoryPoint,
+                storyPoint = @standardStoryPoint,
+                updatedAt = sysdatetime()
+            where workItemTypePk = @targetPk
+              and isManualAdjusted = 0
+              and executionStatus <> 'done'
+              and isActive = 1;
 
-                -- 同步重算被更新工項之員工分配點數
-                update wia
-                set wia.allocatedStoryPoint = cast(round(wi.storyPoint * (wia.allocationPercent / 100.00), 2) as decimal(8,2)),
-                    wia.updatedAt = sysdatetime()
-                from storyPoint.tbWorkItemAssignment as wia
-                inner join storyPoint.tbWorkItem as wi
-                    on wia.workItemPk = wi.pk
-                where wi.workItemTypePk = @targetPk
-                  and wi.isManualAdjusted = 0
-                  and wi.executionStatus <> 'done'
-                  and wi.isActive = 1;
-            end
+            -- 同步重算被更新工項之員工分配點數
+            update wia
+            set wia.allocatedStoryPoint = cast(round(wi.storyPoint * (wia.allocationPercent / 100.00), 2) as decimal(8,2)),
+                wia.updatedAt = sysdatetime()
+            from storyPoint.tbWorkItemAssignment as wia
+            inner join storyPoint.tbWorkItem as wi
+                on wia.workItemPk = wi.pk
+            where wi.workItemTypePk = @targetPk
+              and wi.isManualAdjusted = 0
+              and wi.executionStatus <> 'done'
+              and wi.isActive = 1;
         end
 
         set @durationMs = datediff(millisecond, @startTime, sysdatetime());
@@ -1995,46 +2051,70 @@ begin
         if @targetKind = 'workItemType'
         begin
             set @workItemPk = null;
+            declare @autoTypeName nvarchar(128) = ltrim(rtrim(replace(replace(isnull(@sessionTitle, N''), N'【代表類型估算】', N''), N'標準點數訂定', N'')));
+
+            -- 確保 storyPoint.tbWorkItemKind 的工項類型 (專案、維運、顧問時數、教育訓練、開發產品...等) 已同步至 storyPoint.tbWorkItemType
+            insert into storyPoint.tbWorkItemType (
+                typeCode, typeName, categoryName, defaultWorkItemKind, description,
+                standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
+            )
+            select
+                wik.kindCode,
+                wik.kindName,
+                wik.kindName,
+                wik.kindCode,
+                isnull(nullif(ltrim(rtrim(wik.mainFeatureSummary)), N''), isnull(wik.description, wik.kindName)),
+                null,
+                @cardDeckPk,
+                'pending',
+                wik.isActive,
+                sysdatetime(),
+                sysdatetime()
+            from storyPoint.tbWorkItemKind as wik
+            where not exists (
+                select 1
+                from storyPoint.tbWorkItemType as wit
+                where wit.typeCode = wik.kindCode
+            );
+
+            -- 若前端傳入之 @workItemTypePk 剛好對應 tbWorkItemKind.pk，優先轉譯為對應之 tbWorkItemType.pk
+            if isnull(@workItemTypePk, 0) > 0 and not exists (select 1 from storyPoint.tbWorkItemType where pk = @workItemTypePk)
+            begin
+                select top 1 @workItemTypePk = wit.pk
+                from storyPoint.tbWorkItemKind as wik
+                inner join storyPoint.tbWorkItemType as wit
+                    on wit.typeCode = wik.kindCode
+                where wik.pk = @workItemTypePk;
+            end
 
             if isnull(@workItemTypePk, 0) <= 0 or not exists (select 1 from storyPoint.tbWorkItemType where pk = @workItemTypePk)
             begin
                 set @workItemTypePk = null;
-                declare @autoTypeName nvarchar(128) = ltrim(rtrim(replace(replace(isnull(@sessionTitle, N''), N'【代表類型估算】', N''), N'標準點數訂定', N'')));
-                if @autoTypeName = N''
-                begin
-                    set @autoTypeName = N'未命名工項代表類型';
-                end
 
-                select top 1 @workItemTypePk = pk
-                from storyPoint.tbWorkItemType
-                where typeName = @autoTypeName
-                order by isActive desc, pk desc;
+                if @autoTypeName <> N''
+                begin
+                    select top 1 @workItemTypePk = wit.pk
+                    from storyPoint.tbWorkItemType as wit
+                    left join storyPoint.tbWorkItemKind as wik
+                        on wik.kindCode = wit.typeCode
+                    where wit.isActive = 1
+                      and (
+                          wit.typeName = @autoTypeName
+                          or wit.typeCode = @autoTypeName
+                          or charindex(wit.typeName, @sessionTitle) > 0
+                          or (wik.kindName is not null and charindex(wik.kindName, @sessionTitle) > 0)
+                      )
+                    order by isnull(wik.sortOrder, 999) asc, wit.pk asc;
+                end
 
                 if @workItemTypePk is null
                 begin
-                    declare @autoTypeCode varchar(64) = 'TYPE_' + format(sysdatetime(), 'yyyyMMddHHmmss');
-                    if exists (select 1 from storyPoint.tbWorkItemType where typeCode = @autoTypeCode)
-                    begin
-                        set @autoTypeCode = @autoTypeCode + '_' + right(cast(abs(checksum(newid())) as varchar(16)), 3);
-                    end
-
-                    insert into storyPoint.tbWorkItemType (
-                        typeCode, typeName, categoryName, description,
-                        standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
-                    )
-                    values (
-                        @autoTypeCode,
-                        left(@autoTypeName, 128),
-                        N'一般代表類型',
-                        isnull(nullif(ltrim(rtrim(@roundGoalNote)), N''), N'由盲投回合設定自動建立之工項代表類型'),
-                        null,
-                        @cardDeckPk,
-                        'voting',
-                        1,
-                        sysdatetime(),
-                        sysdatetime()
-                    );
-                    set @workItemTypePk = scope_identity();
+                    select top 1 @workItemTypePk = wit.pk
+                    from storyPoint.tbWorkItemType as wit
+                    left join storyPoint.tbWorkItemKind as wik
+                        on wik.kindCode = wit.typeCode
+                    where wit.isActive = 1
+                    order by isnull(wik.sortOrder, 999) asc, wit.pk asc;
                 end
             end
 
@@ -2065,26 +2145,28 @@ begin
                 if @workItemPk is null
                 begin
                     declare @fallbackTypePk int = null;
-                    select top 1 @fallbackTypePk = pk
-                    from storyPoint.tbWorkItemType
-                    where isActive = 1
-                    order by pk asc;
+                    select top 1 @fallbackTypePk = wit.pk
+                    from storyPoint.tbWorkItemType as wit
+                    left join storyPoint.tbWorkItemKind as wik
+                        on wik.kindCode = wit.typeCode
+                    where wit.isActive = 1
+                    order by isnull(wik.sortOrder, 999) asc, wit.pk asc;
 
                     if @fallbackTypePk is null
                     begin
-                        declare @fallbackTypeCode varchar(64) = 'TYPE_DEF_' + format(sysdatetime(), 'yyyyMMddHHmmss');
                         insert into storyPoint.tbWorkItemType (
-                            typeCode, typeName, categoryName, description,
+                            typeCode, typeName, categoryName, defaultWorkItemKind, description,
                             standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
                         )
                         values (
-                            @fallbackTypeCode,
-                            N'通用預設工項代表類型',
-                            N'一般代表類型',
-                            N'系統自動建立之預設工項代表類型',
-                            null,
+                            'project',
+                            N'專案',
+                            N'專案',
+                            'project',
+                            N'階段性目標導向、跨模組需求開發與系統建置、明確里程碑與範圍界定',
+                            8.00,
                             @cardDeckPk,
-                            'pending',
+                            'finalized',
                             1,
                             sysdatetime(),
                             sysdatetime()
@@ -3948,7 +4030,100 @@ begin
           )
         order by e.totalAllocatedStoryPoint desc, e.departmentPk asc, e.hierarchySortKey asc, e.employeePk asc;
 
-        -- Result Set 3: 工項代表類型清單
+        -- Result Set 3: 工項代表類型清單 (確保與預設工項類型專案、維運、顧問時數、教育訓練、開發產品...等完整同步)
+        declare @dashDefaultDeckPk int = null;
+        select top 1 @dashDefaultDeckPk = pk
+        from storyPoint.tbCardDeck
+        where isActive = 1
+        order by isDefault desc, pk asc;
+
+        insert into storyPoint.tbWorkItemType (
+            typeCode, typeName, categoryName, defaultWorkItemKind, description,
+            standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
+        )
+        select
+            wik.kindCode,
+            wik.kindName,
+            wik.kindName,
+            wik.kindCode,
+            isnull(nullif(ltrim(rtrim(wik.mainFeatureSummary)), N''), isnull(wik.description, wik.kindName)),
+            null,
+            @dashDefaultDeckPk,
+            'pending',
+            wik.isActive,
+            sysdatetime(),
+            sysdatetime()
+        from storyPoint.tbWorkItemKind as wik
+        where not exists (
+            select 1
+            from storyPoint.tbWorkItemType as wit
+            where wit.typeCode = wik.kindCode
+        );
+
+        -- 自動清理舊版誤由盲投議程標題產生的 TYPE_20... / TYPE_DEF_... 紀錄，並安全轉移關聯至對應工項代表類型
+        if exists (select 1 from storyPoint.tbWorkItemType where typeCode like 'TYPE_20%' or typeCode like 'TYPE_DEF_%')
+        begin
+            declare @dashProjectTypePk int = null;
+            select top 1 @dashProjectTypePk = pk
+            from storyPoint.tbWorkItemType
+            where typeCode = 'project'
+            order by pk asc;
+
+            if @dashProjectTypePk is null
+            begin
+                select top 1 @dashProjectTypePk = pk
+                from storyPoint.tbWorkItemType
+                where typeCode not like 'TYPE_20%'
+                  and typeCode not like 'TYPE_DEF_%'
+                order by pk asc;
+            end
+
+            if @dashProjectTypePk is not null
+            begin
+                update wi
+                set wi.workItemTypePk = isnull(matchedWit.pk, @dashProjectTypePk),
+                    wi.updatedAt = sysdatetime()
+                from storyPoint.tbWorkItem as wi
+                inner join storyPoint.tbWorkItemType as oldWit
+                    on wi.workItemTypePk = oldWit.pk
+                left join storyPoint.tbWorkItemType as matchedWit
+                    on matchedWit.typeCode = wi.workItemKind
+                   and matchedWit.typeCode not like 'TYPE_20%'
+                   and matchedWit.typeCode not like 'TYPE_DEF_%'
+                where oldWit.typeCode like 'TYPE_20%'
+                   or oldWit.typeCode like 'TYPE_DEF_%';
+
+                update vs
+                set vs.workItemTypePk = isnull(matchedWit.pk, @dashProjectTypePk),
+                    vs.updatedAt = sysdatetime()
+                from storyPoint.tbVotingSession as vs
+                inner join storyPoint.tbWorkItemType as oldWit
+                    on vs.workItemTypePk = oldWit.pk
+                left join storyPoint.tbWorkItemType as matchedWit
+                    on matchedWit.typeCode = oldWit.defaultWorkItemKind
+                   and matchedWit.typeCode not like 'TYPE_20%'
+                   and matchedWit.typeCode not like 'TYPE_DEF_%'
+                where oldWit.typeCode like 'TYPE_20%'
+                   or oldWit.typeCode like 'TYPE_DEF_%';
+
+                update ph
+                set ph.workItemTypePk = isnull(matchedWit.pk, @dashProjectTypePk)
+                from storyPoint.tbPointHistory as ph
+                inner join storyPoint.tbWorkItemType as oldWit
+                    on ph.workItemTypePk = oldWit.pk
+                left join storyPoint.tbWorkItemType as matchedWit
+                    on matchedWit.typeCode = oldWit.defaultWorkItemKind
+                   and matchedWit.typeCode not like 'TYPE_20%'
+                   and matchedWit.typeCode not like 'TYPE_DEF_%'
+                where oldWit.typeCode like 'TYPE_20%'
+                   or oldWit.typeCode like 'TYPE_DEF_%';
+
+                delete from storyPoint.tbWorkItemType
+                where typeCode like 'TYPE_20%'
+                   or typeCode like 'TYPE_DEF_%';
+            end
+        end
+
         select
             wit.pk as workItemTypePk,
             wit.typeCode,
@@ -4060,10 +4235,13 @@ begin
         left join storyPoint.tbCardDeck as cd
             on wit.defaultCardDeckPk = cd.pk
         left join storyPoint.tbWorkItemKind as wik
-            on wit.defaultWorkItemKind = wik.kindCode
+            on wik.kindCode = case
+                when exists (select 1 from storyPoint.tbWorkItemKind as k0 where k0.kindCode = wit.typeCode) then wit.typeCode
+                else wit.defaultWorkItemKind
+            end
         where wit.isActive = 1
           and (@workItemTypePk is null or wit.pk = @workItemTypePk)
-        order by wit.pk asc;
+        order by isnull(wik.sortOrder, 999) asc, wit.pk asc;
 
         -- Result Set 4: 各工項的 Story Point 與指派彙總 (一般員工僅可看到自己的工項與自己的分數，不可看到他人)
         select
@@ -5104,9 +5282,11 @@ begin
             if @oldCode is not null and @oldCode <> @cleanCode
             begin
                 update storyPoint.tbWorkItemType
-                set defaultWorkItemKind = @cleanCode,
+                set typeCode = case when typeCode = @oldCode then @cleanCode else typeCode end,
+                    defaultWorkItemKind = @cleanCode,
                     updatedAt = sysdatetime()
-                where defaultWorkItemKind = @oldCode;
+                where defaultWorkItemKind = @oldCode
+                   or typeCode = @oldCode;
 
                 update storyPoint.tbWorkItem
                 set workItemKind = @cleanCode,
@@ -5136,6 +5316,45 @@ begin
                 sysdatetime()
             );
             set @targetPk = scope_identity();
+        end
+
+        -- 同步確保 storyPoint.tbWorkItemType 擁有對應之工項代表類型 (如專案、維運、顧問時數、教育訓練、開發產品或新增之自訂類型)
+        declare @defaultDeckForKind int = null;
+        select top 1 @defaultDeckForKind = pk
+        from storyPoint.tbCardDeck
+        where isActive = 1
+        order by isDefault desc, pk asc;
+
+        if exists (select 1 from storyPoint.tbWorkItemType where typeCode = @cleanCode)
+        begin
+            update storyPoint.tbWorkItemType
+            set typeName = @cleanName,
+                categoryName = @cleanName,
+                defaultWorkItemKind = @cleanCode,
+                description = isnull(@cleanMainFeature, isnull(@description, description)),
+                isActive = isnull(@isActive, 1),
+                updatedAt = sysdatetime()
+            where typeCode = @cleanCode;
+        end
+        else
+        begin
+            insert into storyPoint.tbWorkItemType (
+                typeCode, typeName, categoryName, defaultWorkItemKind, description,
+                standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
+            )
+            values (
+                @cleanCode,
+                @cleanName,
+                @cleanName,
+                @cleanCode,
+                isnull(@cleanMainFeature, isnull(@description, concat(@cleanName, N'專屬工作性質、標準化執行流程與跨團隊協作特徵'))),
+                null,
+                @defaultDeckForKind,
+                'pending',
+                isnull(@isActive, 1),
+                sysdatetime(),
+                sysdatetime()
+            );
         end
 
         set @durationMs = datediff(millisecond, @startTime, sysdatetime());
@@ -5241,6 +5460,47 @@ begin
             order by sortOrder asc, pk asc;
 
             set @safeFallback = isnull(@safeFallback, 'project');
+        end
+
+        declare @delTypePk int = null;
+        declare @fallbackTypePkForDel int = null;
+
+        select top 1 @delTypePk = pk
+        from storyPoint.tbWorkItemType
+        where typeCode = @targetCode;
+
+        select top 1 @fallbackTypePkForDel = pk
+        from storyPoint.tbWorkItemType
+        where typeCode = @safeFallback
+          and (@delTypePk is null or pk <> @delTypePk);
+
+        if @fallbackTypePkForDel is null
+        begin
+            select top 1 @fallbackTypePkForDel = pk
+            from storyPoint.tbWorkItemType
+            where (@delTypePk is null or pk <> @delTypePk)
+              and isActive = 1
+            order by pk asc;
+        end
+
+        if @delTypePk is not null and @fallbackTypePkForDel is not null
+        begin
+            update storyPoint.tbWorkItem
+            set workItemTypePk = @fallbackTypePkForDel,
+                updatedAt = sysdatetime()
+            where workItemTypePk = @delTypePk;
+
+            update storyPoint.tbVotingSession
+            set workItemTypePk = @fallbackTypePkForDel,
+                updatedAt = sysdatetime()
+            where workItemTypePk = @delTypePk;
+
+            update storyPoint.tbPointHistory
+            set workItemTypePk = @fallbackTypePkForDel
+            where workItemTypePk = @delTypePk;
+
+            delete from storyPoint.tbWorkItemType
+            where pk = @delTypePk;
         end
 
         update storyPoint.tbWorkItemType

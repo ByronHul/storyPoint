@@ -1955,11 +1955,11 @@ public class portalController : Controller
         IFormFile? iconFile,
         [FromForm] string? iconName = null,
         [FromForm] string? iconCategory = "自行上傳圖示",
-        [FromForm] string? returnTab = "types")
+        [FromForm] string? returnTab = "kinds")
     {
         bool wantsJson = Request.Headers.Accept.ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase)
             || string.Equals(Request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
-        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "types" : returnTab.Trim();
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "kinds" : returnTab.Trim();
 
         if (!isAdminUser())
         {
@@ -1983,6 +1983,14 @@ public class portalController : Controller
                 {
                     ok = true,
                     message = okMsg,
+                    workItemIconPk = saved.iconPk,
+                    iconPk = saved.iconPk,
+                    iconCode = saved.iconCode,
+                    iconName = saved.iconName,
+                    iconCategory = string.IsNullOrWhiteSpace(iconCategory) ? "自行上傳圖示" : iconCategory.Trim(),
+                    iconKind = "customUpload",
+                    iconValue = saved.iconValue,
+                    isCustomUpload = true,
                     icon = new
                     {
                         iconPk = saved.iconPk,
@@ -2008,13 +2016,14 @@ public class portalController : Controller
     [HttpPost("workitem/icon/delete")]
     [Authorize]
     public async Task<IActionResult> deleteWorkItemIcon(
-        [FromForm] int? iconPk,
+        [FromForm] int? iconPk = null,
+        [FromForm] int? workItemIconPk = null,
         [FromForm] string? iconCode = null,
-        [FromForm] string? returnTab = "types")
+        [FromForm] string? returnTab = "kinds")
     {
         bool wantsJson = Request.Headers.Accept.ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase)
             || string.Equals(Request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
-        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "types" : returnTab.Trim();
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "kinds" : returnTab.Trim();
 
         if (!isAdminUser())
         {
@@ -2024,17 +2033,34 @@ public class portalController : Controller
 
         try
         {
+            int? resolvedIconPk = (iconPk.HasValue && iconPk.Value > 0) ? iconPk : workItemIconPk;
             var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spDeleteWorkItemIcon", new Dictionary<string, object?>
             {
-                ["iconPk"] = iconPk,
+                ["iconPk"] = resolvedIconPk,
                 ["iconCode"] = string.IsNullOrWhiteSpace(iconCode) ? null : iconCode.Trim(),
                 ["operatorAccount"] = getCurrentLoginAccount()
             });
             string delName = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["deletedIconName"]?.ToString() ?? "") : "";
             string delVal = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["deletedIconValue"]?.ToString() ?? "") : "";
+            if (!string.IsNullOrWhiteSpace(delVal) && delVal.StartsWith("/icons/custom/", StringComparison.OrdinalIgnoreCase))
+            {
+                string delFileName = Path.GetFileName(delVal);
+                if (!string.IsNullOrWhiteSpace(delFileName))
+                {
+                    foreach (string dir in getCandidateCustomIconDirs())
+                    {
+                        try
+                        {
+                            string p = Path.Combine(dir, delFileName);
+                            if (System.IO.File.Exists(p)) System.IO.File.Delete(p);
+                        }
+                        catch { }
+                    }
+                }
+            }
             if (wantsJson)
             {
-                return Json(new { ok = true, deletedIconPk = iconPk ?? 0, deletedIconCode = iconCode ?? "", deletedIconValue = delVal, message = $"🗑️ 已刪除自訂代表圖示「{delName}」" });
+                return Json(new { ok = true, deletedIconPk = resolvedIconPk ?? 0, deletedIconCode = iconCode ?? "", deletedIconValue = delVal, message = $"🗑️ 已刪除自訂代表圖示「{delName}」" });
             }
             return Redirect($"/?tab={targetTab}&msg=" + Uri.EscapeDataString($"🗑️ 已刪除自訂代表圖示「{delName}」！"));
         }
@@ -2059,11 +2085,11 @@ public class portalController : Controller
         [FromForm] string? estimationTrait = null,
         [FromForm] string? timeAndDeliverableTrait = null,
         [FromForm] string? description = null,
-        [FromForm] string? returnTab = "types",
+        [FromForm] string? returnTab = "kinds",
         IFormFile? customIconFile = null,
         [FromForm] string? customIconName = null)
     {
-        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "types" : returnTab.Trim();
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "kinds" : returnTab.Trim();
         if (!isAdminUser())
         {
             return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("僅管理者可新增或修改預設工項類型。"));
@@ -2115,9 +2141,9 @@ public class portalController : Controller
         [FromForm] int? workItemKindPk,
         [FromForm] string? kindCode = null,
         [FromForm] string? fallbackKindCode = "project",
-        [FromForm] string? returnTab = "workitems")
+        [FromForm] string? returnTab = "kinds")
     {
-        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "workitems" : returnTab.Trim();
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "kinds" : returnTab.Trim();
         if (!isAdminUser())
         {
             return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("僅管理者可刪除工項類型。"));
@@ -2154,6 +2180,7 @@ public class portalController : Controller
         [FromForm] string? defaultWorkItemKind = "project",
         [FromForm] string? description = null,
         [FromForm] decimal? standardStoryPoint = null,
+        [FromForm] int? defaultCardDeckPk = null,
         [FromForm] bool syncExistingOpenWorkItem = false)
     {
         if (!isAdminUser())
@@ -2165,7 +2192,7 @@ public class portalController : Controller
         {
             string cleanKind = string.IsNullOrWhiteSpace(defaultWorkItemKind) ? "project" : defaultWorkItemKind.Trim();
 
-            await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpsertWorkItemType", new Dictionary<string, object?>
+            var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpsertWorkItemType", new Dictionary<string, object?>
             {
                 ["workItemTypePk"] = workItemTypePk,
                 ["typeCode"] = (typeCode ?? "").Trim(),
@@ -2174,12 +2201,18 @@ public class portalController : Controller
                 ["defaultWorkItemKind"] = cleanKind,
                 ["description"] = description,
                 ["standardStoryPoint"] = standardStoryPoint,
+                ["defaultCardDeckPk"] = defaultCardDeckPk,
                 ["syncExistingOpenWorkItem"] = syncExistingOpenWorkItem,
                 ["changedByEmployeePk"] = getCurrentEmployeePk(),
                 ["operatorAccount"] = getCurrentLoginAccount()
             });
 
-            return Redirect("/?tab=types&msg=" + Uri.EscapeDataString($"工項代表類型「{typeCode} - {typeName}」已成功儲存！"));
+            string savedKindText = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0 && ds.Tables[0].Columns.Contains("defaultWorkItemKindText"))
+                ? (ds.Tables[0].Rows[0]["defaultWorkItemKindText"]?.ToString() ?? cleanKind)
+                : cleanKind;
+            string savedPtText = standardStoryPoint.HasValue ? $"{standardStoryPoint.Value:0.##} pt" : "待盲投定案";
+
+            return Redirect("/?tab=types&msg=" + Uri.EscapeDataString($"代表工項「{typeCode} - {typeName}」（所屬預設類型：{savedKindText}｜標準點數：{savedPtText}）各項屬性已成功儲存！"));
         }
         catch (Exception ex)
         {
@@ -4478,7 +4511,7 @@ public class portalController : Controller
     private string buildPortalHtml(
         string currentTab, int activeSessionPk, bool isAdmin, string? msg, string? err,
         DataTable deptTable, DataTable empTable, DataTable typeTable, DataTable itemTable,
-        DataTable assignTable, DataTable historyTable, DataTable cardDeckTable, DataTable logTable, DataTable kindTable,
+        DataTable assignTable, DataTable historyTable, DataTable cardDeckTable, DataTable logTable, DataTable kindTable, DataTable iconTable,
         DataTable sessionTable, DataTable roundTable, DataTable voteRecordTable, DataTable participantTable)
     {
         var sb = new StringBuilder();
@@ -4785,6 +4818,26 @@ public class portalController : Controller
         .help-ui-diagram {{ background:#f1f5f9; padding:10px 12px; border-top:1px dashed #cbd5e1; font-size:12px; color:#334155; }}
         mark.help-highlight {{ background:#fef08a; color:#854d0e; padding:1px 4px; border-radius:4px; font-weight:800; box-shadow:0 0 0 1px #facc15; }}
         .help-faq-item {{ border:1px solid #cbd5e1; border-radius:10px; padding:12px 16px; margin-bottom:10px; background:#f8fafc; }}
+        /* 代表圖示庫 (Multiple Representative Icons & Custom Upload) 視覺化選擇器與上傳區樣式 */
+        .sp-kind-icon-img {{ width:18px; height:18px; object-fit:contain; vertical-align:-3px; margin-right:3px; border-radius:3px; display:inline-block; }}
+        .sp-icon-selector-bar {{ display:flex; align-items:center; gap:6px; width:100%; }}
+        .sp-icon-preview-box {{ width:36px; height:36px; border-radius:8px; border:1.5px solid #93c5fd; background:#eff6ff; display:inline-flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; box-shadow:inset 0 1px 2px rgba(37,99,235,0.08); }}
+        .sp-icon-preview-box img {{ width:24px; height:24px; object-fit:contain; margin:0; }}
+        .sp-icon-gallery-drawer {{ background:#ffffff; border:1.5px solid #93c5fd; border-radius:10px; padding:12px 14px; margin-top:6px; margin-bottom:12px; box-shadow:0 6px 18px rgba(37,99,235,0.08); }}
+        .sp-icon-upload-strip {{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; background:linear-gradient(90deg,#eff6ff 0%,#f0fdf4 100%); border:1px solid #bfdbfe; border-radius:8px; padding:9px 12px; margin-bottom:10px; }}
+        .sp-icon-cat-tabs {{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px; }}
+        .sp-icon-cat-tab {{ padding:3px 10px; border-radius:999px; border:1px solid #cbd5e1; background:#f8fafc; color:#334155; font-size:11.5px; font-weight:700; cursor:pointer; transition:all .14s; }}
+        .sp-icon-cat-tab:hover {{ border-color:#60a5fa; background:#eff6ff; color:#1d4ed8; }}
+        .sp-icon-cat-tab.active-cat {{ background:#2563eb; border-color:#1d4ed8; color:#ffffff; }}
+        .sp-icon-grid {{ display:grid; grid-template-columns:repeat(auto-fill, minmax(128px, 1fr)); gap:7px; max-height:215px; overflow-y:auto; padding:4px 2px; }}
+        .sp-icon-tile {{ display:flex; align-items:center; gap:7px; padding:6px 9px; border:1.5px solid #cbd5e1; border-radius:8px; background:#f8fafc; cursor:pointer; transition:all .14s ease; position:relative; user-select:none; text-align:left; }}
+        .sp-icon-tile:hover {{ border-color:#2563eb; background:#eff6ff; transform:translateY(-1px); box-shadow:0 3px 8px rgba(37,99,235,0.12); }}
+        .sp-icon-tile.selected-icon {{ border-color:#1d4ed8; background:#dbeafe; box-shadow:0 0 0 2px rgba(37,99,235,0.22); font-weight:800; }}
+        .sp-icon-tile-visual {{ width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; background:#ffffff; border-radius:6px; border:1px solid #e2e8f0; }}
+        .sp-icon-tile-visual img {{ width:22px; height:22px; object-fit:contain; margin:0; }}
+        .sp-icon-tile-label {{ font-size:11.5px; color:#1e293b; font-weight:700; line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }}
+        .sp-icon-tile-del {{ position:absolute; top:-5px; right:-5px; width:18px; height:18px; border-radius:50%; background:#dc2626; color:#ffffff; border:1px solid #ffffff; font-size:10px; font-weight:800; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.2); padding:0; line-height:1; }}
+        .sp-icon-tile-del:hover {{ background:#991b1b; transform:scale(1.1); }}
         .help-faq-q {{ font-size:14px; font-weight:800; color:#1e3a8a; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; }}
         .help-faq-a {{ margin-top:8px; padding-top:8px; border-top:1px dashed #cbd5e1; font-size:13px; color:#334155; line-height:1.6; }}
     </style>
@@ -4840,21 +4893,21 @@ public class portalController : Controller
 
                 <!-- 主選單 2: 工項管理 -->
                 <div class=""menu-dropdown"" id=""menu-group-workitems"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "workitems" || currentTab == "types" ? "active-group" : "")}"" data-tip=""{menu2MainTip}"" onclick=""toggleDropdownMenu(event, 'menu-group-workitems')"">
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "workitems" || currentTab == "types" || currentTab == "kinds" ? "active-group" : "")}"" data-tip=""{menu2MainTip}"" onclick=""toggleDropdownMenu(event, 'menu-group-workitems')"">
                         <span>{menu2MainLabel}</span>
                         <span class=""menu-caret"">▼</span>
                     </button>
                     <div class=""menu-sub-list"">
-                        <div class=""menu-sub-header"">{(isAdmin ? "工項點數與代表類型" : "我的工項與標準代表類型")}</div>
+                        <div class=""menu-sub-header"">{(isAdmin ? "工項點數、代表工項與預設類型" : "我的工項與標準代表類型")}</div>
                         <a class=""menu-sub-item {(currentTab == "workitems" ? "active" : "")}"" data-tab=""workitems"" data-tip=""{menu2Sub1Desc}"" onclick=""switchTab('workitems')"">
                             <span class=""menu-sub-icon"">📋</span>
                             <span class=""menu-sub-title"">{menu2Sub1Title}</span>
                         </a>
-                        <a class=""menu-sub-item {(currentTab == "types" ? "active" : "")}"" data-tab=""types"" data-tip=""{(isAdmin ? "2-2. 工項代表類型與預設工項類型管理：管理工項代表類型標準點數，並增刪修查預設工項類型與主要特徵表" : "2-2. 工項代表類型與預設工項類型特徵參考：查閱各工項代表類型標準 Story Point 與預設工項類型主要特徵表")}"" onclick=""switchTab('types')"">
+                        <a class=""menu-sub-item {(currentTab == "types" ? "active" : "")}"" data-tab=""types"" data-tip=""{(isAdmin ? "2-2. 工項代表類型（編輯投出 SP 的代表工項）：編輯如「資料庫健檢」等代表工項的各種屬性、屬於哪種預設工項類型、技術分類、標準 Story Point 與驗收標準說明" : "2-2. 工項代表類型標準點數與屬性參考：查閱如「資料庫健檢」等投出 SP 的代表工項所屬預設類型、各種屬性與標準 Story Point")}"" onclick=""switchTab('types')"">
                             <span class=""menu-sub-icon"">🏷️</span>
                             <span class=""menu-sub-title"">2-2. {(isAdmin ? "工項代表類型" : "代表類型參考")}</span>
                         </a>
-                        <a class=""menu-sub-item"" data-tab=""types"" data-tip=""{(isAdmin ? "2-3. 預設工項類型增刪修查與主要特徵表：管理專案、維運、顧問時數、教育訓練、開發產品等預設工項類型並表列主要特徵" : "2-3. 預設工項類型主要特徵一覽表：查詢專案、維運、顧問時數、教育訓練、開發產品等工項類型的主要特徵")}"" onclick=""switchTab('types'); setTimeout(function(){{ document.getElementById('wikCrudCard_types')?.scrollIntoView({{behavior:'smooth', block:'start'}}); }}, 80);"">
+                        <a class=""menu-sub-item {(currentTab == "kinds" ? "active" : "")}"" data-tab=""kinds"" data-tip=""{(isAdmin ? "2-3. 預設工項類型與特徵：增、刪、修、查管理專案、維運、顧問時數、教育訓練、開發產品等預設工項類型、代表圖示並表列三項主要特徵" : "2-3. 預設工項類型與主要特徵一覽表：查詢專案、維運、顧問時數、教育訓練、開發產品等預設工項類型的主要特徵")}"" onclick=""switchTab('kinds')"">
                             <span class=""menu-sub-icon"">🗂️</span>
                             <span class=""menu-sub-title"">2-3. 預設工項類型與特徵</span>
                         </a>
@@ -5083,7 +5136,8 @@ public class portalController : Controller
                     "roundSetup" => "1-2. 設定盲投回合：設定估算標的、參與者名單、高低點數上下限、共識規則與計時",
                     "history" => isAdmin ? "1-3. 查詢訂出 Story Point 的過程：檢視每回合出牌明細、討論備註與點數異動紀錄" : "1-3. 查詢我的投票與訂定點數過程：檢視個人投票紀錄與工項點數異動歷程",
                     "workitems" => isAdmin ? "2-1. 工項點數查詢與賦予員工設定：查詢各工項點數、選擇代表類型自動帶入或修改員工指派" : "2-1. 我的工項與個人分數查詢：顯示賦予給我本人的工項與個人配額分數",
-                    "types" => isAdmin ? "2-2. 工項代表類型管理：管理已賦予標準 Story Point 的工項代表類型" : "2-2. 工項代表類型標準點數參考：查閱各工項代表類型的標準 Story Point 定義",
+                    "types" => isAdmin ? "2-2. 工項代表類型管理：編輯投出 SP 的代表工項（如資料庫健檢）之各種屬性、所屬預設工項類型與標準點數" : "2-2. 工項代表類型標準點數參考：查閱各工項代表類型的屬性、所屬預設類型與標準 Story Point 定義",
+                    "kinds" => isAdmin ? "2-3. 預設工項類型與特徵管理：增、刪、修、查管理專案、維運、顧問時數、教育訓練、開發產品等預設工項類型與三項主要特徵" : "2-3. 預設工項類型與主要特徵一覽表：查詢各預設工項類型之主要特徵",
                     "stats" => isAdmin ? "3-1. 員工與部門總 Story Point 統計：查詢員工身上的點數與所屬部門的總 Story Point 數" : "3-1. 我的個人總 Story Point 分數統計：查看個人工項數量與各狀態 Story Point 分數",
                     "myAccount" => "修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號與密碼",
                     "employees" => isAdmin ? "4-1. 員工列表與登入帳密管理：增刪修查、部門主管設定、樹狀階層與批次匯入" : "4-1. 修改我的個人登入帳號與密碼：檢視個人基本資料並修改帳密",
@@ -5097,6 +5151,7 @@ public class portalController : Controller
                         "history" => "📜 1-3. 估算過程查詢",
                         "workitems" => isAdmin ? "📋 2-1. 工項與員工指派" : "📋 2-1. 我的工項查詢",
                         "types" => isAdmin ? "🏷️ 2-2. 工項代表類型" : "🏷️ 2-2. 代表類型參考",
+                        "kinds" => "🗂️ 2-3. 預設工項類型與特徵",
                         "stats" => isAdmin ? "📊 3-1. 員工與部門統計" : "📊 3-1. 我的分數統計",
                         "myAccount" => "🔑 修改我的帳密",
                         "employees" => isAdmin ? "👥 4-1. 員工與組織管理" : "🔑 4-1. 修改我的帳密",
@@ -5604,14 +5659,24 @@ public class portalController : Controller
                             </select>
                         </div>
                         <div id='setupBoxType'>
-                            <label data-tip='選擇本回合要進行多人盲投估算的「工項代表類型」；若尚無代表類型或欲建立新類型，可選擇「依盲投議程標題自動建立」' title='選擇本回合要進行多人盲投估算的「工項代表類型」；若尚無代表類型或欲建立新類型，可選擇「依盲投議程標題自動建立」'>目標工項代表類型 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='選擇本回合要進行多人盲投估算的「目標工項代表類型」（專案、維運、顧問時數、教育訓練、開發產品...等）' title='選擇本回合要進行多人盲投估算的「目標工項代表類型」（專案、維運、顧問時數、教育訓練、開發產品...等）'>目標工項代表類型 <span class='sp-tip-icon'>ⓘ</span></label>
                             <select name='workItemTypePk' id='setupWorkItemTypePk' onchange='autoFillSetupTitle()'>");
             foreach (DataRow tRow in typeTable.Rows)
             {
+                string tCodeVal = tRow["typeCode"]?.ToString() ?? "";
+                string tNameVal = tRow["typeName"]?.ToString() ?? "";
+                string tKindVal = tRow.Table.Columns.Contains("defaultWorkItemKind") ? (tRow["defaultWorkItemKind"]?.ToString() ?? tCodeVal) : tCodeVal;
+                string rawIconVal = tRow.Table.Columns.Contains("defaultWorkItemKindIcon") ? (tRow["defaultWorkItemKindIcon"]?.ToString() ?? "🏗️") : "🏗️";
+                string optIconPrefix = isImageIconValue(rawIconVal)
+                    ? (tKindVal == "maintenance" ? "🛠️" : tKindVal == "consultingHour" ? "⏳" : tKindVal == "training" ? "🎓" : tKindVal == "productDevelopment" ? "🚀" : "🏗️")
+                    : rawIconVal;
                 string curPt = tRow["standardStoryPoint"] != DBNull.Value ? $" (目前標準: {tRow["standardStoryPoint"]} pt)" : " (待估算)";
-                sb.Append($"<option value='{tRow["workItemTypePk"]}' data-name='{h(tRow["typeName"])}'>{h(tRow["typeCode"])} - {h(tRow["typeName"])}{h(curPt)}</option>");
+                string displayLabel = string.Equals(tCodeVal, tNameVal, StringComparison.OrdinalIgnoreCase)
+                    ? $"{optIconPrefix} {tNameVal}{curPt}"
+                    : $"{optIconPrefix} {tNameVal} ({tCodeVal}){curPt}";
+                sb.Append($"<option value='{tRow["workItemTypePk"]}' data-code='{h(tCodeVal)}' data-kind='{h(tKindVal)}' data-name='{h(tNameVal)}'>{h(displayLabel)}</option>");
             }
-            sb.Append(@"<option value='0' data-name=''>➕ 依下方「盲投議程標題」自動建立新工項代表類型</option>
+            sb.Append(@"
                             </select>
                         </div>
                         <div id='setupBoxItem' style='display:none;'>
@@ -6018,7 +6083,7 @@ public class portalController : Controller
                 string kDesc = kRow.Table.Columns.Contains("description") && kRow["description"] != DBNull.Value ? (kRow["description"]?.ToString() ?? "") : "";
                 int linkedWiCnt = kRow.Table.Columns.Contains("linkedWorkItemCount") && kRow["linkedWorkItemCount"] != DBNull.Value ? Convert.ToInt32(kRow["linkedWorkItemCount"]) : 0;
                 int linkedTypeCnt = kRow.Table.Columns.Contains("linkedTypeCount") && kRow["linkedTypeCount"] != DBNull.Value ? Convert.ToInt32(kRow["linkedTypeCount"]) : 0;
-                kindOptionsBuilder.Append($"<option value='{h(kCode)}' data-kind-pk='{kPk}' data-kind-code='{h(kCode)}' data-kind-name='{h(kName)}' data-kind-icon='{h(kIcon)}' data-kind-color='{h(kColor)}' data-kind-sort='{kSort}' data-kind-feature='{h(kFeature)}' data-kind-estimation='{h(kEstTrait)}' data-kind-deliverable='{h(kDelivTrait)}' data-kind-desc='{h(kDesc)}' data-linked-wi='{linkedWiCnt}' data-linked-type='{linkedTypeCnt}'>{h(kIcon)} {h(kName)} ({h(kCode)})</option>");
+                kindOptionsBuilder.Append($"<option value='{h(kCode)}' data-kind-pk='{kPk}' data-kind-code='{h(kCode)}' data-kind-name='{h(kName)}' data-kind-icon='{h(kIcon)}' data-kind-color='{h(kColor)}' data-kind-sort='{kSort}' data-kind-feature='{h(kFeature)}' data-kind-estimation='{h(kEstTrait)}' data-kind-deliverable='{h(kDelivTrait)}' data-kind-desc='{h(kDesc)}' data-linked-wi='{linkedWiCnt}' data-linked-type='{linkedTypeCnt}'>{formatOptionIconPrefix(kIcon)} {h(kName)} ({h(kCode)})</option>");
             }
         }
         else
@@ -6030,6 +6095,28 @@ public class portalController : Controller
             kindOptionsBuilder.Append("<option value='productDevelopment' data-kind-pk='5' data-kind-code='productDevelopment' data-kind-name='開發產品' data-kind-icon='🚀' data-kind-color='red' data-kind-sort='50' data-kind-feature='產品化與長期演進導向、自有核心模組研發、通用架構設計與高重用性元件開發' data-kind-estimation='依架構前瞻性、高可用度要求與自動化測試覆蓋率進行盲投估算 (通常 5 ~ 21 pt)' data-kind-deliverable='配合產品 Roadmap 與版本發佈週期設定起訖時間，達迄時自動轉態扣點並發信' data-kind-desc='自有核心產品研發、新世代架構演進、共用引擎模組與產品路線圖功能開發工項'>🚀 開發產品 (productDevelopment)</option>");
         }
         string dynamicKindOptionsHtml = kindOptionsBuilder.ToString();
+
+        // 建構代表圖示庫 JSON 與初始下拉選單 HTML (來自 storyPoint.tbWorkItemIcon：含 12 款彩色 SVG 圖示、24 款分類符號圖示與使用者自行上傳新增圖示)
+        var iconJsonBuilder = new StringBuilder("[");
+        if (iconTable != null && iconTable.Rows.Count > 0)
+        {
+            bool firstIcon = true;
+            foreach (DataRow iRow in iconTable.Rows)
+            {
+                if (!firstIcon) iconJsonBuilder.Append(',');
+                firstIcon = false;
+                int iPk = iRow.Table.Columns.Contains("iconPk") && iRow["iconPk"] != DBNull.Value ? Convert.ToInt32(iRow["iconPk"]) : 0;
+                string iCode = (iRow["iconCode"]?.ToString() ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"");
+                string iName = (iRow["iconName"]?.ToString() ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"");
+                string iCat = (iRow.Table.Columns.Contains("iconCategory") && iRow["iconCategory"] != DBNull.Value ? (iRow["iconCategory"]?.ToString() ?? "預設圖示") : "預設圖示").Replace("\\", "\\\\").Replace("\"", "\\\"");
+                string iKind = (iRow.Table.Columns.Contains("iconKind") && iRow["iconKind"] != DBNull.Value ? (iRow["iconKind"]?.ToString() ?? "emoji") : "emoji").Replace("\\", "\\\\").Replace("\"", "\\\"");
+                string iVal = (iRow["iconValue"]?.ToString() ?? "📌").Replace("\\", "\\\\").Replace("\"", "\\\"");
+                bool isCust = iRow.Table.Columns.Contains("isCustomUpload") && iRow["isCustomUpload"] != DBNull.Value && Convert.ToBoolean(iRow["isCustomUpload"]);
+                iconJsonBuilder.Append($"{{\"iconPk\":{iPk},\"iconCode\":\"{iCode}\",\"iconName\":\"{iName}\",\"iconCategory\":\"{iCat}\",\"iconKind\":\"{iKind}\",\"iconValue\":\"{iVal}\",\"isCustomUpload\":{(isCust ? "true" : "false")}}}");
+            }
+        }
+        iconJsonBuilder.Append(']');
+        string dynamicIconCatalogJson = iconJsonBuilder.ToString();
 
         // 共用輔助局部函數：輸出「預設工項類型 (tbWorkItemKind) 增、刪、修、查管理與主要特徵一覽表」卡片與清單
         void renderWorkItemKindCrudCard(string tabSuffix)
@@ -6088,14 +6175,15 @@ public class portalController : Controller
             if (isAdmin)
             {
                 sb.Append($@"
-                <!-- 2. 新增 / 修改預設工項類型與主要特徵表單 (增、修) -->
-                <form method='post' action='/workitem/kind/save' style='background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
+                <!-- 2. 新增 / 修改預設工項類型與主要特徵表單 (增、修，支援多種代表圖示選取與自行上傳新增圖示) -->
+                <form method='post' action='/workitem/kind/save' enctype='multipart/form-data' style='background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                     <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;'>
-                        <span id='wikFormTitle_{tabSuffix}' style='font-size:13px;font-weight:800;color:#0f172a;'>➕ 新增或修改「預設工項類型」及三項主要特徵（亦可點擊列表「✏️ 編輯」帶入修改）</span>
+                        <span id='wikFormTitle_{tabSuffix}' style='font-size:13px;font-weight:800;color:#0f172a;'>➕ 新增或修改「預設工項類型」及三項主要特徵（提供多種代表圖示選取並可自行上傳新增圖示）</span>
                         <span style='font-size:11.5px;color:#475569;'>儲存後全站「預設工項類型」下拉選單與主要特徵表將立即同步更新</span>
                     </div>
                     <input type='hidden' name='workItemKindPk' id='wikPk_{tabSuffix}' value='' />
                     <input type='hidden' name='returnTab' value='{tabSuffix}' />
+                    <input type='file' name='customIconFile' id='wikQuickUploadFile_{tabSuffix}' accept='.png,.svg,.jpg,.jpeg,.webp,.ico,.gif' style='display:none;' onchange=""handleQuickIconFileSelected('{tabSuffix}', this)"" />
                     <div class='form-row' style='align-items:end;'>
                         <div>
                             <label data-tip='設定預設工項類型唯一識別代碼（例如：project、maintenance、consultingHour、training、productDevelopment 或自訂 supportCase）' title='設定預設工項類型唯一識別代碼（例如：project、maintenance、consultingHour、training、productDevelopment 或自訂 supportCase）'>類型代碼 (kindCode) <span class='sp-tip-icon'>ⓘ</span></label>
@@ -6105,9 +6193,15 @@ public class portalController : Controller
                             <label data-tip='設定預設工項類型中文顯示名稱（例如：專案、維運、顧問時數、教育訓練、開發產品、駐點支援）' title='設定預設工項類型中文顯示名稱（例如：專案、維運、顧問時數、教育訓練、開發產品、駐點支援）'>預設工項類型名稱 <span class='sp-tip-icon'>ⓘ</span></label>
                             <input type='text' name='kindName' id='wikName_{tabSuffix}' placeholder='例如：駐點技術支援' required />
                         </div>
-                        <div>
-                            <label data-tip='選擇或輸入代表此預設工項類型的圖示符號（Emoji）' title='選擇或輸入代表此預設工項類型的圖示符號（Emoji）'>代表圖示 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' name='badgeIcon' id='wikIcon_{tabSuffix}' value='📌' required />
+                        <div style='grid-column: span 2;'>
+                            <label data-tip='提供 36+ 種內建代表圖示（含 12 款彩色向量 SVG 圖示與 24 款分類符號圖示），並可點擊「📤 上傳新增」自行上傳 PNG / SVG / JPG / WEBP / ICO / GIF 圖示檔案' title='選擇多種代表圖示或自行上傳新增圖示'>代表圖示 (多樣選取 / 自行上傳新增) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <div class='sp-icon-selector-bar'>
+                                <span class='sp-icon-preview-box' id='wikIconPreview_{tabSuffix}' title='目前選取的代表圖示即時預覽'>📌</span>
+                                <select id='wikIconSelect_{tabSuffix}' onchange=""onWorkItemIconSelectChange('{tabSuffix}', this.value)"" style='flex:1.45;min-width:140px;font-weight:700;background:#eff6ff;border-color:#60a5fa;' title='從代表圖示庫下拉選取圖示'></select>
+                                <input type='text' name='badgeIcon' id='wikIcon_{tabSuffix}' value='📌' oninput=""onWorkItemIconInputManual('{tabSuffix}', this.value)"" style='width:88px;flex:0.65;text-align:center;font-weight:700;' placeholder='圖示或路徑' required />
+                                <button type='button' class='btn btn-outline' style='padding:7px 9px;font-size:12px;white-space:nowrap;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' onclick=""toggleWorkItemIconGallery('{tabSuffix}')"" title='展開或收合下方視覺化代表圖示庫與上傳面板'>🎨 圖示庫</button>
+                                <button type='button' class='btn btn-success' style='padding:7px 9px;font-size:12px;white-space:nowrap;' onclick=""triggerQuickIconUpload('{tabSuffix}')"" title='從電腦選擇圖示檔案 (PNG / SVG / JPG / WEBP / ICO / GIF) 立即上傳並新增為代表圖示'>📤 上傳新增</button>
+                            </div>
                         </div>
                         <div>
                             <label data-tip='選擇此預設工項類型在報表與列表中的標籤顏色樣式' title='選擇此預設工項類型在報表與列表中的標籤顏色樣式'>標籤顏色 <span class='sp-tip-icon'>ⓘ</span></label>
@@ -6126,6 +6220,28 @@ public class portalController : Controller
                             <label data-tip='設定下拉選單與列表的顯示排序數字（越小越前面）' title='設定下拉選單與列表的顯示排序數字（越小越前面）'>排序 <span class='sp-tip-icon'>ⓘ</span></label>
                             <input type='number' name='sortOrder' id='wikSort_{tabSuffix}' value='60' step='10' required />
                         </div>
+                    </div>
+
+                    <!-- 代表圖示視覺化選取面板與自行上傳新增專區 -->
+                    <div class='sp-icon-gallery-drawer' id='wikIconGalleryPanel_{tabSuffix}'>
+                        <div class='sp-icon-upload-strip'>
+                            <div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>
+                                <span style='font-size:12.5px;font-weight:800;color:#1e3a8a;'>📤 自行上傳新增代表圖示：</span>
+                                <input type='text' id='wikUploadIconName_{tabSuffix}' placeholder='自訂圖示名稱 (未填自動取檔名)' style='width:185px;padding:5px 9px;font-size:12px;background:#fff;' />
+                                <input type='file' id='wikUploadIconFile_{tabSuffix}' accept='.png,.svg,.jpg,.jpeg,.webp,.ico,.gif' style='width:220px;padding:4px 6px;font-size:11.5px;background:#fff;' />
+                                <button type='button' class='btn btn-success' style='padding:5px 12px;font-size:12px;' onclick=""uploadCustomWorkItemIcon('{tabSuffix}')"">📤 立即上傳並新增至代表圖示庫</button>
+                            </div>
+                            <span style='font-size:11.5px;color:#0f766e;font-weight:700;'>支援 PNG / SVG / JPG / WEBP / ICO / GIF｜點選下方任一圖示卡片即可直接套用</span>
+                        </div>
+                        <div class='sp-icon-cat-tabs' id='wikIconCatTabs_{tabSuffix}'>
+                            <button type='button' class='sp-icon-cat-tab active-cat' data-cat='all' onclick=""filterWorkItemIconGallery('{tabSuffix}', 'all', this)"">全部代表圖示</button>
+                            <button type='button' class='sp-icon-cat-tab' data-cat='customUpload' onclick=""filterWorkItemIconGallery('{tabSuffix}', 'customUpload', this)"">🌟 自行上傳圖示</button>
+                            <button type='button' class='sp-icon-cat-tab' data-cat='彩色向量圖示 (SVG)' onclick=""filterWorkItemIconGallery('{tabSuffix}', '彩色向量圖示 (SVG)', this)"">🎨 彩色向量圖示 (SVG)</button>
+                            <button type='button' class='sp-icon-cat-tab' data-cat='核心工項符號' onclick=""filterWorkItemIconGallery('{tabSuffix}', '核心工項符號', this)"">🏗️ 核心工項符號</button>
+                            <button type='button' class='sp-icon-cat-tab' data-cat='技術與架構符號' onclick=""filterWorkItemIconGallery('{tabSuffix}', '技術與架構符號', this)"">💻 技術與架構符號</button>
+                            <button type='button' class='sp-icon-cat-tab' data-cat='管理與支援符號' onclick=""filterWorkItemIconGallery('{tabSuffix}', '管理與支援符號', this)"">📋 管理與支援符號</button>
+                        </div>
+                        <div class='sp-icon-grid' id='wikIconGalleryGrid_{tabSuffix}'></div>
                     </div>
                     <div class='form-row' style='align-items:end;'>
                         <div>
@@ -6228,7 +6344,7 @@ public class portalController : Controller
                                 <strong>{kSort}</strong>
                             </td>
                             <td><code>{h(kCode)}</code></td>
-                            <td style='white-space:nowrap;'><span class='badge' style='{badgeStyle};font-size:12.5px;padding:4px 10px;'>{h(kIcon)} {h(kName)}</span></td>
+                            <td style='white-space:nowrap;'><span class='badge' style='{badgeStyle};font-size:12.5px;padding:4px 10px;display:inline-flex;align-items:center;gap:4px;'>{renderIconDisplayHtml(kIcon, 18)} {h(kName)}</span></td>
                             <td style='font-size:12.5px;color:#0f172a;font-weight:600;line-height:1.45;'>{h(kFeature)}</td>
                             <td style='font-size:12px;color:#1e3a8a;line-height:1.45;'>{h(kEstTrait)}</td>
                             <td style='font-size:12px;color:#334155;line-height:1.45;'>{h(kDelivTrait)}</td>
@@ -6311,7 +6427,7 @@ public class portalController : Controller
                             </div>
                             <div>
                                 <label data-tip='選擇工項類型（如：專案、維運、顧問時數，或於上方工項類型管理新增的自訂類型）' title='選擇工項類型（如：專案、維運、顧問時數，或於上方工項類型管理新增的自訂類型）'>工項類型 <span class='sp-tip-icon'>ⓘ</span></label>
-                                <select name='workItemKind' id='wiKindSelect' required style='border-color:#2563eb;font-weight:700;background:#eff6ff;'>
+                                <select name='workItemKind' id='wiKindSelect' onchange='onWorkItemKindSelectSyncType()' required style='border-color:#2563eb;font-weight:700;background:#eff6ff;'>
                                     {dynamicKindOptionsHtml}
                                 </select>
                             </div>
@@ -6353,13 +6469,22 @@ public class portalController : Controller
                             <div style='grid-column: span 2;'>
                                 <label data-tip='選擇已賦予標準 Story Point 的「工項代表類型」，選擇後系統會自動帶入標準點數與預設工項類型' title='選擇已賦予標準 Story Point 的「工項代表類型」，選擇後系統會自動帶入標準點數與預設工項類型'>工項代表類型 <span class='sp-tip-icon'>ⓘ</span></label>
                                 <select name='workItemTypePk' id='wiTypeSelect' onchange='onWorkItemTypeChange()'>
-                                    <option value='0' data-pt='' data-kind=''>-- 不使用代表類型（直接手動輸入點數） --</option>");
+                                    <option value='0' data-pt='' data-kind='' data-code=''>-- 不使用代表類型（直接手動輸入點數） --</option>");
             foreach (DataRow tRow in typeTable.Rows)
             {
+                string tCodeVal = tRow["typeCode"]?.ToString() ?? "";
+                string tNameVal = tRow["typeName"]?.ToString() ?? "";
                 string ptVal = tRow["standardStoryPoint"] != DBNull.Value ? tRow["standardStoryPoint"].ToString()! : "";
                 string dKind = tRow.Table.Columns.Contains("defaultWorkItemKind") ? (tRow["defaultWorkItemKind"]?.ToString() ?? "project") : "project";
                 string dKindText = tRow.Table.Columns.Contains("defaultWorkItemKindText") ? (tRow["defaultWorkItemKindText"]?.ToString() ?? "專案") : "專案";
-                sb.Append($"<option value='{tRow["workItemTypePk"]}' data-pt='{ptVal}' data-kind='{h(dKind)}'>[{h(dKindText)}] {h(tRow["typeCode"])} - {h(tRow["typeName"])} (標準: {(string.IsNullOrEmpty(ptVal) ? "待估算" : ptVal + " pt")})</option>");
+                string rawIconVal = tRow.Table.Columns.Contains("defaultWorkItemKindIcon") ? (tRow["defaultWorkItemKindIcon"]?.ToString() ?? "🏗️") : "🏗️";
+                string optIconPrefix = isImageIconValue(rawIconVal)
+                    ? (dKind == "maintenance" ? "🛠️" : dKind == "consultingHour" ? "⏳" : dKind == "training" ? "🎓" : dKind == "productDevelopment" ? "🚀" : "🏗️")
+                    : rawIconVal;
+                string labelText = string.Equals(tNameVal, dKindText, StringComparison.OrdinalIgnoreCase)
+                    ? $"{optIconPrefix} {tNameVal} ({tCodeVal}) (標準: {(string.IsNullOrEmpty(ptVal) ? "待估算" : ptVal + " pt")})"
+                    : $"[{dKindText}] {tCodeVal} - {tNameVal} (標準: {(string.IsNullOrEmpty(ptVal) ? "待估算" : ptVal + " pt")})";
+                sb.Append($"<option value='{tRow["workItemTypePk"]}' data-pt='{ptVal}' data-kind='{h(dKind)}' data-code='{h(tCodeVal)}'>{h(labelText)}</option>");
             }
             sb.Append(@"
                                 </select>
@@ -6537,7 +6662,7 @@ public class portalController : Controller
             string kCode = kRow["kindCode"]?.ToString() ?? "";
             string kName = kRow["kindName"]?.ToString() ?? "";
             string kIcon = kRow.Table.Columns.Contains("badgeIcon") && kRow["badgeIcon"] != DBNull.Value ? (kRow["badgeIcon"]?.ToString() ?? "📌") : "📌";
-            sb.Append($"<option value='{h(kCode)}'>{h(kIcon)} {h(kName)} ({h(kCode)})</option>");
+            sb.Append($"<option value='{h(kCode)}'>{formatOptionIconPrefix(kIcon)} {h(kName)} ({h(kCode)})</option>");
         }
         sb.Append(@"
                         </select>
@@ -6623,7 +6748,7 @@ public class portalController : Controller
                 "red" => "background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;",
                 _ => "background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;"
             };
-            string kindBadge = $"<span class='badge' style='{wBadgeStyle}'>{h(wKindIcon)} {h(wKindText)}</span>";
+            string kindBadge = $"<span class='badge' style='{wBadgeStyle};display:inline-flex;align-items:center;gap:4px;'>{renderIconDisplayHtml(wKindIcon, 16)} {h(wKindText)}</span>";
 
             string startDisplay = wRow.Table.Columns.Contains("startDate") && wRow["startDate"] != DBNull.Value
                 ? Convert.ToDateTime(wRow["startDate"]).ToString("yyyy-MM-dd HH:mm")
@@ -6710,103 +6835,232 @@ public class portalController : Controller
         sb.Append("</tbody></table></div></div>"); // end Tab 3
 
         // =====================================================================
-        // TAB 4: 工項代表類型與預設工項類型增刪修查管理（含工項類型主要特徵表）
+        // TAB 4 (2-2): 工項代表類型（編輯投出 SP 的代表工項之各種屬性與所屬預設類型）
         // =====================================================================
         sb.Append($"<div id='pane-types' class='tab-pane {(currentTab == "types" ? "active" : "")}'>");
-        if (isAdmin)
+
+        DataRow? defaultEditTypeRow = null;
+        foreach (DataRow tr in typeTable.Rows)
         {
-            sb.Append(@"
-            <div class='sp-page-action-bar'>
-                <div class='sp-action-title'>
-                    <span>⚡ 工項代表類型與預設工項類型快捷指令列</span>
-                    <span style='font-size:12px;font-weight:600;color:#93c5fd;'>（預設工項類型增刪修查與主要特徵表直接呈現｜支援雙擊列彈出 Modal 編輯、右鍵選單操作）</span>
-                </div>
-                <div class='sp-action-group'>
-                    <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;background:#2563eb;border-color:#60a5fa;' onclick=""openWorkItemTypeEditModal('','','','後端與資料庫','','','project')"">➕ 新增工項代表類型 (彈出 Modal)</button>
-                    <button type='button' class='btn btn-success' style='padding:6px 12px;font-size:12.5px;' onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','types','','','')"">🗂️ 新增預設工項類型 (彈出 Modal)</button>
-                    <button type='button' class='sp-drawer-toggle-btn' onclick=""document.getElementById('wikCrudCard_types')?.scrollIntoView({behavior:'smooth', block:'start'})"">📋 跳至預設工項類型與主要特徵表 ▾</button>
-                    <button type='button' class='sp-drawer-toggle-btn' onclick=""toggleAdminDrawer('drawer-types-full', this)"">🛠️ 展開/收合代表類型快速表單 ▾</button>
-                </div>
-            </div>");
+            string tn = tr["typeName"]?.ToString() ?? "";
+            if (tn.Contains("資料庫健檢") || tn.Contains("健檢"))
+            {
+                defaultEditTypeRow = tr;
+                break;
+            }
+        }
+        if (defaultEditTypeRow == null && typeTable.Rows.Count > 0)
+        {
+            defaultEditTypeRow = typeTable.Rows[0];
         }
 
-        // 直接置頂呈現「預設工項類型增、刪、修、查管理與主要特徵一覽表」（不隱藏於收合抽屜內，方便隨時查詢各工項類型主要特徵與增刪修）
-        renderWorkItemKindCrudCard("types");
+        int initTypePk = defaultEditTypeRow != null ? Convert.ToInt32(defaultEditTypeRow["workItemTypePk"]) : 0;
+        string initTypeCode = defaultEditTypeRow != null ? (defaultEditTypeRow["typeCode"]?.ToString() ?? "") : "";
+        string initTypeName = defaultEditTypeRow != null ? (defaultEditTypeRow["typeName"]?.ToString() ?? "") : "";
+        string initTypeKind = defaultEditTypeRow != null && defaultEditTypeRow.Table.Columns.Contains("defaultWorkItemKind")
+            ? (defaultEditTypeRow["defaultWorkItemKind"]?.ToString() ?? "project")
+            : "project";
+        string initTypeCat = defaultEditTypeRow != null ? (defaultEditTypeRow["categoryName"]?.ToString() ?? "後端與資料庫") : "後端與資料庫";
+        string initTypeDesc = defaultEditTypeRow != null ? (defaultEditTypeRow["description"]?.ToString() ?? "") : "";
+        string initTypePt = (defaultEditTypeRow != null && defaultEditTypeRow["standardStoryPoint"] != DBNull.Value)
+            ? defaultEditTypeRow["standardStoryPoint"].ToString()!
+            : "";
+        int initTypeDeckPk = (defaultEditTypeRow != null && defaultEditTypeRow.Table.Columns.Contains("defaultCardDeckPk") && defaultEditTypeRow["defaultCardDeckPk"] != DBNull.Value)
+            ? Convert.ToInt32(defaultEditTypeRow["defaultCardDeckPk"])
+            : 1;
+        int initTypeLastSessPk = (defaultEditTypeRow != null && defaultEditTypeRow.Table.Columns.Contains("lastVotingSessionPk") && defaultEditTypeRow["lastVotingSessionPk"] != DBNull.Value)
+            ? Convert.ToInt32(defaultEditTypeRow["lastVotingSessionPk"])
+            : 0;
+
+        var typeDeckOptionsBuilder = new StringBuilder();
+        if (cardDeckTable.Rows.Count > 0)
+        {
+            foreach (DataRow cdRow in cardDeckTable.Rows)
+            {
+                int deckPkVal = cdRow.Table.Columns.Contains("cardDeckPk") ? Convert.ToInt32(cdRow["cardDeckPk"]) : Convert.ToInt32(cdRow["pk"]);
+                string normCsv = normalizeCardDeckCsv(cdRow["cardValueCsv"]?.ToString());
+                string displayCsv = formatCardDeckCsvForOption(normCsv);
+                string selAttr = (deckPkVal == initTypeDeckPk) ? " selected" : "";
+                typeDeckOptionsBuilder.Append($"<option value='{deckPkVal}'{selAttr}>{h(cdRow["deckName"])} ({h(displayCsv)})</option>");
+            }
+        }
+        else
+        {
+            typeDeckOptionsBuilder.Append("<option value='1' selected>標準費氏數列撲克牌 (0, 0.5, 1, 2, 3, 5, 8, 13, 21, ?, ☕)</option>");
+        }
+        string typeDeckOptionsHtml = typeDeckOptionsBuilder.ToString();
 
         if (isAdmin)
         {
             sb.Append($@"
-            <div id='drawer-types-full' class='sp-collapsible-drawer collapsed'>
-            <div class='card'>
-                <div class='card-title'>
-                    <span id='typeFormTitle'>🏷️ 新增或修改「工項代表類型」（可設定預設工項類型與標準 Story Point）</span>
-                    <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick=""resetTypeForm()"">🔄 清空切換為新增代表類型</button>
+            <div class='sp-page-action-bar'>
+                <div class='sp-action-title'>
+                    <span>⚡ 2-2. 工項代表類型（編輯投出 SP 的代表工項屬性與所屬預設類型）</span>
+                    <span style='font-size:12px;font-weight:600;color:#93c5fd;'>（直接點選代表工項編輯各項屬性、設定屬於哪種預設工項類型｜預設工項類型與特徵請至「2-3. 預設工項類型與特徵」）</span>
                 </div>
-                <form method='post' action='/workitem/type/save'>
-                    <input type='hidden' name='workItemTypePk' id='typePk' value='' />
+                <div class='sp-action-group'>
+                    <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;background:#2563eb;border-color:#60a5fa;' onclick=""resetTypeForm()"">➕ 新增代表工項 (清空表單)</button>
+                    <button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12.5px;background:#eff6ff;color:#1d4ed8;border-color:#93c5fd;' onclick=""openWorkItemTypeEditModal('','','','後端與資料庫','','','project')"">🪟 彈出視窗新增代表工項</button>
+                    <button type='button' class='btn btn-success' style='padding:6px 12px;font-size:12.5px;' onclick=""switchTab('kinds')"">🗂️ 前往 2-3. 預設工項類型與特徵 ➔</button>
+                </div>
+            </div>
+
+            <!-- 2-2 核心功能：直接置頂呈現「編輯投出 SP 的代表工項（如：資料庫健檢）之各種屬性與所屬預設類型」 -->
+            <div class='card' id='typeAttributeEditorCard' style='border:2px solid #60a5fa;background:linear-gradient(180deg,#eff6ff 0%,#ffffff 100%);margin-bottom:18px;box-shadow:0 4px 14px rgba(37,99,235,0.08);'>
+                <div class='card-title' style='flex-wrap:wrap;gap:8px;'>
+                    <div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>
+                        <span id='typeFormTitle'>🏷️ {(initTypePk > 0 ? $"正在編輯代表工項：{h(initTypeName)} ({h(initTypeCode)})" : "新增或編輯投出 SP 的代表工項（設定各項屬性與所屬預設工項類型）")}</span>
+                        <span class='badge badge-finalized' id='typeCurrentModeBadge'>{(initTypePk > 0 ? $"✏️ 編輯模式 (PK #{initTypePk})" : "➕ 新增模式")}</span>
+                    </div>
+                    <div style='display:flex;gap:8px;flex-wrap:wrap;'>
+                        <button type='button' class='btn btn-outline' style='padding:5px 12px;font-size:12px;background:#fff;' onclick=""resetTypeForm()"">➕ 切換為新增代表工項</button>
+                        <button type='button' class='btn btn-outline' style='padding:5px 12px;font-size:12px;background:#eff6ff;color:#1d4ed8;border-color:#93c5fd;' onclick=""openCurrentLoadedTypeInModal()"">🪟 以彈出 Modal 視窗編輯</button>
+                        <button type='button' class='btn btn-outline' style='padding:5px 12px;font-size:12px;background:#f0fdf4;color:#15803d;border-color:#86efac;' onclick=""switchTab('kinds')"">🗂️ 管理預設工項類型與特徵 (2-3)</button>
+                    </div>
+                </div>
+
+                <!-- 快速點選已投出 SP 或既有代表工項列（例如：資料庫健檢、資料庫效能調校、標準 RESTful API 開發...） -->
+                <div style='background:#f8fafc;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;margin-bottom:14px;'>
+                    <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;'>
+                        <span style='font-size:12.5px;font-weight:800;color:#1e3a8a;'>🎯 點選下方代表工項按鈕或下拉選單，立即載入該代表工項（如「資料庫健檢」）編輯各種屬性與所屬預設類型：</span>
+                        <select id='quickTypeEditSelector' onchange='onQuickTypeEditSelectChange(this.value)' style='max-width:340px;font-weight:700;background:#fff;border-color:#60a5fa;padding:5px 10px;font-size:12.5px;'>
+                            <option value=''>-- ➕ 新增代表工項 --</option>");
+            foreach (DataRow tRow in typeTable.Rows)
+            {
+                int tPkVal = Convert.ToInt32(tRow["workItemTypePk"]);
+                string tCodeStr = tRow["typeCode"]?.ToString() ?? "";
+                string tNameStr = tRow["typeName"]?.ToString() ?? "";
+                string dKindText = tRow.Table.Columns.Contains("defaultWorkItemKindText") ? (tRow["defaultWorkItemKindText"]?.ToString() ?? "專案") : "專案";
+                string ptDisp = tRow["standardStoryPoint"] != DBNull.Value ? $"{tRow["standardStoryPoint"]} pt" : "待盲投";
+                string selAttr = (tPkVal == initTypePk) ? " selected" : "";
+                sb.Append($"<option value='{tPkVal}'{selAttr}>🏷️ {h(tNameStr)} ({h(tCodeStr)}) ｜ 預設類型：{h(dKindText)} ｜ {h(ptDisp)}</option>");
+            }
+            sb.Append(@"
+                        </select>
+                    </div>
+                    <div id='quickTypePillContainer' style='display:flex;flex-wrap:wrap;gap:6px;'>");
+            foreach (DataRow tRow in typeTable.Rows)
+            {
+                int tPkVal = Convert.ToInt32(tRow["workItemTypePk"]);
+                string tCodeStr = tRow["typeCode"]?.ToString() ?? "";
+                string tNameStr = tRow["typeName"]?.ToString() ?? "";
+                string dKind = tRow.Table.Columns.Contains("defaultWorkItemKind") ? (tRow["defaultWorkItemKind"]?.ToString() ?? "project") : "project";
+                string dKindText = tRow.Table.Columns.Contains("defaultWorkItemKindText") ? (tRow["defaultWorkItemKindText"]?.ToString() ?? "專案") : "專案";
+                string dKindIcon = tRow.Table.Columns.Contains("defaultWorkItemKindIcon") && tRow["defaultWorkItemKindIcon"] != DBNull.Value ? (tRow["defaultWorkItemKindIcon"]?.ToString() ?? "🏗️") : "🏗️";
+                string tCatStr = tRow["categoryName"]?.ToString() ?? "";
+                string tDescStr = tRow["description"]?.ToString() ?? "";
+                string ptJs = tRow["standardStoryPoint"] != DBNull.Value ? tRow["standardStoryPoint"].ToString()! : "";
+                string ptBadge = tRow["standardStoryPoint"] != DBNull.Value ? $"{tRow["standardStoryPoint"]} pt" : "待定案";
+                int tDeckPk = tRow.Table.Columns.Contains("defaultCardDeckPk") && tRow["defaultCardDeckPk"] != DBNull.Value ? Convert.ToInt32(tRow["defaultCardDeckPk"]) : 1;
+                int tLastSessPk = tRow.Table.Columns.Contains("lastVotingSessionPk") && tRow["lastVotingSessionPk"] != DBNull.Value ? Convert.ToInt32(tRow["lastVotingSessionPk"]) : 0;
+                bool isActiveInit = (tPkVal == initTypePk);
+                string btnStyle = isActiveInit
+                    ? "background:#1d4ed8;color:#ffffff;border:1.5px solid #1e40af;font-weight:800;box-shadow:0 2px 6px rgba(29,78,216,0.25);"
+                    : "background:#ffffff;color:#1e293b;border:1px solid #cbd5e1;font-weight:700;";
+
+                sb.Append($@"<button type='button' class='btn quick-type-pill-btn' data-pill-type-pk='{tPkVal}' style='padding:5px 11px;font-size:12px;border-radius:999px;display:inline-flex;align-items:center;gap:5px;{btnStyle}' onclick=""selectTypeByPkForInlineEdit({tPkVal})"">
+                    {renderIconDisplayHtml(dKindIcon, 14)}
+                    <span>{h(tNameStr)}</span>
+                    <span style='font-size:11px;opacity:0.85;'>({h(dKindText)}・{h(ptBadge)})</span>
+                </button>");
+            }
+            sb.Append($@"
+                    </div>
+                </div>
+
+                <form method='post' action='/workitem/type/save' id='mainTypeEditForm'>
+                    <input type='hidden' name='workItemTypePk' id='typePk' value='{(initTypePk > 0 ? initTypePk.ToString() : "")}' />
+                    <input type='hidden' id='typeLastSessionPkHidden' value='{initTypeLastSessPk}' />
                     <div class='form-row'>
                         <div>
-                            <label data-tip='工項代表類型的唯一識別代碼（例如：TYPE_BATCH_JOB）' title='工項代表類型的唯一識別代碼（例如：TYPE_BATCH_JOB）'>代表類型代碼 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' name='typeCode' id='typeCode' placeholder='例如：TYPE_BATCH_JOB' required />
+                            <label data-tip='投出 SP 的代表工項名稱（例如：資料庫健檢、資料庫效能調校、標準 RESTful API 開發）' title='投出 SP 的代表工項名稱（例如：資料庫健檢）'>1. 代表工項名稱 (typeName) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' name='typeName' id='typeName' value='{h(initTypeName)}' placeholder='例如：資料庫健檢' required style='font-weight:800;border-color:#2563eb;background:#fff;' />
                         </div>
                         <div>
-                            <label data-tip='工項代表類型的顯示名稱（例如：每日批次資料同步排程）' title='工項代表類型的顯示名稱（例如：每日批次資料同步排程）'>代表類型名稱 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' name='typeName' id='typeName' placeholder='例如：每日批次資料同步排程' required />
-                        </div>
-                        <div>
-                            <label data-tip='設定此代表類型預設對應的工項類型（如：專案、維運、顧問時數或自訂工項類型）' title='設定此代表類型預設對應的工項類型（如：專案、維運、顧問時數或自訂工項類型）'>預設工項類型 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <select name='defaultWorkItemKind' id='typeKind'>
+                            <label style='display:flex;justify-content:space-between;align-items:center;gap:4px;' data-tip='設定此代表工項屬於哪種預設工項類型（如：專案、維運、顧問時數、教育訓練、開發產品）；建立實際工項選擇此代表工項時將自動帶入此預設類型' title='設定此代表工項屬於哪種預設工項類型'>
+                                <span>2. 屬於哪種預設工項類型 <span class='sp-tip-icon'>ⓘ</span></span>
+                                <a href='javascript:void(0)' onclick=""switchTab('kinds')"" style='font-size:11px;color:#1d4ed8;font-weight:700;text-decoration:none;'>🗂️ 管理預設類型(2-3)</a>
+                            </label>
+                            <select name='defaultWorkItemKind' id='typeKind' onchange=""onModalKindSelectChange('typeKind','mainTypeKindFeatureBanner')"" style='font-weight:800;border-color:#2563eb;background:#eff6ff;'>
                                 {dynamicKindOptionsHtml}
                             </select>
                         </div>
                         <div>
-                            <label data-tip='此工項代表類型所屬的技術或業務分類名稱' title='此工項代表類型所屬的技術或業務分類名稱'>分類名稱 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' name='categoryName' id='typeCat' value='後端與資料庫' required />
+                            <label data-tip='此代表工項所屬的技術或業務分類屬性（可下拉選擇常用分類或自行輸入）' title='此代表工項所屬的技術或業務分類屬性'>3. 技術 / 業務分類屬性 (categoryName) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' name='categoryName' id='typeCat' list='typeCategoryDatalist' value='{h(initTypeCat)}' placeholder='例如：資料庫健檢與維運 / 後端與資料庫' required />
+                            <datalist id='typeCategoryDatalist'>
+                                <option value='資料庫健檢與維運'></option>
+                                <option value='後端與資料庫'></option>
+                                <option value='前端與報表'></option>
+                                <option value='系統架構與技術諮詢'></option>
+                                <option value='雲端與資安維運'></option>
+                                <option value='教育訓練與知識傳承'></option>
+                                <option value='核心產品研發'></option>
+                                <option value='一般代表類型'></option>
+                            </datalist>
                         </div>
                         <div>
-                            <label data-tip='標準 Story Point：可由多人盲投拍板定案自動寫入，或由管理者手動輸入設定' title='標準 Story Point：可由多人盲投拍板定案自動寫入，或由管理者手動輸入設定'>標準 Story Point <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='number' step='0.5' name='standardStoryPoint' id='typePt' placeholder='例如：5' />
+                            <label data-tip='投出或核定的標準 Story Point 點數（建立實際工項選取此代表工項時會自動帶入此點數）' title='投出或核定的標準 Story Point 點數'>4. 投出 / 核定標準 Story Point <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='number' step='0.5' min='0' max='200' name='standardStoryPoint' id='typePt' value='{h(initTypePt)}' placeholder='例如：8 (留空為待盲投定案)' style='font-weight:800;color:#1d4ed8;' />
                         </div>
                     </div>
+
+                    <!-- 即時顯示目前所選「屬於哪種預設工項類型」之三項主要特徵預覽卡 -->
+                    <div id='mainTypeKindFeatureBanner' style='margin-bottom:12px;'></div>
+
                     <div class='form-row'>
-                        <div style='grid-column: span 3;'>
-                            <label data-tip='描述此代表類型包含的開發複雜度、技術範圍與驗收標準（DoD），作為團隊盲投與工項分類依據' title='描述此代表類型包含的開發複雜度、技術範圍與驗收標準（DoD），作為團隊盲投與工項分類依據'>複雜度與驗收標準說明 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' name='description' id='typeDesc' placeholder='描述此代表類型包含的開發與測試範圍，作為團隊投票與工項分類依據' />
+                        <div>
+                            <label data-tip='代表工項唯一識別代碼（例如：TYPE_DB_HEALTH_CHECK 或自動編號 TYPE_2026...）' title='代表工項唯一識別代碼'>5. 代表工項代碼 (typeCode) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' name='typeCode' id='typeCode' value='{h(initTypeCode)}' placeholder='例如：TYPE_DB_HEALTH_CHECK' required />
                         </div>
-                        <div style='display:flex;align-items:end;gap:10px;'>
-                            <label style='display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:8px;' data-tip='勾選後，儲存時將一併同步更新所有套用此代表類型、尚未完成且未曾手動微調過點數的既有工項' title='勾選後，儲存時將一併同步更新所有套用此代表類型、尚未完成且未曾手動微調過點數的既有工項'>
-                                <input type='checkbox' name='syncExistingOpenWorkItem' value='true' checked />
-                                <span>同步更新未完成且未微調之工項 <span class='sp-tip-icon'>ⓘ</span></span>
-                            </label>
-                            <button type='submit' class='btn btn-primary'>💾 儲存代表類型</button>
+                        <div>
+                            <label data-tip='發起此代表工項多人盲投時預設採用的 Planning Poker 撲克牌組樣式' title='預設盲投撲克牌組'>6. 預設盲投撲克牌組 (defaultCardDeckPk) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <select name='defaultCardDeckPk' id='typeCardDeckPk'>
+                                {typeDeckOptionsHtml}
+                            </select>
+                        </div>
+                        <div style='grid-column: span 2;'>
+                            <label data-tip='詳細定義此代表工項（如資料庫健檢）的工作內容、執行步驟、技術複雜度與驗收交付標準 (DoD)，供團隊盲投與執行工項對照' title='詳細定義此代表工項的工作內容、複雜度與驗收標準 (DoD)'>7. 代表工項工作內容、複雜度與驗收標準屬性說明 (description / DoD) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' name='description' id='typeDesc' value='{h(initTypeDesc)}' placeholder='例如：透過 script 收集狀態，分析健康狀態，提供健檢報告並完成現場或線上報告' />
+                        </div>
+                    </div>
+
+                    <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding-top:6px;border-top:1px dashed #cbd5e1;'>
+                        <label style='display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-size:13px;color:#1e3a8a;font-weight:700;' data-tip='勾選後，儲存時將一併把「所屬預設工項類型」與「標準 Story Point」同步更新至所有套用此代表工項且尚未結案之既有實際工項'>
+                            <input type='checkbox' name='syncExistingOpenWorkItem' value='true' checked style='width:auto;' />
+                            <span>🔄 儲存時同步更新關聯未結案工項之「預設工項類型」與「標準 Story Point」（未手動微調點數之工項）</span>
+                        </label>
+                        <div style='display:flex;gap:8px;flex-wrap:wrap;'>
+                            <button type='button' class='btn btn-outline' id='btnTypeRevoteNextRound' style='padding:7px 12px;font-size:12.5px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;{(initTypePk > 0 ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeRevote('nextRound')"">🔄 重啟新一輪盲投</button>
+                            <button type='button' class='btn btn-outline' id='btnTypeRevoteRestartAll' style='padding:7px 12px;font-size:12.5px;color:#b45309;border-color:#fcd34d;background:#fffbeb;{(initTypePk > 0 ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeRevote('restartAll')"">🃏 重新盲投設定 (全部重新開始)</button>
+                            <button type='submit' class='btn btn-primary' id='typeSubmitBtn' style='padding:8px 18px;font-size:13.5px;'>💾 {(initTypePk > 0 ? $"儲存「{h(initTypeName)}」代表工項屬性與預設類型" : "新增並儲存代表工項")}</button>
                         </div>
                     </div>
                 </form>
-            </div>
             </div>");
         }
 
         sb.Append($@"
         <div class='card'>
             <div class='card-title'>
-                <span>🏷️ 工項代表類型與標準 Story Point 一覽表</span>
-                <span class='badge badge-user' id='typeFilterCountLabel'>共 {typeTable.Rows.Count} 筆代表類型</span>
+                <span>🏷️ 投出 SP 的工項代表類型（代表工項）與所屬預設類型一覽表</span>
+                <span class='badge badge-user' id='typeFilterCountLabel'>共 {typeTable.Rows.Count} 筆代表工項</span>
             </div>
             <!-- 工項代表類型即時篩選列 -->
             <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                 <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
                     <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
-                        💡 <strong>操作提示：</strong>於代表類型列<strong>滑鼠雙擊 (Double-Click)</strong> 直接彈出單筆編輯 Modal（視窗內亦支援直接增刪修查預設工項類型與檢視特徵表）；<strong>按滑鼠右鍵</strong>開啟快捷選單執行<strong>單筆編輯、重新投票、發起盲投、刪除、以此欄值篩選</strong>！
+                        💡 <strong>操作提示：</strong><strong>單擊 (Click)</strong> 任一代表工項列（或點擊「✏️ 載入表單編輯」）可立即載入上方表單編輯其<strong>各種屬性與所屬預設工項類型</strong>；<strong>雙擊 (Double-Click)</strong> 直接彈出單筆編輯 Modal；<strong>按滑鼠右鍵</strong>開啟完整快捷選單！
                     </div>
                     <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick='resetWorkItemTypeFilter()'>🔄 清除全部篩選條件</button>
                 </div>
                 <div class='form-row' style='margin-bottom:0;align-items:end;'>
                     <div>
-                        <label data-tip='輸入代表類型代碼、名稱、分類或複雜度說明關鍵字即時篩選表格' title='輸入代表類型代碼、名稱、分類或複雜度說明關鍵字即時篩選表格'>🔍 關鍵字快速篩選 <span class='sp-tip-icon'>ⓘ</span></label>
-                        <input type='text' id='filterTypeKeyword' oninput='filterWorkItemTypeTable()' placeholder='輸入類型代碼 / 名稱 / 分類 / 說明...' />
+                        <label data-tip='輸入代表工項代碼、名稱（如：資料庫健檢）、分類或屬性說明關鍵字即時篩選表格' title='輸入代表工項代碼、名稱、分類或屬性說明關鍵字即時篩選表格'>🔍 關鍵字快速篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <input type='text' id='filterTypeKeyword' oninput='filterWorkItemTypeTable()' placeholder='輸入例如：資料庫健檢 / API / 代碼 / 分類 / 說明...' />
                     </div>
                     <div>
-                        <label data-tip='依預設工項類型過濾代表類型列表' title='依預設工項類型過濾代表類型列表'>🏷️ 預設工項類型篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <label data-tip='依代表工項所屬的預設工項類型（專案、維運、顧問時數、教育訓練、開發產品）過濾列表' title='依所屬預設工項類型過濾代表工項列表'>🏷️ 所屬預設工項類型篩選 <span class='sp-tip-icon'>ⓘ</span></label>
                         <select id='filterTypeKind' onchange='filterWorkItemTypeTable()'>
                             <option value=''>全部預設工項類型</option>");
         foreach (DataRow kRow in kindTable.Rows)
@@ -6814,24 +7068,24 @@ public class portalController : Controller
             string kCode = kRow["kindCode"]?.ToString() ?? "";
             string kName = kRow["kindName"]?.ToString() ?? "";
             string kIcon = kRow.Table.Columns.Contains("badgeIcon") && kRow["badgeIcon"] != DBNull.Value ? (kRow["badgeIcon"]?.ToString() ?? "📌") : "📌";
-            sb.Append($"<option value='{h(kCode)}'>{h(kIcon)} {h(kName)}</option>");
+            sb.Append($"<option value='{h(kCode)}'>{formatOptionIconPrefix(kIcon)} {h(kName)}</option>");
         }
         sb.Append(@"
                         </select>
                     </div>
                     <div>
-                        <label data-tip='依是否已完成標準點數核定過濾代表類型列表' title='依是否已完成標準點數核定過濾代表類型列表'>📊 估算狀態篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                        <label data-tip='依是否已完成標準點數核定過濾代表工項列表' title='依是否已完成標準點數核定過濾代表工項列表'>📊 盲投估算狀態篩選 <span class='sp-tip-icon'>ⓘ</span></label>
                         <select id='filterTypeStatus' onchange='filterWorkItemTypeTable()'>
                             <option value=''>全部估算狀態</option>
-                            <option value='finalized'>✅ 已核定標準 Story Point</option>
-                            <option value='voting'>🃏 投票估算中</option>
+                            <option value='finalized'>✅ 已投出/核定標準 Story Point</option>
+                            <option value='voting'>🃏 盲投估算進行中</option>
                             <option value='pending'>⏳ 待投票定案</option>
                         </select>
                     </div>
                 </div>
             </div>
             <table id='workItemTypeDataTable'>
-                <thead><tr><th>類型代碼</th><th>代表類型名稱</th><th>預設工項類型与主要特徵</th><th>分類</th><th>複雜度與驗收說明</th><th>標準 Story Point</th><th>估算狀態</th><th>套用工項數</th></tr></thead><tbody>");
+                <thead><tr><th>代表工項代碼</th><th>代表工項名稱</th><th>所屬預設工項類型與主要特徵</th><th>技術/業務分類屬性</th><th>工作內容、複雜度與驗收標準說明</th><th>投出標準 SP</th><th>估算狀態与議程</th><th>套用工項數</th><th>屬性編輯與盲投操作</th></tr></thead><tbody>");
         foreach (DataRow tRow in typeTable.Rows)
         {
             int tPkVal = Convert.ToInt32(tRow["workItemTypePk"]);
@@ -6848,14 +7102,26 @@ public class portalController : Controller
             string tNameStr = tRow["typeName"]?.ToString() ?? "";
             string tCatStr = tRow["categoryName"]?.ToString() ?? "";
             string tDescStr = tRow["description"]?.ToString() ?? "";
+            string tDeckName = tRow.Table.Columns.Contains("defaultDeckName") ? (tRow["defaultDeckName"]?.ToString() ?? "") : "";
+            int tDeckPk = tRow.Table.Columns.Contains("defaultCardDeckPk") && tRow["defaultCardDeckPk"] != DBNull.Value
+                ? Convert.ToInt32(tRow["defaultCardDeckPk"])
+                : 1;
             string tEstStatus = tRow.Table.Columns.Contains("estimationStatus") ? (tRow["estimationStatus"]?.ToString() ?? "pending") : "pending";
             int tLastSessPk = tRow.Table.Columns.Contains("lastVotingSessionPk") && tRow["lastVotingSessionPk"] != DBNull.Value
                 ? Convert.ToInt32(tRow["lastVotingSessionPk"])
                 : 0;
+            string tLastSessCode = tRow.Table.Columns.Contains("lastVotingSessionCode") && tRow["lastVotingSessionCode"] != DBNull.Value
+                ? (tRow["lastVotingSessionCode"]?.ToString() ?? "")
+                : "";
             string tEstBadgeCls = tEstStatus == "finalized" ? "badge-finalized" : (tEstStatus == "voting" ? "badge-voting" : "badge-revealed");
-            string tSearchBlob = $"{tCodeStr} {tNameStr} {dKind} {dKindText} {dKindFeature} {tCatStr} {tDescStr} {ptJs}".ToLowerInvariant();
+            string tSearchBlob = $"{tCodeStr} {tNameStr} {dKind} {dKindText} {dKindFeature} {tCatStr} {tDescStr} {ptJs} {tLastSessCode}".ToLowerInvariant();
+            string jsSafeCode = escapeJsString(tCodeStr);
+            string jsSafeName = escapeJsString(tNameStr);
+            string jsSafeCat = escapeJsString(tCatStr);
+            string jsSafeDesc = escapeJsString(tDescStr);
+            string jsSafeKind = escapeJsString(dKind);
 
-            sb.Append($@"<tr class='type-row sp-context-row'
+            sb.Append($@"<tr class='type-row sp-context-row {(tPkVal == initTypePk ? "sp-context-active-row" : "")}'
                 data-row-kind='workitemType'
                 data-search='{h(tSearchBlob)}'
                 data-type-pk='{tPkVal}'
@@ -6865,26 +7131,76 @@ public class portalController : Controller
                 data-type-desc='{h(tDescStr)}'
                 data-type-pt='{h(ptJs)}'
                 data-type-kind='{h(dKind)}'
+                data-type-deck-pk='{tDeckPk}'
                 data-type-status='{(hasStdPt ? "finalized" : "pending")}'
                 data-type-est-status='{h(tEstStatus)}'
                 data-type-last-session-pk='{tLastSessPk}'
-                title='💡 按滑鼠右鍵選擇此筆代表類型並開啟操作選單（彈出 Modal 單筆編輯、重新投票、發起盲投、刪除）'>
+                onclick=""selectTypeRowForInlineEdit(this, event)""
+                title='💡 單擊載入上方表單編輯「{h(tNameStr)}」各項屬性與所屬預設類型；雙擊彈出 Modal 編輯；按滑鼠右鍵開啟操作選單'>
                 <td data-sort-value='{h(tCodeStr)}'>
                     <strong>{h(tCodeStr)}</strong>
                 </td>
-                <td><strong>{h(tNameStr)}</strong></td>
                 <td>
-                    <div><span class='badge badge-user'>{h(dKindIcon)} {h(dKindText)}</span></div>
+                    <strong style='font-size:14px;color:#0f172a;'>{h(tNameStr)}</strong>
+                    {(!string.IsNullOrWhiteSpace(tDeckName) ? $"<div style='font-size:11px;color:#64748b;margin-top:2px;'>🃏 牌組：{h(tDeckName)}</div>" : "")}
+                </td>
+                <td>
+                    <div><span class='badge badge-user' style='display:inline-flex;align-items:center;gap:4px;'>{renderIconDisplayHtml(dKindIcon, 16)} {h(dKindText)} ({h(dKind)})</span></div>
                     {(string.IsNullOrWhiteSpace(dKindFeature) ? "" : $"<div style='font-size:11.5px;color:#475569;margin-top:3px;line-height:1.35;'>{h(dKindFeature)}</div>")}
                 </td>
-                <td>{h(tCatStr)}</td>
-                <td>{h(tDescStr)}</td>
+                <td><span class='badge' style='background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;'>{h(tCatStr)}</span></td>
+                <td style='line-height:1.45;'>{h(tDescStr)}</td>
                 <td data-sort-value='{(hasStdPt ? ptJs : "-1")}'>{stdPt}</td>
-                <td><span class='badge {tEstBadgeCls}'>{h(tRow["estimationStatusText"])}</span></td>
-                <td>{tRow["linkedWorkItemCount"]} 個工項</td>
+                <td>
+                    <span class='badge {tEstBadgeCls}'>{h(tRow["estimationStatusText"])}</span>
+                    {(!string.IsNullOrWhiteSpace(tLastSessCode) ? $"<div style='font-size:11px;color:#475569;margin-top:3px;'>議程：{h(tLastSessCode)}</div>" : "")}
+                </td>
+                <td><strong>{tRow["linkedWorkItemCount"]}</strong> 個工項</td>
+                <td style='white-space:nowrap;'>
+                    <div style='display:flex;gap:4px;flex-wrap:wrap;'>
+                        {(isAdmin ? $@"<button type='button' class='btn btn-outline' style='padding:3px 8px;font-size:11.5px;background:#eff6ff;color:#1d4ed8;border-color:#60a5fa;font-weight:700;' onclick=""event.stopPropagation(); selectTypeByPkForInlineEdit({tPkVal}, true)"" title='載入上方表單編輯此代表工項的各種屬性與所屬預設類型'>✏️ 載入表單編輯</button>
+                        <button type='button' class='btn btn-outline' style='padding:3px 8px;font-size:11.5px;color:#0f766e;border-color:#5eead4;background:#f0fdfa;' onclick=""event.stopPropagation(); openWorkItemTypeEditModal('{tPkVal}','{jsSafeCode}','{jsSafeName}','{jsSafeCat}','{jsSafeDesc}','{h(ptJs)}','{jsSafeKind}','{tDeckPk}')"" title='以彈出 Modal 視窗編輯此代表工項'>🪟 彈出編輯</button>
+                        <button type='button' class='btn btn-outline' style='padding:3px 8px;font-size:11.5px;color:#b45309;border-color:#fcd34d;background:#fffbeb;' onclick=""event.stopPropagation(); openSessionSetupEditModal({tLastSessPk}, 'workItemType', '{tPkVal}', true, 'restartAll')"" title='針對此代表工項重新設定投票人與選項發起盲投'>🃏 重新盲投</button>
+                        <button type='button' class='btn btn-outline' style='padding:3px 8px;font-size:11.5px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;' onclick=""event.stopPropagation(); submitDynamicPostAction('/workitem/type/delete', {{ workItemTypePk: '{tPkVal}', typeCode: '{jsSafeCode}' }}, '確定要刪除工項代表類型「{jsSafeCode} - {jsSafeName}」嗎？')"" title='刪除此代表工項'>🗑️ 刪除</button>" : $@"<button type='button' class='btn btn-outline' style='padding:3px 8px;font-size:11.5px;' onclick=""event.stopPropagation(); openRowDetailReadonlyModal(this.closest('tr'))"">🔍 檢視屬性</button>")}
+                    </div>
+                </td>
             </tr>");
         }
-        sb.Append("</tbody></table></div></div>"); // end Tab 4
+        sb.Append("</tbody></table></div></div>"); // end Tab 4 (2-2 types)
+
+        // =====================================================================
+        // TAB 4B (2-3): 預設工項類型與主要特徵增、刪、修、查專頁 (#pane-kinds)
+        // =====================================================================
+        sb.Append($"<div id='pane-kinds' class='tab-pane {(currentTab == "kinds" ? "active" : "")}'>");
+        if (isAdmin)
+        {
+            sb.Append(@"
+            <div class='sp-page-action-bar'>
+                <div class='sp-action-title'>
+                    <span>⚡ 2-3. 預設工項類型與主要特徵管理（專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品 / 自訂類型）</span>
+                    <span style='font-size:12px;font-weight:600;color:#93c5fd;'>（增、刪、修、查預設工項類型與三項主要特徵｜選擇 36+ 款代表圖示或自行上傳新增圖示）</span>
+                </div>
+                <div class='sp-action-group'>
+                    <button type='button' class='btn btn-success' style='padding:6px 12px;font-size:12.5px;' onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','kinds','','','')"">➕ 新增預設工項類型 (彈出 Modal)</button>
+                    <button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12.5px;background:#eff6ff;color:#1d4ed8;border-color:#93c5fd;' onclick=""resetWorkItemKindForm('kinds'); document.getElementById('wikCode_kinds')?.focus();"">📝 清空下方表單新增預設類型</button>
+                    <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;background:#2563eb;border-color:#60a5fa;' onclick=""switchTab('types')"">🏷️ 前往 2-2. 工項代表類型 (編輯投出 SP 代表工項) ➔</button>
+                </div>
+            </div>");
+        }
+        else
+        {
+            sb.Append(@"
+            <div class='sp-page-action-bar'>
+                <div class='sp-action-title'>
+                    <span>🗂️ 2-3. 預設工項類型與主要特徵一覽表（專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品）</span>
+                </div>
+                <div class='sp-action-group'>
+                    <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;' onclick=""switchTab('types')"">🏷️ 前往 2-2. 代表類型參考 ➔</button>
+                </div>
+            </div>");
+        }
+        renderWorkItemKindCrudCard("kinds");
+        sb.Append("</div>"); // end Tab 4B (2-3 kinds)
 
         // =====================================================================
         // TAB 5: 查詢員工身上有多少 Story Point，以及員工所屬部門的總 Story Point 數
@@ -8027,6 +8343,7 @@ public class portalController : Controller
         sb.Append($"</div><script>const isViewerAdmin = {(isAdmin ? "true" : "false")};");
         sb.Append($"const sessionConfigMap = {{{string.Join(",", sessionMetaJsonList)}}};");
         sb.Append($"const workItemAssigneeMap = {{{string.Join(",", itemAssigneeJsonList)}}};");
+        sb.Append($"window.spWorkItemIconCatalog = {dynamicIconCatalogJson};");
         sb.Append(@"
         function toggleDropdownMenu(evt, groupId) {
             evt.stopPropagation();
@@ -8081,6 +8398,7 @@ public class portalController : Controller
                 'history': '📜 1-3. 估算過程查詢',
                 'workitems': isViewerAdmin ? '📋 2-1. 工項與員工指派' : '📋 2-1. 我的工項查詢',
                 'types': isViewerAdmin ? '🏷️ 2-2. 工項代表類型' : '🏷️ 2-2. 代表類型參考',
+                'kinds': '🗂️ 2-3. 預設工項類型與特徵',
                 'stats': isViewerAdmin ? '📊 3-1. 員工與部門統計' : '📊 3-1. 我的分數統計',
                 'myAccount': '🔑 修改我的帳密',
                 'employees': isViewerAdmin ? '👥 4-1. 員工與組織管理' : '🔑 4-1. 修改我的帳密',
@@ -8092,7 +8410,8 @@ public class portalController : Controller
                 'roundSetup': '1-2. 設定盲投回合：設定估算標的、參與者名單、高低點數上下限、共識規則與計時',
                 'history': isViewerAdmin ? '1-3. 查詢訂出 Story Point 的過程：檢視每回合出牌明細、討論備註與點數異動紀錄' : '1-3. 查詢我的投票與訂定點數過程：檢視個人投票紀錄與工項點數異動歷程',
                 'workitems': isViewerAdmin ? '2-1. 工項點數查詢與賦予員工設定：查詢各工項點數、選擇代表類型自動帶入或修改員工指派' : '2-1. 我的工項與個人分數查詢：顯示賦予給我本人的工項與個人配額分數',
-                'types': isViewerAdmin ? '2-2. 工項代表類型管理：管理已賦予標準 Story Point 的工項代表類型' : '2-2. 工項代表類型標準點數參考：查閱各工項代表類型的標準 Story Point 定義',
+                'types': isViewerAdmin ? '2-2. 工項代表類型管理：編輯投出 SP 的代表工項（如資料庫健檢）之各種屬性、所屬預設工項類型與標準點數' : '2-2. 工項代表類型標準點數參考：查閱各工項代表類型的屬性、所屬預設類型與標準 Story Point 定義',
+                'kinds': isViewerAdmin ? '2-3. 預設工項類型與特徵管理：增、刪、修、查管理專案、維運、顧問時數、教育訓練、開發產品等預設工項類型與三項主要特徵' : '2-3. 預設工項類型與主要特徵一覽表：查詢各預設工項類型之主要特徵',
                 'stats': isViewerAdmin ? '3-1. 員工與部門總 Story Point 統計：查詢員工身上的點數與所屬部門的總 Story Point 數' : '3-1. 我的個人總 Story Point 分數統計：查看個人工項數量與各狀態 Story Point 分數',
                 'myAccount': '修改我的個人登入帳號與密碼：每個人皆可隨時修改自己的登入帳號與密碼',
                 'employees': isViewerAdmin ? '4-1. 員工列表與登入帳密管理：增刪修查、部門主管設定、樹狀階層與批次匯入' : '4-1. 修改我的個人登入帳號與密碼：檢視個人基本資料並修改帳密',
@@ -9575,10 +9894,12 @@ public class portalController : Controller
         function openWorkItemKindEditModal(pk, code, name, icon, color, sortOrder, desc, tabSuffix, mainFeature, estimationTrait, deliverableTrait) {
             const isCreate = !pk || String(pk).trim() === '' || String(pk) === '0';
             const sfx = tabSuffix || 'types';
+            const curIcon = icon || '📌';
             const bodyHtml = `
-                <form method=""post"" action=""/workitem/kind/save"">
+                <form method=""post"" action=""/workitem/kind/save"" enctype=""multipart/form-data"">
                     <input type=""hidden"" name=""workItemKindPk"" value=""${escapeModalHtml(pk)}"" />
                     <input type=""hidden"" name=""returnTab"" value=""${escapeModalHtml(sfx)}"" />
+                    <input type=""file"" id=""wikQuickUploadFile_modal"" name=""customIconFile"" accept="".png,.svg,.jpg,.jpeg,.webp,.ico,.gif,image/*"" style=""display:none;"" onchange=""handleQuickIconFileSelected('modal', this)"" />
                     <div class=""form-row"">
                         <div>
                             <label>類型代碼 (kindCode)</label>
@@ -9589,8 +9910,33 @@ public class portalController : Controller
                             <input type=""text"" name=""kindName"" value=""${escapeModalHtml(name)}"" placeholder=""例如：專案 / 維運 / 駐點支援"" required />
                         </div>
                         <div>
-                            <label>圖示 Emoji</label>
-                            <input type=""text"" name=""badgeIcon"" value=""${escapeModalHtml(icon || '📌')}"" required />
+                            <label>代表圖示 (選擇內建圖示或自行上傳新增)</label>
+                            <div class=""sp-icon-selector-bar"">
+                                <div class=""sp-icon-preview-box"" id=""wikIconPreview_modal"" onclick=""toggleWorkItemIconGallery('modal')"" title=""點擊展開/收合代表圖示庫"">${renderIconHtmlJs(curIcon, name || code)}</div>
+                                <select id=""wikIconSelect_modal"" class=""sp-icon-select-dropdown"" onchange=""onWorkItemIconSelectChange('modal', this.value)"" title=""快速下拉選擇代表圖示""></select>
+                                <input type=""text"" name=""badgeIcon"" id=""wikIcon_modal"" value=""${escapeModalHtml(curIcon)}"" oninput=""onWorkItemIconInputManual('modal', this.value)"" required style=""width:110px;text-align:center;font-size:13px;"" title=""可直接輸入 Emoji 或圖示路徑"" />
+                                <button type=""button"" class=""btn btn-outline"" style=""padding:6px 10px;font-size:12px;border-color:#93c5fd;color:#1d4ed8;background:#eff6ff;"" onclick=""toggleWorkItemIconGallery('modal')"">🎨 圖示庫</button>
+                                <button type=""button"" class=""btn btn-outline"" style=""padding:6px 10px;font-size:12px;border-color:#86efac;color:#15803d;background:#f0fdf4;"" onclick=""triggerQuickIconUpload('modal')"">📤 上傳新增</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id=""wikIconGalleryPanel_modal"" class=""sp-icon-gallery-drawer"">
+                        <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;"">
+                            <div style=""font-size:13px;font-weight:800;color:#1e3a8a;"">🎨 代表圖示選擇與自訂圖示上傳中心（點擊圖示立即套用）</div>
+                            <div class=""sp-icon-cat-tabs"" id=""wikIconCatTabs_modal"">
+                                <span class=""sp-icon-cat-tab active"" data-cat=""all"" onclick=""filterWorkItemIconGallery('modal', 'all', this)"">全部圖示</span>
+                                <span class=""sp-icon-cat-tab"" data-cat=""彩色向量圖示"" onclick=""filterWorkItemIconGallery('modal', '彩色向量圖示', this)"">🖼️ 彩色向量圖示 (SVG)</span>
+                                <span class=""sp-icon-cat-tab"" data-cat=""自訂上傳圖示"" onclick=""filterWorkItemIconGallery('modal', '自訂上傳圖示', this)"">📤 自訂上傳圖示</span>
+                                <span class=""sp-icon-cat-tab"" data-cat=""emoji"" onclick=""filterWorkItemIconGallery('modal', 'emoji', this)"">😀 符號與 Emoji</span>
+                            </div>
+                        </div>
+                        <div id=""wikIconGalleryGrid_modal"" class=""sp-icon-grid""></div>
+                        <div class=""sp-icon-upload-bar"">
+                            <span style=""font-size:12.5px;font-weight:800;color:#0f172a;"">📤 自行上傳新增代表圖示：</span>
+                            <input type=""text"" id=""wikUploadIconName_modal"" placeholder=""自訂圖示名稱（選填）"" style=""width:170px;padding:6px 10px;font-size:12.5px;"" />
+                            <input type=""file"" id=""wikUploadIconFile_modal"" accept="".png,.svg,.jpg,.jpeg,.webp,.ico,.gif,image/*"" style=""width:210px;padding:4px;font-size:12px;background:#fff;"" />
+                            <button type=""button"" class=""btn btn-success"" style=""padding:6px 12px;font-size:12px;"" onclick=""uploadCustomWorkItemIcon('modal')"">📤 立即上傳並新增至代表圖示庫</button>
+                            <span id=""wikUploadIconStatus_modal"" style=""font-size:12px;color:#15803d;font-weight:700;""></span>
                         </div>
                     </div>
                     <div class=""form-row"">
@@ -9646,33 +9992,37 @@ public class portalController : Controller
             `;
             openRecordModalShell(
                 isCreate ? '➕ 新增預設工項類型與主要特徵 (tbWorkItemKind)' : '✏️ 單筆編輯預設工項類型與主要特徵 (tbWorkItemKind)',
-                `<span class=""badge badge-user"">${escapeModalHtml(icon || '📌')} ${name ? escapeModalHtml(name) + ' (' + escapeModalHtml(code) + ')' : '新預設工項類型'}</span>`,
+                `<span class=""badge badge-user"">${renderIconHtmlJs(curIcon, name || code)} ${name ? escapeModalHtml(name) + ' (' + escapeModalHtml(code) + ')' : '新預設工項類型'}</span>`,
                 bodyHtml
             );
             const cSel = document.getElementById('modalWikColor');
             if (cSel && color) cSel.value = color;
+            renderWorkItemIconPickerUi('modal', curIcon);
         }
 
-        function openWorkItemTypeEditModal(pk, code, name, cat, desc, pt, kind) {
+        function openWorkItemTypeEditModal(pk, code, name, cat, desc, pt, kind, deckPk) {
             const isCreate = !pk || String(pk).trim() === '' || String(pk) === '0';
             const kindOptionsHtml = document.getElementById('typeKind')
                 ? document.getElementById('typeKind').innerHTML
                 : (document.getElementById('wiKindSelect') ? document.getElementById('wiKindSelect').innerHTML : '<option value=""project"">🏗️ 專案 (project)</option>');
+            const deckOptionsHtml = document.getElementById('typeCardDeckPk')
+                ? document.getElementById('typeCardDeckPk').innerHTML
+                : (document.getElementById('setupCardDeckPk') ? document.getElementById('setupCardDeckPk').innerHTML : '<option value=""1"">標準費氏數列撲克牌</option>');
             const bodyHtml = `
                 <form method=""post"" action=""/workitem/type/save"">
                     <input type=""hidden"" name=""workItemTypePk"" value=""${escapeModalHtml(pk)}"" />
                     <div class=""form-row"">
                         <div>
-                            <label>代表類型代碼</label>
-                            <input type=""text"" name=""typeCode"" value=""${escapeModalHtml(code)}"" placeholder=""例如：TYPE_API_DEV"" required />
+                            <label>代表工項名稱 (typeName)</label>
+                            <input type=""text"" name=""typeName"" value=""${escapeModalHtml(name)}"" placeholder=""例如：資料庫健檢"" required style=""font-weight:800;border-color:#2563eb;"" />
                         </div>
                         <div>
                             <label style=""display:flex;justify-content:space-between;align-items:center;gap:4px;"">
-                                <span>預設工項類型</span>
+                                <span>屬於哪種預設工項類型</span>
                                 <span style=""display:inline-flex;gap:3px;flex-wrap:wrap;"">
-                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','types','','','')"" title=""新增預設工項類型"">➕ 新增</button>
-                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#0f766e;border-color:#5eead4;background:#f0fdfa;"" onclick=""editSelectedModalKindBySelectId('modalTypeKind','types')"" title=""修改目前選取的預設工項類型與主要特徵"">✏️ 修改</button>
-                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""deleteSelectedModalKindBySelectId('modalTypeKind','types')"" title=""刪除目前選取的預設工項類型"">🗑️ 刪除</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','kinds','','','')"" title=""新增預設工項類型"">➕ 新增</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#0f766e;border-color:#5eead4;background:#f0fdfa;"" onclick=""editSelectedModalKindBySelectId('modalTypeKind','kinds')"" title=""修改目前選取的預設工項類型與主要特徵"">✏️ 修改</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""deleteSelectedModalKindBySelectId('modalTypeKind','kinds')"" title=""刪除目前選取的預設工項類型"">🗑️ 刪除</button>
                                     <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#4338ca;border-color:#a5b4fc;background:#eef2ff;"" onclick=""toggleModalKindFeatureTable()"" title=""展開或收合下方預設工項類型主要特徵一覽表"">📋 特徵表</button>
                                 </span>
                             </label>
@@ -9681,8 +10031,8 @@ public class portalController : Controller
                             </select>
                         </div>
                         <div>
-                            <label>代表類型名稱</label>
-                            <input type=""text"" name=""typeName"" value=""${escapeModalHtml(name)}"" placeholder=""例如：標準 RESTful API 開發"" required />
+                            <label>投出 / 核定標準 Story Point</label>
+                            <input type=""number"" step=""0.5"" name=""standardStoryPoint"" value=""${escapeModalHtml(pt)}"" placeholder=""留空代表待盲投估算"" style=""font-weight:800;color:#1d4ed8;"" />
                         </div>
                     </div>
                     <!-- 目前選取之預設工項類型主要特徵即時提示卡 -->
@@ -9691,22 +10041,30 @@ public class portalController : Controller
                     <div id=""modalTypeKindFeatureTableWrap"" style=""margin-bottom:14px;""></div>
                     <div class=""form-row"">
                         <div>
-                            <label>分類群組</label>
-                            <input type=""text"" name=""categoryName"" value=""${escapeModalHtml(cat || '一般分類')}"" required />
+                            <label>代表工項代碼 (typeCode)</label>
+                            <input type=""text"" name=""typeCode"" value=""${escapeModalHtml(code)}"" placeholder=""例如：TYPE_DB_HEALTH_CHECK"" required />
                         </div>
                         <div>
-                            <label>標準 Story Point 點數</label>
-                            <input type=""number"" step=""0.5"" name=""standardStoryPoint"" value=""${escapeModalHtml(pt)}"" placeholder=""留空代表待盲投估算"" />
+                            <label>技術 / 業務分類屬性 (categoryName)</label>
+                            <input type=""text"" name=""categoryName"" list=""typeCategoryDatalist"" value=""${escapeModalHtml(cat || '一般分類')}"" required />
                         </div>
                         <div>
-                            <label>類型規模與複雜度說明</label>
-                            <input type=""text"" name=""description"" value=""${escapeModalHtml(desc || '')}"" placeholder=""描述開發複雜度與驗收標準"" />
+                            <label>預設盲投撲克牌組</label>
+                            <select name=""defaultCardDeckPk"" id=""modalTypeCardDeckPk"">
+                                ${deckOptionsHtml}
+                            </select>
+                        </div>
+                    </div>
+                    <div class=""form-row"">
+                        <div style=""grid-column: span 3;"">
+                            <label>工作內容、複雜度與驗收標準屬性說明 (description / DoD)</label>
+                            <input type=""text"" name=""description"" value=""${escapeModalHtml(desc || '')}"" placeholder=""例如：透過 script 收集狀態，分析健康狀態，提供健檢報告並完成現場或線上報告"" />
                         </div>
                     </div>
                     <div style=""margin:8px 0 14px 0;"">
                         <label style=""display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;"">
                             <input type=""checkbox"" name=""syncExistingOpenWorkItem"" value=""true"" checked style=""width:auto;"" />
-                            <span>儲存後同步將標準點數與預設工項類型套用至所有未結案工項</span>
+                            <span>儲存後同步將標準點數與所屬預設工項類型套用至所有未結案工項</span>
                         </label>
                     </div>
                     <div class=""sp-modal-footer"">
@@ -9714,20 +10072,22 @@ public class portalController : Controller
                         <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
                             ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""closeRecordEditModal(); triggerRevoteFromTarget('workItemType', '${escapeModalHtml(pk)}', 0, '${escapeModalHtml(code)} - ${escapeModalHtml(name)}', false, 'voting');"">🔄 重啟新一輪</button>` : ''}
                             ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#b45309;border-color:#fcd34d;background:#fffbeb;"" onclick=""openSessionSetupEditModal(0, 'workItemType', '${escapeModalHtml(pk)}', true, 'restartAll');"">🆕 全部重新開始(重設投票人與所有選項)</button>` : ''}
-                            <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆代表類型</button>
+                            <button type=""submit"" class=""btn btn-primary"">💾 儲存此代表工項屬性與預設類型</button>
                         </div>
                     </div>
                 </form>
             `;
             openRecordModalShell(
-                isCreate ? '➕ 新增工項代表類型 (tbWorkItemType)' : '✏️ 單筆編輯工項代表類型 (tbWorkItemType)',
-                `<span class=""badge badge-user"">${code ? escapeModalHtml(code) + ' - ' + escapeModalHtml(name) : '新代表類型'}</span>`,
+                isCreate ? '➕ 新增工項代表類型 (tbWorkItemType)' : '✏️ 單筆編輯投出 SP 的代表工項屬性与所屬預設類型 (tbWorkItemType)',
+                `<span class=""badge badge-user"">${code ? escapeModalHtml(code) + ' - ' + escapeModalHtml(name) : '新代表工項'}</span>`,
                 bodyHtml
             );
             const kSel = document.getElementById('modalTypeKind');
             if (kSel && kind) kSel.value = kind;
+            const dSel = document.getElementById('modalTypeCardDeckPk');
+            if (dSel && deckPk) dSel.value = String(deckPk);
             onModalKindSelectChange('modalTypeKind', 'modalTypeKindFeatureBanner');
-            renderModalKindFeatureComparisonTable('modalTypeKind', 'modalTypeKindFeatureTableWrap', 'types');
+            renderModalKindFeatureComparisonTable('modalTypeKind', 'modalTypeKindFeatureTableWrap', 'kinds');
         }
 
         function openEmployeeEditModal(pk, code, name, acc, mail, title, deptPk, role, isActiveStr, isDeptMgrStr, mgrPkStr) {
@@ -10311,7 +10671,7 @@ public class portalController : Controller
                         tr.getAttribute('data-kind-color') || 'blue',
                         tr.getAttribute('data-kind-sort') || '40',
                         tr.getAttribute('data-kind-desc') || '',
-                        tr.getAttribute('data-tab-suffix') || 'types',
+                        tr.getAttribute('data-tab-suffix') || 'kinds',
                         tr.getAttribute('data-kind-feature') || '',
                         tr.getAttribute('data-kind-estimation') || '',
                         tr.getAttribute('data-kind-deliverable') || ''
@@ -10325,7 +10685,8 @@ public class portalController : Controller
                         tr.getAttribute('data-type-cat') || '',
                         tr.getAttribute('data-type-desc') || '',
                         tr.getAttribute('data-type-pt') || '',
-                        tr.getAttribute('data-type-kind') || 'project'
+                        tr.getAttribute('data-type-kind') || 'project',
+                        tr.getAttribute('data-type-deck-pk') || '1'
                     );
                     return;
                 } else if (rowKind === 'employee') {
@@ -10587,6 +10948,14 @@ public class portalController : Controller
                         openWorkItemKindEditModal(kPk, kCode, kName, kIcon, kColor, kSort, kDesc, tabSuffix, kFeature, kEstimation, kDeliverable);
                     }));
 
+                    spContextMenuEl.appendChild(createCtxMenuItem('🃏', '針對此工項代表類型 (' + kName + ') 發起多人盲投估算', '盲投估算', 'primary-action', function () {
+                        openVotingSetupForKindCode(kCode, false);
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('⚙️', '前往「1-2. 設定盲投回合」設定此代表類型 (' + kName + ')', '完整設定頁', '', function () {
+                        openVotingSetupForKindCode(kCode, true);
+                    }));
+
                     spContextMenuEl.appendChild(createCtxMenuItem('➕', '新增另一種預設工項類型（彈出 Modal 視窗）', '新增類型', '', function () {
                         openWorkItemKindEditModal('', '', '', '📌', 'blue', 60, '', tabSuffix, '', '', '');
                     }));
@@ -10617,15 +10986,20 @@ public class portalController : Controller
                 const tDesc = tr.getAttribute('data-type-desc') || '';
                 const tPt = tr.getAttribute('data-type-pt') || '';
                 const tKind = tr.getAttribute('data-type-kind') || 'project';
+                const tDeckPk = tr.getAttribute('data-type-deck-pk') || '1';
                 const tLastSessionPk = parseInt(tr.getAttribute('data-type-last-session-pk') || '0', 10);
 
-                headerTitle = `🏷️ 代表類型右鍵操作：${tCode} - ${tName}`;
+                headerTitle = `🏷️ 代表工項右鍵操作：${tCode} - ${tName}`;
                 headerDiv.innerHTML = `<span>${headerTitle}</span><span class='badge badge-user' style='font-size:11px;white-space:nowrap;'>${tPt ? tPt + ' pt' : '待估算'}</span>`;
                 spContextMenuEl.appendChild(headerDiv);
 
                 if (isCurrentUserAdmin) {
-                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此工項代表類型（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
-                        openWorkItemTypeEditModal(tPk, tCode, tName, tCat, tDesc, tPt, tKind);
+                    spContextMenuEl.appendChild(createCtxMenuItem('📝', '載入上方表單編輯此代表工項各項屬性與所屬預設類型', '頁面表單', 'primary-action', function () {
+                        populateTypeInlineForm(tPk, tCode, tName, tCat, tDesc, tPt, tKind, tDeckPk, tLastSessionPk, true);
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此代表工項屬性與預設類型（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
+                        openWorkItemTypeEditModal(tPk, tCode, tName, tCat, tDesc, tPt, tKind, tDeckPk);
                     }));
 
                     spContextMenuEl.appendChild(createCtxMenuItem('🆕', '重新投票 — 全部重新開始（重新設定投票人名單與所有相關選項）', '全部重新開始', 'primary-action', function () {
@@ -11006,6 +11380,39 @@ public class portalController : Controller
             }
         }
 
+        function onWorkItemKindSelectSyncType() {
+            const kSel = document.getElementById('wiKindSelect');
+            const tSel = document.getElementById('wiTypeSelect');
+            if (!kSel || !tSel) return;
+            const kVal = kSel.value;
+            if (!kVal) return;
+            const matchOpt = Array.from(tSel.options).find(o => o.getAttribute('data-code') === kVal || o.getAttribute('data-kind') === kVal);
+            if (matchOpt) {
+                tSel.value = matchOpt.value;
+                const pt = matchOpt.getAttribute('data-pt') || '';
+                const ptInput = document.getElementById('wiStoryPoint');
+                if (pt && ptInput && !ptInput.value) {
+                    ptInput.value = pt;
+                }
+            }
+        }
+
+        function openVotingSetupForKindCode(kindCode, goFullTab) {
+            const sel = document.getElementById('setupWorkItemTypePk');
+            let matchedTypePk = 0;
+            if (sel && kindCode) {
+                const matchOpt = Array.from(sel.options).find(o => o.getAttribute('data-code') === kindCode || o.getAttribute('data-kind') === kindCode);
+                if (matchOpt) {
+                    matchedTypePk = parseInt(matchOpt.value || '0', 10) || 0;
+                }
+            }
+            if (goFullTab) {
+                openFullRoundSetupTabForTarget(0, 'workItemType', matchedTypePk, 'restartAll');
+            } else {
+                openSessionSetupEditModal(0, 'workItemType', matchedTypePk, true, 'restartAll');
+            }
+        }
+
         function formatLocalIsoMinute(dt) {
             const pad = n => String(n).padStart(2, '0');
             return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()) + 'T' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
@@ -11071,8 +11478,313 @@ public class portalController : Controller
             }
         }
 
+        // =====================================================================
+        // 代表圖示庫 (tbWorkItemIcon) 與自訂上傳新增圖示互動邏輯
+        // =====================================================================
+        function isImageIconValueJs(val) {
+            if (!val) return false;
+            const v = String(val).trim();
+            return v.indexOf('/') === 0 || v.toLowerCase().indexOf('http://') === 0 || v.toLowerCase().indexOf('https://') === 0 || v.toLowerCase().indexOf('data:image/') === 0;
+        }
+
+        function renderIconHtmlJs(val, altText) {
+            const v = String(val || '📌').trim() || '📌';
+            if (isImageIconValueJs(v)) {
+                return `<img src=""${escapeModalHtml(v)}"" alt=""${escapeModalHtml(altText || '圖示')}"" class=""sp-kind-icon-img"" loading=""lazy"" />`;
+            }
+            return `<span class=""sp-kind-icon-emoji"">${escapeModalHtml(v)}</span>`;
+        }
+
+        function renderWorkItemIconPickerUi(sfx, activeIconValue, filterCat) {
+            const rawCatalog = Array.isArray(window.spWorkItemIconCatalog) ? window.spWorkItemIconCatalog : [];
+            const catalog = rawCatalog.map(item => ({
+                pk: item.iconPk ?? item.pk ?? 0,
+                code: item.iconCode ?? item.code ?? '',
+                name: item.iconName ?? item.name ?? '圖示',
+                category: item.iconCategory ?? item.category ?? (item.isCustomUpload || item.isCustom ? '自行上傳圖示' : '預設圖示'),
+                kind: item.iconKind ?? item.kind ?? 'emoji',
+                val: item.iconValue ?? item.val ?? '📌',
+                isCustom: !!(item.isCustomUpload ?? item.isCustom)
+            }));
+            const curVal = String(activeIconValue || document.getElementById('wikIcon_' + sfx)?.value || '📌').trim() || '📌';
+            const selEl = document.getElementById('wikIconSelect_' + sfx);
+            const gridEl = document.getElementById('wikIconGalleryGrid_' + sfx);
+            const prevEl = document.getElementById('wikIconPreview_' + sfx);
+            const inpEl = document.getElementById('wikIcon_' + sfx);
+
+            if (inpEl && inpEl.value !== curVal) {
+                inpEl.value = curVal;
+            }
+            if (prevEl) {
+                prevEl.innerHTML = renderIconHtmlJs(curVal, '預覽圖示');
+            }
+
+            if (selEl) {
+                const groups = {};
+                let foundCurrent = false;
+                catalog.forEach(item => {
+                    const cat = item.category || (item.isCustom ? '自行上傳圖示' : '通用圖示');
+                    if (!groups[cat]) groups[cat] = [];
+                    groups[cat].push(item);
+                    if (item.val === curVal) foundCurrent = true;
+                });
+
+                let optHtml = '';
+                Object.keys(groups).forEach(catName => {
+                    optHtml += `<optgroup label=""📂 ${escapeModalHtml(catName)}"">`;
+                    groups[catName].forEach(it => {
+                        const isImg = isImageIconValueJs(it.val);
+                        const prefix = isImg ? (it.isCustom ? '📤 ' : '🖼️ ') : (it.val + ' ');
+                        const selectedAttr = (it.val === curVal) ? ' selected' : '';
+                        optHtml += `<option value=""${escapeModalHtml(it.val)}""${selectedAttr}>${escapeModalHtml(prefix + it.name)}</option>`;
+                    });
+                    optHtml += `</optgroup>`;
+                });
+                if (!foundCurrent && curVal) {
+                    const customPrefix = isImageIconValueJs(curVal) ? '🖼️ ' : (curVal + ' ');
+                    optHtml = `<optgroup label=""✨ 目前設定圖示""><option value=""${escapeModalHtml(curVal)}"" selected>${escapeModalHtml(customPrefix + '目前設定 (' + curVal + ')')}</option></optgroup>` + optHtml;
+                }
+                selEl.innerHTML = optHtml;
+            }
+
+            if (gridEl) {
+                const activeCat = filterCat || gridEl.getAttribute('data-active-cat') || 'all';
+                gridEl.setAttribute('data-active-cat', activeCat);
+                let tilesHtml = '';
+                const filtered = catalog.filter(it => {
+                    if (activeCat === 'all') return true;
+                    if (activeCat === 'customUpload' || activeCat === '自訂上傳圖示' || activeCat === '自行上傳圖示') {
+                        return !!it.isCustom || it.kind === 'customUpload' || it.category.indexOf('上傳') >= 0;
+                    }
+                    if (activeCat.indexOf('彩色向量圖示') >= 0) {
+                        return it.category.indexOf('彩色向量圖示') >= 0 || (!it.isCustom && (it.kind === 'presetSvg' || it.kind === 'image'));
+                    }
+                    if (activeCat === 'emoji') {
+                        return it.kind === 'emoji' || !isImageIconValueJs(it.val);
+                    }
+                    return it.category === activeCat;
+                });
+
+                if (filtered.length === 0) {
+                    tilesHtml = `<div style=""grid-column:1/-1;padding:14px;text-align:center;color:#64748b;font-size:12.5px;background:#f8fafc;border-radius:8px;"">此分類尚無代表圖示，請點擊上方「📤 自行上傳新增代表圖示」上傳您的專屬圖示！</div>`;
+                } else {
+                    filtered.forEach(it => {
+                        const isSel = (it.val === curVal);
+                        const delBtnHtml = (it.isCustom && it.pk > 0)
+                            ? `<span class=""sp-icon-tile-del"" title=""刪除此自訂上傳圖示"" onclick=""event.stopPropagation(); deleteCustomWorkItemIcon(${it.pk}, '${escapeModalHtml(it.name)}', '${escapeModalHtml(sfx)}')"">✖</span>`
+                            : '';
+                        tilesHtml += `
+                            <div class=""sp-icon-tile ${isSel ? 'selected-icon' : ''}"" onclick=""selectWorkItemIcon('${escapeModalHtml(sfx)}', '${escapeModalHtml(it.val)}')"" title=""點擊套用代表圖示：${escapeModalHtml(it.name)} (${escapeModalHtml(it.category)})"">
+                                ${delBtnHtml}
+                                <div class=""sp-icon-tile-visual"">${renderIconHtmlJs(it.val, it.name)}</div>
+                                <div class=""sp-icon-tile-label"">${escapeModalHtml(it.name)}</div>
+                            </div>`;
+                    });
+                }
+                gridEl.innerHTML = tilesHtml;
+            }
+        }
+
+        function selectWorkItemIcon(sfx, val) {
+            const v = String(val || '📌').trim() || '📌';
+            const inpEl = document.getElementById('wikIcon_' + sfx);
+            if (inpEl) inpEl.value = v;
+            renderWorkItemIconPickerUi(sfx, v);
+        }
+
+        function onWorkItemIconSelectChange(sfx, val) {
+            selectWorkItemIcon(sfx, val);
+        }
+
+        function onWorkItemIconInputManual(sfx, val) {
+            const v = String(val || '').trim() || '📌';
+            const prevEl = document.getElementById('wikIconPreview_' + sfx);
+            if (prevEl) {
+                prevEl.innerHTML = renderIconHtmlJs(v, '預覽圖示');
+            }
+        }
+
+        function toggleWorkItemIconGallery(sfx) {
+            const panel = document.getElementById('wikIconGalleryPanel_' + sfx);
+            if (!panel) return;
+            const isHidden = panel.style.display === 'none';
+            panel.style.display = isHidden ? '' : 'none';
+            if (isHidden) {
+                const curVal = document.getElementById('wikIcon_' + sfx)?.value || '📌';
+                renderWorkItemIconPickerUi(sfx, curVal);
+            }
+        }
+
+        function filterWorkItemIconGallery(sfx, cat, tabEl) {
+            const tabsWrap = document.getElementById('wikIconCatTabs_' + sfx);
+            if (tabsWrap) {
+                tabsWrap.querySelectorAll('.sp-icon-cat-tab').forEach(t => t.classList.remove('active-cat', 'active'));
+            }
+            if (tabEl) tabEl.classList.add('active-cat');
+            const curVal = document.getElementById('wikIcon_' + sfx)?.value || '📌';
+            renderWorkItemIconPickerUi(sfx, curVal, cat);
+        }
+
+        function triggerQuickIconUpload(sfx) {
+            const panel = document.getElementById('wikIconGalleryPanel_' + sfx);
+            if (panel && panel.style.display === 'none') {
+                panel.style.display = '';
+                renderWorkItemIconPickerUi(sfx, document.getElementById('wikIcon_' + sfx)?.value || '📌');
+            }
+            const fInput = document.getElementById('wikQuickUploadFile_' + sfx);
+            if (fInput) {
+                fInput.value = '';
+                fInput.click();
+            }
+        }
+
+        function handleQuickIconFileSelected(sfx, fileInputEl) {
+            if (!fileInputEl || !fileInputEl.files || fileInputEl.files.length === 0) return;
+            const file = fileInputEl.files[0];
+            const nameInput = document.getElementById('wikUploadIconName_' + sfx);
+            const rawBaseName = file.name ? file.name.replace(/\.[^/.]+$/, '') : '自訂圖示';
+            const iconName = (nameInput && nameInput.value.trim()) ? nameInput.value.trim() : rawBaseName;
+            performCustomIconUploadAjax(sfx, file, iconName);
+        }
+
+        function uploadCustomWorkItemIcon(sfx) {
+            const fileEl = document.getElementById('wikUploadIconFile_' + sfx);
+            const nameEl = document.getElementById('wikUploadIconName_' + sfx);
+            if (!fileEl || !fileEl.files || fileEl.files.length === 0) {
+                alert('請先選擇要上傳的圖示檔案（支援 PNG、SVG、JPG、WEBP、ICO、GIF）！');
+                return;
+            }
+            const file = fileEl.files[0];
+            const rawBaseName = file.name ? file.name.replace(/\.[^/.]+$/, '') : '自訂圖示';
+            const iconName = (nameEl && nameEl.value.trim()) ? nameEl.value.trim() : rawBaseName;
+            performCustomIconUploadAjax(sfx, file, iconName);
+        }
+
+        function performCustomIconUploadAjax(sfx, file, iconName) {
+            const statusEl = document.getElementById('wikUploadIconStatus_' + sfx);
+            if (statusEl) {
+                statusEl.style.color = '#1d4ed8';
+                statusEl.textContent = '⏳ 正在上傳代表圖示...';
+            }
+
+            const fd = new FormData();
+            fd.append('iconFile', file);
+            fd.append('iconName', iconName || '');
+            fd.append('iconCategory', '自行上傳圖示');
+            fd.append('returnTab', sfx === 'modal' ? 'types' : sfx);
+
+            fetch('/workitem/icon/upload', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                body: fd,
+                credentials: 'same-origin'
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (!res || !res.ok) {
+                    const errMsg = (res && res.message) ? res.message : '上傳圖示失敗';
+                    if (statusEl) {
+                        statusEl.style.color = '#dc2626';
+                        statusEl.textContent = '❌ ' + errMsg;
+                    }
+                    alert('❌ ' + errMsg);
+                    return;
+                }
+
+                const iconObj = res.icon || res;
+                const savedVal = iconObj.iconValue || res.iconValue;
+                const savedPk = iconObj.iconPk || res.workItemIconPk || res.iconPk || 0;
+                const savedName = iconObj.iconName || res.iconName || iconName || '自訂圖示';
+                const savedCat = iconObj.iconCategory || res.iconCategory || '自行上傳圖示';
+                const savedCode = iconObj.iconCode || res.iconCode || '';
+
+                window.spWorkItemIconCatalog = window.spWorkItemIconCatalog || [];
+                const existingIdx = window.spWorkItemIconCatalog.findIndex(x => (x.iconValue || x.val) === savedVal || (savedPk > 0 && (x.iconPk || x.pk) === savedPk));
+                const newEntry = {
+                    iconPk: savedPk,
+                    iconCode: savedCode,
+                    iconName: savedName,
+                    iconCategory: savedCat,
+                    iconKind: 'customUpload',
+                    iconValue: savedVal,
+                    isCustomUpload: true
+                };
+                if (existingIdx >= 0) {
+                    window.spWorkItemIconCatalog[existingIdx] = newEntry;
+                } else {
+                    window.spWorkItemIconCatalog.unshift(newEntry);
+                }
+
+                // 同步更新頁面上所有圖示選擇器並自動選中剛上傳的新圖示
+                ['kinds', 'workitems', 'types', 'modal'].forEach(targetSfx => {
+                    if (document.getElementById('wikIcon_' + targetSfx)) {
+                        if (targetSfx === sfx) {
+                            selectWorkItemIcon(targetSfx, savedVal);
+                        } else {
+                            renderWorkItemIconPickerUi(targetSfx, document.getElementById('wikIcon_' + targetSfx).value);
+                        }
+                    }
+                });
+
+                const fileEl = document.getElementById('wikUploadIconFile_' + sfx);
+                if (fileEl) fileEl.value = '';
+                const quickFileEl = document.getElementById('wikQuickUploadFile_' + sfx);
+                if (quickFileEl) quickFileEl.value = '';
+                const nameEl = document.getElementById('wikUploadIconName_' + sfx);
+                if (nameEl) nameEl.value = '';
+
+                if (statusEl) {
+                    statusEl.style.color = '#15803d';
+                    statusEl.textContent = '✅ 已成功上傳並套用「' + savedName + '」！';
+                }
+                showToastNotice('🖼️ 已成功上傳自訂代表圖示「' + savedName + '」並自動套用！');
+            })
+            .catch(err => {
+                if (statusEl) {
+                    statusEl.style.color = '#dc2626';
+                    statusEl.textContent = '❌ 上傳連線異常';
+                }
+                alert('上傳代表圖示時發生錯誤：' + (err?.message || err));
+            });
+        }
+
+        function deleteCustomWorkItemIcon(iconPk, iconName, sfx) {
+            if (!iconPk || iconPk <= 0) return;
+            if (!window.confirm('確定要從代表圖示庫刪除自訂上傳圖示「' + (iconName || ('#' + iconPk)) + '」嗎？')) {
+                return;
+            }
+            const fd = new FormData();
+            fd.append('iconPk', String(iconPk));
+            fd.append('workItemIconPk', String(iconPk));
+            fd.append('returnTab', sfx === 'modal' ? 'types' : (sfx || 'types'));
+
+            fetch('/workitem/icon/delete', {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                body: fd,
+                credentials: 'same-origin'
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (!res || !res.ok) {
+                    alert('❌ ' + ((res && res.message) ? res.message : '刪除自訂圖示失敗'));
+                    return;
+                }
+                window.spWorkItemIconCatalog = (window.spWorkItemIconCatalog || []).filter(x => Number(x.iconPk ?? x.pk) !== Number(iconPk));
+                ['kinds', 'workitems', 'types', 'modal'].forEach(targetSfx => {
+                    if (document.getElementById('wikIcon_' + targetSfx)) {
+                        renderWorkItemIconPickerUi(targetSfx, document.getElementById('wikIcon_' + targetSfx).value);
+                    }
+                });
+                showToastNotice('🗑️ 已刪除自訂代表圖示「' + (iconName || ('#' + iconPk)) + '」');
+            })
+            .catch(err => {
+                alert('刪除圖示時發生異常：' + (err?.message || err));
+            });
+        }
+
         function loadWorkItemKindToForm(pk, code, name, icon, color, sortOrder, desc, tabSuffix, mainFeature, estimationTrait, deliverableTrait) {
-            const sfx = tabSuffix || 'types';
+            const sfx = tabSuffix || 'kinds';
             const pkEl = document.getElementById('wikPk_' + sfx);
             const codeEl = document.getElementById('wikCode_' + sfx);
             const nameEl = document.getElementById('wikName_' + sfx);
@@ -11096,12 +11808,13 @@ public class portalController : Controller
             if (delivEl) delivEl.value = deliverableTrait || '';
             if (descEl) descEl.value = desc || '';
             if (btnEl) btnEl.textContent = '💾 儲存修改預設工項類型 (' + code + ')';
-            if (titleEl) titleEl.textContent = '✏️ 正在修改預設工項類型：' + (icon || '📌') + ' ' + (name || '') + ' (' + (code || '') + ')';
+            if (titleEl) titleEl.innerHTML = '✏️ 正在修改預設工項類型：' + renderIconHtmlJs(icon || '📌', name) + ' ' + escapeModalHtml(name || '') + ' (' + escapeModalHtml(code || '') + ')';
+            renderWorkItemIconPickerUi(sfx, icon || '📌');
             openWorkItemKindEditModal(pk, code, name, icon, color, sortOrder, desc, sfx, mainFeature, estimationTrait, deliverableTrait);
         }
 
         function resetWorkItemKindForm(tabSuffix) {
-            const sfx = tabSuffix || 'types';
+            const sfx = tabSuffix || 'kinds';
             const pkEl = document.getElementById('wikPk_' + sfx);
             const codeEl = document.getElementById('wikCode_' + sfx);
             const nameEl = document.getElementById('wikName_' + sfx);
@@ -11126,10 +11839,11 @@ public class portalController : Controller
             if (descEl) descEl.value = '';
             if (btnEl) btnEl.textContent = '➕ 新增 / 儲存預設工項類型';
             if (titleEl) titleEl.textContent = '➕ 新增或修改「預設工項類型」及三項主要特徵（亦可點擊列表「✏️ 修改」帶入修改）';
+            renderWorkItemIconPickerUi(sfx, '📌');
         }
 
         function filterWorkItemKindTable(tabSuffix) {
-            const sfx = tabSuffix || 'types';
+            const sfx = tabSuffix || 'kinds';
             const kw = (document.getElementById('filterWikKeyword_' + sfx)?.value || '').trim().toLowerCase();
             const color = document.getElementById('filterWikColor_' + sfx)?.value || '';
             const usage = document.getElementById('filterWikUsage_' + sfx)?.value || '';
@@ -11156,7 +11870,7 @@ public class portalController : Controller
         }
 
         function resetWorkItemKindFilter(tabSuffix) {
-            const sfx = tabSuffix || 'types';
+            const sfx = tabSuffix || 'kinds';
             if (document.getElementById('filterWikKeyword_' + sfx)) document.getElementById('filterWikKeyword_' + sfx).value = '';
             if (document.getElementById('filterWikColor_' + sfx)) document.getElementById('filterWikColor_' + sfx).value = '';
             if (document.getElementById('filterWikUsage_' + sfx)) document.getElementById('filterWikUsage_' + sfx).value = '';
@@ -11194,7 +11908,7 @@ public class portalController : Controller
         }
 
         function confirmDeleteWorkItemKind(pk, code, name, tabSuffix) {
-            const sfx = tabSuffix || 'types';
+            const sfx = tabSuffix || 'kinds';
             submitDynamicPostAction('/workitem/kind/delete', {
                 workItemKindPk: pk || '',
                 kindCode: code || '',
@@ -11222,7 +11936,7 @@ public class portalController : Controller
             banner.innerHTML = `
                 <div style=""background:#f0f9ff;border:1.5px solid #93c5fd;border-radius:9px;padding:10px 12px;font-size:12.5px;color:#0f172a;line-height:1.5;"">
                     <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:4px;"">
-                        <span style=""font-weight:800;color:#1e3a8a;"">${escapeModalHtml(kIcon)} 目前所選預設工項類型【${escapeModalHtml(kName)} (${escapeModalHtml(kCode)})】主要特徵：</span>
+                        <span style=""font-weight:800;color:#1e3a8a;display:inline-flex;align-items:center;gap:5px;"">${renderIconHtmlJs(kIcon, kName)} 目前所選預設工項類型【${escapeModalHtml(kName)} (${escapeModalHtml(kCode)})】主要特徵：</span>
                         <span style=""font-size:11.5px;color:#475569;"">可點擊上方「➕ 新增 / ✏️ 修改 / 🗑️ 刪除」直接管理預設工項類型</span>
                     </div>
                     <div><strong>⭐ 主要特徵 (核心工作性質)：</strong><span style=""color:#0f172a;font-weight:600;"">${escapeModalHtml(kFeature)}</span></div>
@@ -11242,6 +11956,22 @@ public class portalController : Controller
                     tr.style.fontWeight = '';
                 }
             });
+
+            // 若是在工項新增/編輯 Modal 切換預設工項類型，自動連動選取對應的工項代表類型（專案、維運、顧問時數...等）
+            if (selectId === 'modalWiKind') {
+                const mTypeSel = document.getElementById('modalWiTypeSelect');
+                if (mTypeSel && kCode) {
+                    const matchOpt = Array.from(mTypeSel.options).find(o => o.getAttribute('data-code') === kCode || o.getAttribute('data-kind') === kCode);
+                    if (matchOpt) {
+                        mTypeSel.value = matchOpt.value;
+                        const pt = matchOpt.getAttribute('data-pt') || '';
+                        const ptInput = document.getElementById('modalWiStoryPoint');
+                        if (pt && ptInput && !ptInput.value) {
+                            ptInput.value = pt;
+                        }
+                    }
+                }
+            }
         }
 
         function editSelectedModalKindBySelectId(selectId, tabSuffix) {
@@ -11312,7 +12042,7 @@ public class portalController : Controller
 
                 rowsHtml += `
                     <tr class=""modal-wik-feature-row"" data-kind-code=""${escapeModalHtml(kCode)}"" style=""${isSelected ? 'background:#dbeafe;font-weight:700;' : ''}cursor:pointer;"" onclick=""selectModalTypeKindFromTable('${escapeModalHtml(kCode)}')"">
-                        <td style=""white-space:nowrap;""><strong>${escapeModalHtml(kIcon)} ${escapeModalHtml(kName)}</strong><br/><code style=""font-size:11px;"">${escapeModalHtml(kCode)}</code></td>
+                        <td style=""white-space:nowrap;""><strong style=""display:inline-flex;align-items:center;gap:5px;"">${renderIconHtmlJs(kIcon, kName)} ${escapeModalHtml(kName)}</strong><br/><code style=""font-size:11px;"">${escapeModalHtml(kCode)}</code></td>
                         <td style=""font-size:12px;line-height:1.4;"">${escapeModalHtml(kFeature)}</td>
                         <td style=""font-size:12px;line-height:1.4;color:#1e3a8a;"">${escapeModalHtml(kEst)}</td>
                         <td style=""font-size:12px;line-height:1.4;color:#334155;"">${escapeModalHtml(kDeliv)}</td>
@@ -11349,6 +12079,22 @@ public class portalController : Controller
                 </div>
             `;
         }
+
+        // 頁面載入後初始化預設工項類型代表圖示選擇器與 2-2 代表工項預設類型特徵預覽
+        setTimeout(function () {
+            ['kinds', 'workitems', 'types'].forEach(sfx => {
+                if (document.getElementById('wikIcon_' + sfx)) {
+                    renderWorkItemIconPickerUi(sfx, document.getElementById('wikIcon_' + sfx).value || '📌');
+                }
+            });
+            const initKindVal = '" + escapeJsString(initTypeKind) + @"';
+            if (document.getElementById('typeKind')) {
+                if (initKindVal) {
+                    document.getElementById('typeKind').value = initKindVal;
+                }
+                onModalKindSelectChange('typeKind', 'mainTypeKindFeatureBanner');
+            }
+        }, 20);
 
         function resetWorkItemForm(nextCode) {
             document.getElementById('wiPk').value = '';
@@ -11397,34 +12143,175 @@ public class portalController : Controller
         }
 
         function resetTypeForm() {
-            document.getElementById('typePk').value = '';
-            document.getElementById('typeCode').value = '';
-            document.getElementById('typeName').value = '';
-            document.getElementById('typeCat').value = '後端與資料庫';
-            document.getElementById('typeDesc').value = '';
-            document.getElementById('typePt').value = '';
+            const nowStamp = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const nextCode = 'TYPE_' + nowStamp.getFullYear() + pad(nowStamp.getMonth() + 1) + pad(nowStamp.getDate()) + pad(nowStamp.getHours()) + pad(nowStamp.getMinutes()) + pad(nowStamp.getSeconds());
+            if (document.getElementById('typePk')) document.getElementById('typePk').value = '';
+            if (document.getElementById('typeLastSessionPkHidden')) document.getElementById('typeLastSessionPkHidden').value = '0';
+            if (document.getElementById('typeCode')) document.getElementById('typeCode').value = nextCode;
+            if (document.getElementById('typeName')) document.getElementById('typeName').value = '';
+            if (document.getElementById('typeCat')) document.getElementById('typeCat').value = '資料庫健檢與維運';
+            if (document.getElementById('typeDesc')) document.getElementById('typeDesc').value = '';
+            if (document.getElementById('typePt')) document.getElementById('typePt').value = '';
             if (document.getElementById('typeKind')) {
                 document.getElementById('typeKind').value = 'project';
+                onModalKindSelectChange('typeKind', 'mainTypeKindFeatureBanner');
+            }
+            if (document.getElementById('quickTypeEditSelector')) {
+                document.getElementById('quickTypeEditSelector').value = '';
             }
             if (document.getElementById('typeFormTitle')) {
-                document.getElementById('typeFormTitle').textContent = '🏷️ 新增或修改「工項代表類型」（可設定預設工項類型與標準 Story Point）';
+                document.getElementById('typeFormTitle').textContent = '➕ 新增代表工項（設定各項屬性與所屬預設工項類型）';
+            }
+            if (document.getElementById('typeCurrentModeBadge')) {
+                document.getElementById('typeCurrentModeBadge').textContent = '➕ 新增模式';
+                document.getElementById('typeCurrentModeBadge').className = 'badge badge-voting';
+            }
+            if (document.getElementById('typeSubmitBtn')) {
+                document.getElementById('typeSubmitBtn').textContent = '➕ 新增並儲存代表工項';
+            }
+            if (document.getElementById('btnTypeRevoteNextRound')) document.getElementById('btnTypeRevoteNextRound').style.display = 'none';
+            if (document.getElementById('btnTypeRevoteRestartAll')) document.getElementById('btnTypeRevoteRestartAll').style.display = 'none';
+            document.querySelectorAll('.quick-type-pill-btn').forEach(btn => {
+                btn.style.background = '#ffffff';
+                btn.style.color = '#1e293b';
+                btn.style.border = '1px solid #cbd5e1';
+                btn.style.fontWeight = '700';
+                btn.style.boxShadow = 'none';
+            });
+            document.querySelectorAll('#workItemTypeDataTable tbody tr.type-row').forEach(tr => {
+                tr.classList.remove('sp-context-active-row');
+            });
+            document.getElementById('typeName')?.focus();
+        }
+
+        function populateTypeInlineForm(pk, code, name, cat, desc, pt, kind, deckPk, lastSessPk, scrollToForm) {
+            if (document.getElementById('typePk')) document.getElementById('typePk').value = pk || '';
+            if (document.getElementById('typeLastSessionPkHidden')) document.getElementById('typeLastSessionPkHidden').value = lastSessPk || '0';
+            if (document.getElementById('typeCode')) document.getElementById('typeCode').value = code || '';
+            if (document.getElementById('typeName')) document.getElementById('typeName').value = name || '';
+            if (document.getElementById('typeCat')) document.getElementById('typeCat').value = cat || '一般分類';
+            if (document.getElementById('typeDesc')) document.getElementById('typeDesc').value = desc || '';
+            if (document.getElementById('typePt')) document.getElementById('typePt').value = pt ?? '';
+            if (kind && document.getElementById('typeKind')) {
+                document.getElementById('typeKind').value = kind;
+                onModalKindSelectChange('typeKind', 'mainTypeKindFeatureBanner');
+            }
+            if (deckPk && document.getElementById('typeCardDeckPk')) {
+                document.getElementById('typeCardDeckPk').value = String(deckPk);
+            }
+            if (document.getElementById('quickTypeEditSelector')) {
+                document.getElementById('quickTypeEditSelector').value = String(pk || '');
+            }
+            if (document.getElementById('typeFormTitle')) {
+                document.getElementById('typeFormTitle').textContent = '🏷️ 正在編輯代表工項：' + (name || '') + ' (' + (code || '') + ')';
+            }
+            if (document.getElementById('typeCurrentModeBadge')) {
+                document.getElementById('typeCurrentModeBadge').textContent = '✏️ 編輯模式 (PK #' + pk + ')';
+                document.getElementById('typeCurrentModeBadge').className = 'badge badge-finalized';
+            }
+            if (document.getElementById('typeSubmitBtn')) {
+                document.getElementById('typeSubmitBtn').textContent = '💾 儲存「' + (name || code) + '」代表工項屬性與預設類型';
+            }
+            if (document.getElementById('btnTypeRevoteNextRound')) document.getElementById('btnTypeRevoteNextRound').style.display = '';
+            if (document.getElementById('btnTypeRevoteRestartAll')) document.getElementById('btnTypeRevoteRestartAll').style.display = '';
+
+            document.querySelectorAll('.quick-type-pill-btn').forEach(btn => {
+                const isMatch = String(btn.getAttribute('data-pill-type-pk')) === String(pk);
+                btn.style.background = isMatch ? '#1d4ed8' : '#ffffff';
+                btn.style.color = isMatch ? '#ffffff' : '#1e293b';
+                btn.style.border = isMatch ? '1.5px solid #1e40af' : '1px solid #cbd5e1';
+                btn.style.fontWeight = isMatch ? '800' : '700';
+                btn.style.boxShadow = isMatch ? '0 2px 6px rgba(29,78,216,0.25)' : 'none';
+            });
+            document.querySelectorAll('#workItemTypeDataTable tbody tr.type-row').forEach(tr => {
+                tr.classList.toggle('sp-context-active-row', String(tr.getAttribute('data-type-pk')) === String(pk));
+            });
+
+            if (scrollToForm) {
+                document.getElementById('typeAttributeEditorCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                showToastNotice('✏️ 已載入代表工項「' + (name || code) + '」至上方編輯表單');
             }
         }
 
-        function loadTypeToForm(pk, code, name, cat, desc, pt, kind) {
-            if (document.getElementById('typePk')) document.getElementById('typePk').value = pk;
-            if (document.getElementById('typeCode')) document.getElementById('typeCode').value = code;
-            if (document.getElementById('typeName')) document.getElementById('typeName').value = name;
-            if (document.getElementById('typeCat')) document.getElementById('typeCat').value = cat;
-            if (document.getElementById('typeDesc')) document.getElementById('typeDesc').value = desc;
-            if (document.getElementById('typePt')) document.getElementById('typePt').value = pt;
-            if (kind && document.getElementById('typeKind')) {
-                document.getElementById('typeKind').value = kind;
+        function selectTypeByPkForInlineEdit(typePk, scrollToForm) {
+            if (!typePk) {
+                resetTypeForm();
+                return;
             }
-            if (document.getElementById('typeFormTitle')) {
-                document.getElementById('typeFormTitle').textContent = '✏️ 修改「工項代表類型」（正在編修：' + code + ' - ' + name + '）';
+            const tr = document.querySelector('#workItemTypeDataTable tbody tr.type-row[data-type-pk=""' + typePk + '""]');
+            if (!tr) return;
+            populateTypeInlineForm(
+                tr.getAttribute('data-type-pk') || '',
+                tr.getAttribute('data-type-code') || '',
+                tr.getAttribute('data-type-name') || '',
+                tr.getAttribute('data-type-cat') || '',
+                tr.getAttribute('data-type-desc') || '',
+                tr.getAttribute('data-type-pt') || '',
+                tr.getAttribute('data-type-kind') || 'project',
+                tr.getAttribute('data-type-deck-pk') || '1',
+                tr.getAttribute('data-type-last-session-pk') || '0',
+                !!scrollToForm
+            );
+        }
+
+        function onQuickTypeEditSelectChange(typePk) {
+            if (!typePk) {
+                resetTypeForm();
+                return;
             }
-            openWorkItemTypeEditModal(pk, code, name, cat, desc, pt, kind);
+            selectTypeByPkForInlineEdit(typePk, false);
+        }
+
+        function selectTypeRowForInlineEdit(tr, evt) {
+            if (!tr) return;
+            if (evt && evt.target && evt.target.closest && evt.target.closest('button, a, input, select')) return;
+            populateTypeInlineForm(
+                tr.getAttribute('data-type-pk') || '',
+                tr.getAttribute('data-type-code') || '',
+                tr.getAttribute('data-type-name') || '',
+                tr.getAttribute('data-type-cat') || '',
+                tr.getAttribute('data-type-desc') || '',
+                tr.getAttribute('data-type-pt') || '',
+                tr.getAttribute('data-type-kind') || 'project',
+                tr.getAttribute('data-type-deck-pk') || '1',
+                tr.getAttribute('data-type-last-session-pk') || '0',
+                false
+            );
+        }
+
+        function openCurrentLoadedTypeInModal() {
+            openWorkItemTypeEditModal(
+                document.getElementById('typePk')?.value || '',
+                document.getElementById('typeCode')?.value || '',
+                document.getElementById('typeName')?.value || '',
+                document.getElementById('typeCat')?.value || '後端與資料庫',
+                document.getElementById('typeDesc')?.value || '',
+                document.getElementById('typePt')?.value || '',
+                document.getElementById('typeKind')?.value || 'project',
+                document.getElementById('typeCardDeckPk')?.value || '1'
+            );
+        }
+
+        function triggerCurrentFormTypeRevote(mode) {
+            const pk = document.getElementById('typePk')?.value || '';
+            const code = document.getElementById('typeCode')?.value || '';
+            const name = document.getElementById('typeName')?.value || '';
+            const lastSessPk = parseInt(document.getElementById('typeLastSessionPkHidden')?.value || '0', 10);
+            if (!pk) {
+                alert('請先選擇或儲存代表工項後再發起盲投！');
+                return;
+            }
+            if (mode === 'nextRound') {
+                triggerRevoteFromTarget('workItemType', pk, lastSessPk, code + ' - ' + name, false, 'voting');
+            } else {
+                openSessionSetupEditModal(lastSessPk, 'workItemType', pk, true, 'restartAll');
+            }
+        }
+
+        function loadTypeToForm(pk, code, name, cat, desc, pt, kind, deckPk) {
+            populateTypeInlineForm(pk, code, name, cat, desc, pt, kind, deckPk || '1', '0', false);
+            openWorkItemTypeEditModal(pk, code, name, cat, desc, pt, kind, deckPk || '1');
         }
 
         function loadEmpToForm(pk, code, name, acc, mail, title, deptPk, role, isActiveStr, isDeptMgrStr, mgrPkStr) {
@@ -14035,6 +14922,26 @@ public class portalController : Controller
         .help-ui-diagram {{ background:#f1f5f9; padding:10px 12px; border-top:1px dashed #cbd5e1; font-size:12px; color:#334155; }}
         mark.help-highlight {{ background:#fef08a; color:#854d0e; padding:1px 4px; border-radius:4px; font-weight:800; box-shadow:0 0 0 1px #facc15; }}
         .help-faq-item {{ border:1px solid #cbd5e1; border-radius:10px; padding:12px 16px; margin-bottom:10px; background:#f8fafc; }}
+        /* 代表圖示庫 (Multiple Representative Icons & Custom Upload) 視覺化選擇器與上傳區樣式 */
+        .sp-kind-icon-img {{ width:18px; height:18px; object-fit:contain; vertical-align:-3px; margin-right:3px; border-radius:3px; display:inline-block; }}
+        .sp-icon-selector-bar {{ display:flex; align-items:center; gap:6px; width:100%; }}
+        .sp-icon-preview-box {{ width:36px; height:36px; border-radius:8px; border:1.5px solid #93c5fd; background:#eff6ff; display:inline-flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; box-shadow:inset 0 1px 2px rgba(37,99,235,0.08); }}
+        .sp-icon-preview-box img {{ width:24px; height:24px; object-fit:contain; margin:0; }}
+        .sp-icon-gallery-drawer {{ background:#ffffff; border:1.5px solid #93c5fd; border-radius:10px; padding:12px 14px; margin-top:6px; margin-bottom:12px; box-shadow:0 6px 18px rgba(37,99,235,0.08); }}
+        .sp-icon-upload-strip {{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; background:linear-gradient(90deg,#eff6ff 0%,#f0fdf4 100%); border:1px solid #bfdbfe; border-radius:8px; padding:9px 12px; margin-bottom:10px; }}
+        .sp-icon-cat-tabs {{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px; }}
+        .sp-icon-cat-tab {{ padding:3px 10px; border-radius:999px; border:1px solid #cbd5e1; background:#f8fafc; color:#334155; font-size:11.5px; font-weight:700; cursor:pointer; transition:all .14s; }}
+        .sp-icon-cat-tab:hover {{ border-color:#60a5fa; background:#eff6ff; color:#1d4ed8; }}
+        .sp-icon-cat-tab.active-cat {{ background:#2563eb; border-color:#1d4ed8; color:#ffffff; }}
+        .sp-icon-grid {{ display:grid; grid-template-columns:repeat(auto-fill, minmax(128px, 1fr)); gap:7px; max-height:215px; overflow-y:auto; padding:4px 2px; }}
+        .sp-icon-tile {{ display:flex; align-items:center; gap:7px; padding:6px 9px; border:1.5px solid #cbd5e1; border-radius:8px; background:#f8fafc; cursor:pointer; transition:all .14s ease; position:relative; user-select:none; text-align:left; }}
+        .sp-icon-tile:hover {{ border-color:#2563eb; background:#eff6ff; transform:translateY(-1px); box-shadow:0 3px 8px rgba(37,99,235,0.12); }}
+        .sp-icon-tile.selected-icon {{ border-color:#1d4ed8; background:#dbeafe; box-shadow:0 0 0 2px rgba(37,99,235,0.22); font-weight:800; }}
+        .sp-icon-tile-visual {{ width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; background:#ffffff; border-radius:6px; border:1px solid #e2e8f0; }}
+        .sp-icon-tile-visual img {{ width:22px; height:22px; object-fit:contain; margin:0; }}
+        .sp-icon-tile-label {{ font-size:11.5px; color:#1e293b; font-weight:700; line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }}
+        .sp-icon-tile-del {{ position:absolute; top:-5px; right:-5px; width:18px; height:18px; border-radius:50%; background:#dc2626; color:#ffffff; border:1px solid #ffffff; font-size:10px; font-weight:800; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.2); padding:0; line-height:1; }}
+        .sp-icon-tile-del:hover {{ background:#991b1b; transform:scale(1.1); }}
         .help-faq-q {{ font-size:14px; font-weight:800; color:#1e3a8a; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; }}
         .help-faq-a {{ margin-top:8px; padding-top:8px; border-top:1px dashed #cbd5e1; font-size:13px; color:#334155; line-height:1.6; }}
         select {{ width:100%; padding:10px 12px; border-radius:9px; border:1.5px solid #93c5fd; font-size:13.5px; font-weight:700; font-family:inherit; background:#fff; color:#0f172a; }}

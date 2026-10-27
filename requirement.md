@@ -510,6 +510,55 @@
         * **表格滑鼠右鍵選單 (`#spRowContextMenu`)**：對進行中盲投議程列按右鍵提供「`🚪 退出此盲投 Session（不再參與該工項投票）`」。
         * **PowerShell Console (`ps/manageVotingSession.ps1`) 與多 Tab GUI (`ps/ui/tabVoting.ps1`)**：新增 `-actionType 'withdrawSession'` 與 GUI「`🚪 退出 Session`」按鈕。
 
+### 2.26 提供多種代表圖示的 Icon 庫，並支援使用者自行上傳新增代表圖示（`storyPoint.tbWorkItemIcon`、`storyPoint.spUpsertWorkItemIcon`、`storyPoint.spDeleteWorkItemIcon`）
+* **核心需求**：於預設工項類型 (`storyPoint.tbWorkItemKind.badgeIcon`) 與工項代表類型管理中，提供豐富的**多種代表圖示 (Icon)** 供選擇，並支援使用者**自行上傳新增自訂代表圖示**：
+    1. **代表圖示庫資料表 (`storyPoint.tbWorkItemIcon`) 與無損保留機制**：
+        * 將 `storyPoint.tbWorkItemKind.badgeIcon` 擴充為 `nvarchar(512)`，同時相容 Emoji 符號與自訂/預設圖示路徑 (`/icons/presets/*.svg`、`/icons/custom/*`)。
+        * 建立 `storyPoint.tbWorkItemIcon` 資料表（搭配 `storyPoint.tbPreserveWorkItemIcon` 無損升級保留），儲存圖示代碼 (`iconCode`)、圖示名稱 (`iconName`)、分類 (`iconCategory`)、圖示類型 (`iconKind`: `emoji` / `image`)、圖示值 (`iconValue`)、MIME 類型 (`contentType`)、Base64 編碼內容 (`iconDataBase64`) 與自訂上傳標記 (`isCustomUpload`)。
+        * 內建 **36 種多元代表圖示**：包含 **12 款高解析度彩色向量 SVG 圖示**（專案藍圖、維運齒輪、顧問時鐘、教育學位帽、產品火箭、資料庫主機、雲端架構、資安防護盾、商業智慧分析、AI 智慧核心、API 系統整合、客服駐點耳機，存放於 `wwwroot/icons/presets/*.svg`）以及 **24 種分類 Emoji 代表符號**（專案與建置、維運與支援、顧問與會議、培訓與知識、產品與研發、雲端與資料、商務與管理）。
+        * 建立預存程序 `storyPoint.spUpsertWorkItemIcon` 與 `storyPoint.spDeleteWorkItemIcon`，並於 `storyPoint.spGetStoryPointDashboard` 新增第 10 個結果集回傳 `storyPoint.tbWorkItemIcon` 代表圖示清單。
+    2. **Web 介面代表圖示選擇器 (`🎨 圖示庫`) 與自行上傳新增 (`📤 上傳新增`)**：
+        * 於「預設工項類型管理卡片 (`#wikCrudCard_types`)」與「單筆新增/編輯預設工項類型 Modal (`openWorkItemKindEditModal`)」的「**代表圖示**」欄位提供：
+            * **即時圖示預覽框 (`.sp-icon-preview-box`)**：即時顯示目前選用的彩色 SVG/PNG 圖片圖示或 Emoji。
+            * **分類下拉快速選單 (`#wikIconSelect_*`)**：依「彩色向量圖示」、「自訂上傳圖示」與各業務分類分組列出所有代表圖示供一鍵切換。
+            * **展開式視覺化代表圖示庫 (`🎨 圖示庫` / `#wikIconGalleryPanel_*`)**：提供分類篩選頁籤（「全部圖示」、「🖼️ 彩色向量圖示 (SVG)」、「📤 自訂上傳圖示」、「😀 符號與 Emoji」）與視覺化圖示格線磚 (`.sp-icon-tile`)，點擊任一圖示立即套用。
+            * **自行上傳新增代表圖示 (`📤 上傳新增` / `POST /workitem/icon/upload`)**：支援上傳 `.png`、`.svg`、`.jpg`、`.jpeg`、`.webp`、`.ico`、`.gif` 圖檔（最大 2 MB），上傳後同時儲存至 `wwwroot/icons/custom/` 與 SQL Server `storyPoint.tbWorkItemIcon`（含 Base64 持久化備援與 `GET /icons/custom/{fileName}` 自動還原機制），並立即加入圖示庫與自動套用至目前表單；自訂上傳圖示亦支援點擊右上角 `✖` 刪除 (`POST /workitem/icon/delete`)。
+        * 全站所有工項類型徽章、工項代表類型表格、實際工項列表、Modal 彈窗與主要特徵比較表均自動辨識圖片圖示路徑與 Emoji，渲染清晰對齊的 `<img class="sp-kind-icon-img" />` 或符號徽章。
+    3. **PowerShell Console (`ps/manageWorkItem.ps1`) 與多 Tab GUI (`ps/ui/tabWorkItemType.ps1`) 同步支援**：
+        * `ps/manageWorkItem.ps1` 新增 `-actionType 'listWorkItemIcon'`、`'uploadWorkItemIcon'`、`'deleteWorkItemIcon'`，且 `'upsertWorkItemKind'` 支援 `-iconFilePath` 參數直接上傳圖示檔案並套用。
+        * `ps/ui/tabWorkItemType.ps1` 將圖示欄位升級為可下拉選擇多種代表圖示的 `ComboBox` (`$cmbKindIcon`)，並新增「`📤 上傳圖示`」按鈕 (`OpenFileDialog`) 供使用者自行選擇圖檔上傳新增。
+
+### 2.27 「目標工項代表類型」全面帶入專案、維運、顧問時數、教育訓練、開發產品...等工項類型（`storyPoint.tbWorkItemType` 與 `storyPoint.tbWorkItemKind` 雙向同步）
+* **核心需求**：「**1-2. 設定盲投回合**」與盲投回合設定 Modal 視窗的「**目標工項代表類型 (`workItemTypePk`)**」下拉選單，以及工項管理中的代表類型清單，必須帶入「**專案 (`project`)、維運 (`maintenance`)、顧問時數 (`consultingHour`)、教育訓練 (`training`)、開發產品 (`productDevelopment`)...等**」工項類型（包含於預設工項類型管理新增或修改之自訂類型），且不得將盲投議程標題誤自動建立為 `TYPE_2026...` 代表類型：
+    1. **資料庫雙向同步與種子資料正規化 (`sql/seedData.sql`、`sql/storedProcedure.sql`)**：
+        * `sql/seedData.sql`（Section 4.1）與 `storyPoint.spGetStoryPointDashboard` 自動將 `storyPoint.tbWorkItemKind` 定義之 `project`（🏗️ 專案）、`maintenance`（🛠️ 維運）、`consultingHour`（⏳ 顧問時數）、`training`（🎓 教育訓練）、`productDevelopment`（🚀 開發產品）及所有自訂工項類型完整同步至 `storyPoint.tbWorkItemType`，並依 `sortOrder` (`10, 20, 30, 40, 50...`) 排序輸出。
+        * 自動清理舊版誤由盲投議程標題產生的 `TYPE_20%` / `TYPE_DEF_%` 紀錄，並將原本關聯之 `tbWorkItem`、`tbVotingSession`、`tbPointHistory` 安全對應至「專案、維運、顧問時數、教育訓練、開發產品」代表類型。
+        * `storyPoint.spUpsertWorkItemKind`、`storyPoint.spDeleteWorkItemKind` 與 `storyPoint.spUpsertWorkItemType` 雙向保持 `tbWorkItemKind` 與 `tbWorkItemType` 同步；新增、修改或刪除任何工項類型時，「目標工項代表類型」選單即自動同步更新。
+        * `storyPoint.spCreateVotingSession` 移除以 `@sessionTitle` 自動新增 `TYPE_yyyyMMddHHmmss` 之邏輯，確保發起或重設盲投回合時直接綁定所選之工項代表類型（專案、維運、顧問時數、教育訓練、開發產品...等）。
+    2. **Web 介面與右鍵選單整合 (`web/storyPointPortal/controller/portalController.cs`)**：
+        * 「1-2. 設定盲投回合 (`#setupWorkItemTypePk`)」與「快速發起/重設盲投議程 Modal (`#modalSetupWorkItemTypePk`)」的「**目標工項代表類型**」下拉選單直接帶入：`🏗️ 專案 (project)`、`🛠️ 維運 (maintenance)`、`⏳ 顧問時數 (consultingHour)`、`🎓 教育訓練 (training)`、`🚀 開發產品 (productDevelopment)` 等項目及其目前標準點數。
+        * 於「預設工項類型 (`rowKind === 'workitemKind'`)」表格列按滑鼠右鍵，直接提供「`🃏 針對此工項代表類型發起多人盲投估算`」與「`⚙️ 前往「1-2. 設定盲投回合」設定此代表類型`」快捷操作。
+
+### 2.28 選單與功能明確分離：「2-2. 工項代表類型」專責編輯投出 SP 的代表工項各項屬性與所屬預設類型；「2-3. 預設工項類型與特徵」獨立專頁管理預設工項類型與主要特徵
+* **核心需求**：「**2-2. 工項代表類型**」與「**2-3. 預設工項類型與特徵**」兩項子選單必須各自獨立運作且職責明確分離：
+    1. **「🏷️ 2-2. 工項代表類型 (`/?tab=types` / `#pane-types`)」— 專責編輯投出 SP 的代表工項（例如：「資料庫健檢」）之各種屬性與屬於哪種預設工項類型**：
+        * 頁面直接置頂呈現「**🏷️ 編輯投出 Story Point 的代表工項屬性與所屬預設工項類型 (`#typeAttributeEditorCard`)**」完整編輯面板（不將預設工項類型 CRUD 混入 2-2，且預設自動載入「資料庫健檢」等已投出 SP 之代表工項供直接檢視與修改）。
+        * 提供頂部「**⚡ 點擊快速切換要編輯的代表工項**」按鈕列 (`.quick-type-pill-btn`) 與下拉選單 (`#quickTypeEditSelector`)，點擊上方按鈕或下方「工項代表類型一覽表 (`#workItemTypeDataTable`)」任一列即同步載入該代表工項之完整屬性：
+            1. **代表工項名稱 (`typeName`)**：如 `資料庫健檢`、`資料庫效能調校` 等。
+            2. **屬於哪種預設工項類型 (`defaultWorkItemKind`)**：明確設定該代表工項歸屬於哪一種預設工項類型（`🏗️ 專案 project`、`🛠️ 維運 maintenance`、`⏳ 顧問時數 consultingHour`、`🎓 教育訓練 training`、`🚀 開發產品 productDevelopment` 或自訂類型），切換時即時顯示該預設工項類型的三大主要特徵預覽橫幅 (`#mainTypeKindFeatureBanner`)。
+            3. **技術 / 業務分類屬性 (`categoryName`)**：設定代表工項之專業領域或業務分類屬性（如 `資料庫健檢與維運`、`資料平台架構` 等，附帶常用分類 `datalist`）。
+            4. **投出 / 核定標準 Story Point (`standardStoryPoint`)**：編輯盲投核定或手動設定之標準點數（如 `8 pt`）。
+            5. **代表工項代碼 (`typeCode`)**：管理唯一識別代碼（如 `TYPE_20261023034516`）。
+            6. **預設盲投撲克牌組 (`defaultCardDeckPk`)**：設定針對該代表工項發起重新盲投時預設採用的撲克牌組。
+            7. **工作內容、複雜度與驗收標準屬性說明 (`description` / DoD)**：詳述該代表工項的執行步驟、複雜度評估基準與交付驗收條件（如 `透過 script 收集狀態，分析健康狀態，提供健檢報告並完成現場或線上報告`）。
+            8. **同步更新關聯未結案工項 (`syncExistingOpenWorkItem`)**：勾選並儲存時，`storyPoint.spUpsertWorkItemType` 自動將最新設定的「所屬預設工項類型 (`workItemKind`)」與「標準點數 (`storyPoint`)」同步更新至所有套用此代表工項且尚未結案之實際工項 (`storyPoint.tbWorkItem`) 與負責員工配額 (`storyPoint.tbWorkItemAssignment`)。
+        * 下方「📋 已投出 / 待估算之代表工項與標準 Story Point 一覽表 (`#workItemTypeDataTable`)」每一列直接提供「`✏️ 載入表單編輯`」、「`🪟 彈出編輯`」、「`🃏 重新盲投`」與「`🗑️ 刪除`」按鈕，並支援滑鼠左鍵單擊載入上方屬性編輯器、雙擊彈出 Modal 及滑鼠右鍵快捷選單。
+    2. **「🗂️ 2-3. 預設工項類型與特徵 (`/?tab=kinds` / `#pane-kinds`)」— 獨立選單與專屬頁面**：
+        * 點擊頂部主選單「📋 工項管理 ▾」下的「**`🗂️ 2-3. 預設工項類型與特徵`**」(`switchTab('kinds')`) 時，立即切換至獨立分頁 `#pane-kinds`（網址更新為 `/?tab=kinds`、選單項目 `2-3` 高亮反白、右上角目前位置徽章顯示 `🗂️ 2-3. 預設工項類型與特徵`）。
+        * 頁面完整呈現「**🗂️ 預設工項類型增、刪、修、查管理與主要特徵一覽表 (`#wikCrudCard_kinds`)**」（管理 `storyPoint.tbWorkItemKind` 之專案、維運、顧問時數、教育訓練、開發產品與自訂類型、36 種代表圖示庫與自訂上傳圖示、以及三大主要特徵欄位），並提供一鍵切換回「`🏷️ 前往 2-2. 工項代表類型（編輯投出 SP 的代表工項屬性）`」之導覽按鈕。
+    3. **發起新盲投議程時自動保護既有代表工項不被誤覆寫 (`storyPoint.spCreateVotingSession`)**：
+        * 當發起新的代表工項盲投議程 (`@sessionPk <= 0` 且非重投既有議程) 時，若盲投議程標題描述的是新的代表工項名稱（與下拉選單預設值不同），系統自動匹配或建立專屬之 `storyPoint.tbWorkItemType` 代表工項紀錄，確保既有已定案之代表工項（如 `資料庫健檢 8.00 pt`）不會因新建其他盲投議程而被誤洗掉點數或狀態。
+
 ---
 
 ## 3. 系統架構與技術開發規範
