@@ -497,18 +497,26 @@
         * `ps/manageWorkItem.ps1` 支援 `-mainFeatureSummary`、`-estimationTrait`、`-timeAndDeliverableTrait` 及 `-keyword` 參數。
         * `ps/ui/tabWorkItemType.ps1` 上半部直接呈現「🗂️ 一、預設工項類型增、刪、修、查管理與主要特徵一覽表 (`tbWorkItemKind`)」，支援完整增刪修查與表列主要特徵。
 
-### 2.25 各盲投 Session 參與者可退出「待參與」與「參與中」的 Session，退出後該 Session 就不再參與該工項的投票（`storyPoint.spWithdrawVotingSession`）
-* **核心需求**：各盲投 Session 參與者（不論一般參與者或管理員/主持人）皆能隨時退出位於「**📂 待參與**」與「**🟢 參與中**」的盲投 Session，退出後該參與者與該 Session 就不再參與該工項（或工項代表類型）的投票：
-    1. **預存程序 `storyPoint.spWithdrawVotingSession` 與 `storyPoint.spGetVotingProcessHistory`**：
+### 2.25 各盲投 Session 參與者可退出「待參與」與「參與中」的 Session，退出後該 Session 就不再參與該工項的投票（`storyPoint.spWithdrawVotingSession`），且全面改以滑鼠右鍵快捷選單提供操作功能（不使用佔空間按鈕）
+* **核心需求**：
+    1. 各盲投 Session 參與者（不論一般參與者或管理員/主持人）皆能隨時退出位於「**📂 待參與**」與「**🟢 參與中**」的盲投 Session，退出後該參與者與該 Session 就不再參與該工項（或工項代表類型）的投票。
+    2. **全面改用滑鼠右鍵的快捷選單 (`contextmenu` ➔ `#spRowContextMenu`) 提供這些功能，不使用佔用大量畫面空間的卡片內嵌按鈕**：
+        * 移除左側邊欄「📌 投票議程清單」（`📂 待參與`、`🟢 參與中`、`📁 已拍板定案議程`）、右側盲投大廳議程卡片 (`#lobbyGridPending`、`#lobbyGridParticipating`)、投票歷程查詢頁籤 (`#pane-history`) 以及表格列內佔空間的大量操作按鈕（如 `🚪 退出`、`🚀 點選進入「參與中」獨立網頁`、`🚪 退出 Session (不再參與投票)`、`↩️ 暫離移回待參與`、`🔄 重啟新一輪`、`🆕 全部重新開始(重設選項)`、`⚙️ 完整設定頁`、`🗑️ 刪除回合` 等），讓卡片與表格版面保持精簡清爽。
+        * 在任何盲投 Session 卡片（`.session-item-card`、`.lobby-session-card`、`.sp-context-card`）、獨立盲投網頁牌桌或表格資料列上**按下滑鼠右鍵 (`contextmenu`)**，立即彈出智慧快捷選單 (`#spRowContextMenu`)，集中提供：
+            * `🚀 點選進入「參與中」獨立盲投網頁`（或 `🟢 參與中（已在獨立網頁進行中・點擊聚焦或提醒）`／`🔍 檢視此已定案 Session 獨立盲投網頁`）
+            * `↩️ 暫離「參與中」獨立網頁（移回「📂 待參與」清單，保留投票資格）`（當該 Session 目前處於本人「🟢 參與中」時動態顯示）
+            * `🚪 退出此盲投 Session（不再參與該工項投票）`（當該 Session 為「📂 待參與」或「🟢 參與中」未定案狀態時顯示）
+            * `📋 展開／收合左側邊欄此議程詳細資訊`
+            * 管理者專屬右鍵項目：`✏️ 單筆編輯此盲投議程回合設定`、`🔄 重新投票 — 重啟新一輪盲投`、`🆕 重新投票 — 全部重新開始（重設選項）`、`🔁 重新投票 — 清空本回合已出牌紀錄`、`⚙️ 前往「1-2. 設定盲投回合」完整頁面`、`🗑️ 刪除當前回合`、`🗑️ 刪除此盲投回合／議程`。
+        * 同時支援在議程卡片上**滑鼠左鍵雙擊 (`dblclick`)** 直接進入該場「🟢 參與中」獨立盲投網頁。
+    3. **預存程序 `storyPoint.spWithdrawVotingSession` 與 `storyPoint.spGetVotingProcessHistory`**：
         * 參與者執行退出時，將其從該盲投議程之受邀參與者名單 (`storyPoint.tbVotingSessionParticipant`) 移除（若原議程為全體員工模式 `restrictToParticipant = 0`，自動先將其他在職同仁寫入名單並設為 `restrictToParticipant = 1`），並清除該參與者於本場議程已投出的選票紀錄 (`storyPoint.tbVoteRecord`)，重新計算各回合出牌人數與平均/最低/最高點數。
         * `storyPoint.spGetVotingProcessHistory` 輸出 `isViewerParticipant` 欄位；一旦參與者退出該 Session，該 Session 立即從其「**📂 待參與**」與「**🟢 參與中**」清單中徹底移除，不再參與該工項的投票。
         * **剩餘參與者自動翻牌檢核**：若退出後該 Session 仍有其他剩餘參與者 (`@remainingParticipantCount > 0`)，且剩餘參與者皆已完成出牌，系統立即自動觸發翻牌揭曉 (`sessionStatus = 'revealed'`)。
         * **無剩餘參與者自動結束清理**：若該 Session 所有參與者皆已退出 (`@remainingParticipantCount <= 0`)，系統自動結束並移除該筆盲投 Session，同步復原關聯之工項 (`storyPoint.tbWorkItem.estimationStatus`) 或工項代表類型 (`storyPoint.tbWorkItemType.estimationStatus`) 狀態，使該 Session 不再參與該工項的投票。
-    2. **全方位操作入口（涵蓋「📂 待參與」、「🟢 參與中」及獨立盲投網頁）**：
-        * **投票議程清單側邊欄 (`#votingSidebarCard`) 與盲投大廳 (`#pane-voting`)**：於「**📂 待參與**」與「**🟢 參與中**」的每一張 Session 卡片上，均直接提供醒目的「**`🚪 退出 Session (不再參與投票)`**」按鈕（卡片標題列亦提供精簡「`🚪 退出`」按鈕）；同時將原本僅釋放網頁分頁鎖定的按鈕明確標示為「`↩️ 暫離移回待參與`」。
-        * **獨立盲投 Session 網頁 (`/voting/session`)**：頂部導覽列提供「**`🚪 退出此 Session (不再參與本工項投票)`**」按鈕，支援在獨立網頁內直接退出並透過 `BroadcastChannel` 同步關閉或導回大廳。
-        * **表格滑鼠右鍵選單 (`#spRowContextMenu`)**：對進行中盲投議程列按右鍵提供「`🚪 退出此盲投 Session（不再參與該工項投票）`」。
-        * **PowerShell Console (`ps/manageVotingSession.ps1`) 與多 Tab GUI (`ps/ui/tabVoting.ps1`)**：新增 `-actionType 'withdrawSession'` 與 GUI「`🚪 退出 Session`」按鈕。
+    4. **PowerShell Console (`ps/manageVotingSession.ps1`) 與多 Tab GUI (`ps/ui/tabVoting.ps1` / `ps/common.ps1`)**：
+        * `ps/manageVotingSession.ps1` 支援 `-actionType 'withdrawSession'`。
+        * `ps/ui/tabVoting.ps1` 與 `ps/common.ps1` 之 `enableGridHeaderSortAndLock` 將「`🚪 退出此盲投 Session（不再參與該工項投票）`」、「`🔄 重新投票此筆紀錄`」、「`🆕 重新投票：全部重新開始`」與「`🗑️ 刪除此筆紀錄`」整合於 `DataGridView` 滑鼠右鍵快捷選單 (`ContextMenuStrip`)，移除頂部佔空間的操作按鈕。
 
 ### 2.26 提供多種代表圖示的 Icon 庫，並支援使用者自行上傳新增代表圖示（`storyPoint.tbWorkItemIcon`、`storyPoint.spUpsertWorkItemIcon`、`storyPoint.spDeleteWorkItemIcon`）
 * **核心需求**：於預設工項類型 (`storyPoint.tbWorkItemKind.badgeIcon`) 與工項代表類型管理中，提供豐富的**多種代表圖示 (Icon)** 供選擇，並支援使用者**自行上傳新增自訂代表圖示**：

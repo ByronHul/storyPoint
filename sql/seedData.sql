@@ -454,9 +454,8 @@ end
 go
 
 -- ============================================================================
--- 4.1 同步預設工項類型 (tbWorkItemKind：專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品...等) 至工項代表類型 (tbWorkItemType)
---     確保「目標工項代表類型」下拉選單直接帶入專案、維運、顧問時數、教育訓練、開發產品...等代表類型，
---     並自動清理過往誤由盲投議程標題產生的 TYPE_20* 暫存紀錄
+-- 4.1 確保已投出 SP 的代表工項 (如：資料庫健檢、資料庫效能調校) 於 storyPoint.tbWorkItemType 完整保存
+--     (2-2 工項代表類型：編輯投出 SP 的代表工項各種屬性與屬於哪種預設工項類型)
 -- ============================================================================
 declare @defaultDeckPk int = (
     select top 1 pk
@@ -465,87 +464,46 @@ declare @defaultDeckPk int = (
     order by isDefault desc, pk asc
 );
 
-update wit
-set wit.typeName = wik.kindName,
-    wit.categoryName = wik.kindName,
-    wit.defaultWorkItemKind = wik.kindCode,
-    wit.description = isnull(nullif(ltrim(rtrim(wik.mainFeatureSummary)), N''), isnull(wik.description, wit.description)),
-    wit.isActive = wik.isActive,
-    wit.updatedAt = sysdatetime()
-from storyPoint.tbWorkItemType as wit
-inner join storyPoint.tbWorkItemKind as wik
-    on wit.typeCode = wik.kindCode;
-
-insert into storyPoint.tbWorkItemType (
-    typeCode, typeName, categoryName, defaultWorkItemKind, description,
-    standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
-)
-select
-    wik.kindCode,
-    wik.kindName,
-    wik.kindName,
-    wik.kindCode,
-    isnull(nullif(ltrim(rtrim(wik.mainFeatureSummary)), N''), isnull(wik.description, wik.kindName)),
-    null,
-    @defaultDeckPk,
-    'pending',
-    1,
-    sysdatetime(),
-    sysdatetime()
-from storyPoint.tbWorkItemKind as wik
-where wik.isActive = 1
-  and not exists (
-      select 1
-      from storyPoint.tbWorkItemType as wit
-      where wit.typeCode = wik.kindCode
-  )
-order by wik.sortOrder asc, wik.pk asc;
-
-declare @projectTypePk int = (
-    select top 1 pk
-    from storyPoint.tbWorkItemType
-    where typeCode = 'project'
-    order by pk asc
-);
-
-if @projectTypePk is not null
+if not exists (select 1 from storyPoint.tbWorkItemType where typeName = N'資料庫健檢')
 begin
-    update wi
-    set wi.workItemTypePk = isnull(kindWit.pk, @projectTypePk),
-        wi.updatedAt = sysdatetime()
-    from storyPoint.tbWorkItem as wi
-    left join storyPoint.tbWorkItemType as curWit
-        on wi.workItemTypePk = curWit.pk
-    left join storyPoint.tbWorkItemType as kindWit
-        on kindWit.typeCode = wi.workItemKind
-    where curWit.pk is null
-       or curWit.typeCode like 'TYPE[_]20%'
-       or curWit.typeCode like 'TYPE[_]DEF[_]%';
+    insert into storyPoint.tbWorkItemType (
+        typeCode, typeName, categoryName, defaultWorkItemKind, description,
+        standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
+    )
+    values (
+        'TYPE_20261023034516',
+        N'資料庫健檢',
+        N'資料庫健檢與維運',
+        'project',
+        N'透過 script 收集狀態，分析健康狀態，提供健檢報告並完成現場或線上報告',
+        8.00,
+        @defaultDeckPk,
+        'finalized',
+        1,
+        sysdatetime(),
+        sysdatetime()
+    );
+end
 
-    update vs
-    set vs.workItemTypePk = isnull(kindWit.pk, @projectTypePk),
-        vs.updatedAt = sysdatetime()
-    from storyPoint.tbVotingSession as vs
-    inner join storyPoint.tbWorkItemType as oldWit
-        on vs.workItemTypePk = oldWit.pk
-    left join storyPoint.tbWorkItemType as kindWit
-        on kindWit.typeCode = oldWit.defaultWorkItemKind
-    where oldWit.typeCode like 'TYPE[_]20%'
-       or oldWit.typeCode like 'TYPE[_]DEF[_]%';
-
-    update ph
-    set ph.workItemTypePk = isnull(kindWit.pk, @projectTypePk)
-    from storyPoint.tbPointHistory as ph
-    inner join storyPoint.tbWorkItemType as oldWit
-        on ph.workItemTypePk = oldWit.pk
-    left join storyPoint.tbWorkItemType as kindWit
-        on kindWit.typeCode = oldWit.defaultWorkItemKind
-    where oldWit.typeCode like 'TYPE[_]20%'
-       or oldWit.typeCode like 'TYPE[_]DEF[_]%';
-
-    delete from storyPoint.tbWorkItemType
-    where typeCode like 'TYPE[_]20%'
-       or typeCode like 'TYPE[_]DEF[_]%';
+if not exists (select 1 from storyPoint.tbWorkItemType where typeName = N'資料庫效能調校')
+begin
+    insert into storyPoint.tbWorkItemType (
+        typeCode, typeName, categoryName, defaultWorkItemKind, description,
+        standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
+    )
+    values (
+        'TYPE_20261024022342',
+        N'資料庫效能調校',
+        N'資料庫健檢與調校',
+        'maintenance',
+        N'執行計劃分析與調整，找出緩慢指令、建立索引或改寫 T-SQL 語法以提升資料庫整體效能',
+        null,
+        @defaultDeckPk,
+        'voting',
+        1,
+        sysdatetime(),
+        sysdatetime()
+    );
 end
 go
 
