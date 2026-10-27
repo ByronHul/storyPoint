@@ -880,10 +880,12 @@ if object_id('storyPoint.tbPreserveVotingSessionParticipant', 'u') is not null
 begin
     set identity_insert storyPoint.tbVotingSessionParticipant on;
     insert into storyPoint.tbVotingSessionParticipant (
-        pk, votingSessionPk, employeePk, isRequiredVoter, joinedAt
+        pk, votingSessionPk, employeePk, isRequiredVoter,
+        hasEnteredSession, enteredAt, lastHeartbeatAt, joinedAt
     )
     select
-        pk, votingSessionPk, employeePk, isRequiredVoter, joinedAt
+        pk, votingSessionPk, employeePk, isRequiredVoter,
+        isnull(hasEnteredSession, 0), enteredAt, lastHeartbeatAt, joinedAt
     from storyPoint.tbPreserveVotingSessionParticipant;
     set identity_insert storyPoint.tbVotingSessionParticipant off;
 end

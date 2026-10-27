@@ -606,6 +606,19 @@
         * 點數異動稽核歷程 (`pointHistory`) 與系統 Log (`systemLog`) ➔ 呼叫 `/history/delete` (`storyPoint.spDeletePointHistory`) 或 `/admin/log/delete` (`storyPoint.spDeleteSystemLog`)。
     3. **PowerShell 多 Tab GUI (`ps/common.ps1` `enableGridHeaderSortAndLock`) 同步支援**：在 `DataGridView` 選取任一資料列按下鍵盤 `Delete` 鍵時，同步觸發 `$onDeleteRow` 詢問確認並執行刪除。
 
+### 2.31 新增基本工項與一般工項盲投議程之參照設定規範（基本工項只要參照類型；一般工項應設定要參照的基本工項）
+* **核心需求**：
+    1. **若是新增「基本工項 (`targetKind = 'workItemType'`)」的投票，只要設定「參照工項類型 (`defaultWorkItemKind`，如：專案、維運、顧問時數、教育訓練、開發產品...)」**：
+        * 於「1-2. 設定盲投回合 (`#pane-roundSetup`)」與「快速發起/重設盲投議程 Modal (`openSessionSetupEditModal`)」中，當估算標的類型選擇「**🏷️ 投『基本工項』**」時：
+            * 左欄為「**目標基本工項 (如：資料庫健檢｜無起訖時間)** (`#setupWorkItemTypePk`)」，可選擇既有基本工項重投，或選擇「`➕ 依下方「盲投議程標題」自動建立新基本工項（只要參照右方類型）`」。
+            * 右欄為「**參照工項類型 (專案、維運、顧問時數...｜新增基本工項只要參照類型)** (`#setupWorkItemKind`)」；切換參照工項類型時，即時顯示該類型之一般工項基本規範與一般 Story Point 範圍上下限，並保持「自動建立新基本工項」選項不會被跳回既有基本工項。
+        * 後端 `storyPoint.spCreateVotingSession` 自動擷取乾淨的新基本工項名稱（自動剝除 `【基本工項盲投...】` 前綴與 `標準點數訂定` 後綴），並以所選之 `@defaultWorkItemKind` 建立或更新該基本工項 (`storyPoint.tbWorkItemType`)。
+    2. **若是新增「一般工項 (`targetKind = 'workItem'`)」的投票，應該設定「該一般工項要參照的基本工項 (`referencedWorkItemTypePk`，如：資料庫健檢)」**：
+        * 當估算標的類型選擇「**📋 投『一般工項』**」時：
+            * 左欄為「**目標一般工項 (如：集保健檢｜具起訖時間)** (`#setupWorkItemPk`)」，可選擇既有一般工項微調重投，或選擇「`➕ 依下方「盲投議程標題」自動建立新一般工項（請設定右方要參照的基本工項）`」。
+            * 右欄為「**該一般工項要參照的基本工項 (如：資料庫健檢｜決定所屬類型與基準點數)** (`#setupItemRefTypePk`, `name='referencedWorkItemTypePk'`)」；選擇既有一般工項時自動帶出其參照的基本工項，選擇新增一般工項時由使用者設定要參照的基本工項，並於下方橫幅 (`#setupItemRefNormBanner`) 即時顯示所參照基本工項的標準點數、所屬工項類型、基本規範與一般 SP 範圍，同步帶入本回合允許點數上下限。
+        * 後端 `POST /voting/create` (`portalController.cs`) 與 `storyPoint.spCreateVotingSession` (`sql/storedProcedure.sql`) 完整接收並保存 `@refBasicTypePk`（所參照的基本工項 PK），在建立新一般工項 (`storyPoint.tbWorkItem`) 時自動寫入 `workItemTypePk = @refBasicTypePk`、承接該基本工項之 `workItemKind` 與 `defaultTypePoint` / `storyPoint`，並於 `storyPoint.vwVotingSessionSummary` 與 `storyPoint.spGetVotingProcessHistory` 輸出 `referencedWorkItemTypePk`、`referencedWorkItemTypeCode`、`referencedWorkItemTypeName`。
+
 ---
 
 ## 3. 系統架構與技術開發規範

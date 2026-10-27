@@ -404,6 +404,20 @@ public class portalController : Controller
         if (empPk > 0)
         {
             releasedLocks = sqlDataService.releaseAllVotingSessionLeasesForEmployee(empPk);
+            try
+            {
+                await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpdateVotingParticipantPresence", new Dictionary<string, object?>
+                {
+                    ["votingSessionPk"] = null,
+                    ["employeePk"] = empPk,
+                    ["isEntered"] = false,
+                    ["operatorAccount"] = empAcc
+                });
+            }
+            catch
+            {
+                // 若資料庫更新進場狀態異常，不阻斷登出流程
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(empAcc) && !string.Equals(empAcc, "anonymous", StringComparison.OrdinalIgnoreCase))
@@ -706,6 +720,7 @@ public class portalController : Controller
         [FromForm] string sessionTitle,
         [FromForm] string targetKind,
         [FromForm] int? workItemTypePk,
+        [FromForm] int? referencedWorkItemTypePk,
         [FromForm] int? workItemPk,
         [FromForm] int? cardDeckPk,
         [FromForm] int[]? participantPks,
@@ -774,13 +789,17 @@ public class portalController : Controller
                 ? $"Story Point 估算議程 ({sessionCode})"
                 : sessionTitle.Trim();
 
+            int? effectiveWorkItemTypePk = (targetKind == "workItem")
+                ? ((referencedWorkItemTypePk.HasValue && referencedWorkItemTypePk.Value > 0) ? referencedWorkItemTypePk : workItemTypePk)
+                : workItemTypePk;
+
             var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spCreateVotingSession", new Dictionary<string, object?>
             {
                 ["votingSessionPk"] = isUpdatingExisting ? votingSessionPk!.Value : null,
                 ["sessionCode"] = sessionCode,
                 ["sessionTitle"] = cleanTitle,
                 ["targetKind"] = targetKind == "workItem" ? "workItem" : "workItemType",
-                ["workItemTypePk"] = (workItemTypePk.HasValue && workItemTypePk.Value > 0) ? workItemTypePk.Value : null,
+                ["workItemTypePk"] = (effectiveWorkItemTypePk.HasValue && effectiveWorkItemTypePk.Value > 0) ? effectiveWorkItemTypePk.Value : null,
                 ["workItemPk"] = (workItemPk.HasValue && workItemPk.Value > 0) ? workItemPk.Value : null,
                 ["cardDeckPk"] = cardDeckPk ?? 1,
                 ["hostEmployeePk"] = getCurrentEmployeePk(),
@@ -905,9 +924,28 @@ public class portalController : Controller
                     reqCnt = Convert.ToInt32(r0["requiredVoterCount"]);
             }
 
+            string? assignedTabIdForRedirect = null;
+            if (fromStandalone || !string.IsNullOrWhiteSpace(tabInstanceId))
+            {
+                var (_, assignedTabId, _) = sqlDataService.tryEnterOrRefreshVotingSessionLease(
+                    getCurrentEmployeePk(),
+                    getCurrentEmployeeName(),
+                    votingSessionPk,
+                    tabInstanceId,
+                    null,
+                    getCurrentDepartmentName());
+                assignedTabIdForRedirect = assignedTabId;
+            }
+
+            var presentLeasesNow = sqlDataService.getActivePresentLeasesForSession(votingSessionPk);
+            string enteredNamesText = presentLeasesNow.Count > 0
+                ? string.Join("、", presentLeasesNow.Select(x => x.employeeName).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct())
+                : getCurrentEmployeeName();
+            int enteredCntNow = Math.Max(1, presentLeasesNow.Count);
+
             string broadcastMsg = isAutoRevealed
                 ? $"🎉 所有受邀參與者 ({votedCnt}/{reqCnt} 人) 皆已完成投票，系統已自動翻牌揭曉所有人的點數！"
-                : $"有一位參與者已完成盲投出牌（目前已出牌 {votedCnt}/{reqCnt} 人，待全員投票後自動翻牌）！";
+                : $"有一位參與者已完成盲投出牌（目前已進場 {enteredCntNow}/{reqCnt} 人：{enteredNamesText}｜已出牌 {votedCnt}/{reqCnt} 人，待全員投票後自動翻牌）！";
 
             await _hubContext.Clients.All.SendAsync("onVotingSessionUpdated", new
             {
@@ -917,22 +955,19 @@ public class portalController : Controller
                 isAutoRevealed = isAutoRevealed,
                 votedParticipantCount = votedCnt,
                 requiredVoterCount = reqCnt,
+                enteredParticipantCount = enteredCntNow,
+                enteredParticipantNameCsv = enteredNamesText,
                 messageText = broadcastMsg,
-                timestamp = DateTime.Now.ToString("HH:mm:ss")
+                timestamp = DateTime.UtcNow.AddHours(8).ToString("HH:mm:ss")
             });
 
             string redirectMsg = isAutoRevealed
                 ? $"已投出撲克牌「{fullCardMeaning}」！🎉 全體受邀參與者 ({votedCnt}/{reqCnt} 人) 皆已完成投票，所有人的畫面已自動翻牌揭曉！"
-                : $"已成功投出撲克牌「{fullCardMeaning}」（目前已出牌 {votedCnt}/{reqCnt} 人，待全員完成投票後將自動翻牌揭曉）！";
+                : $"已成功投出撲克牌「{fullCardMeaning}」（目前已進場 {enteredCntNow}/{reqCnt} 人：{enteredNamesText}｜已出牌 {votedCnt}/{reqCnt} 人，待全員完成投票後將自動翻牌揭曉）！";
 
             if (fromStandalone || !string.IsNullOrWhiteSpace(tabInstanceId))
             {
-                var (_, assignedTabId, _) = sqlDataService.tryEnterOrRefreshVotingSessionLease(
-                    getCurrentEmployeePk(),
-                    getCurrentEmployeeName(),
-                    votingSessionPk,
-                    tabInstanceId);
-                string tokenParam = !string.IsNullOrEmpty(assignedTabId) ? $"&tabInstanceId={Uri.EscapeDataString(assignedTabId)}" : "";
+                string tokenParam = !string.IsNullOrEmpty(assignedTabIdForRedirect) ? $"&tabInstanceId={Uri.EscapeDataString(assignedTabIdForRedirect)}" : "";
                 return Redirect($"/voting/session?sessionPk={votingSessionPk}{tokenParam}&msg=" + Uri.EscapeDataString(redirectMsg));
             }
 
@@ -1238,14 +1273,16 @@ public class portalController : Controller
                     currentEmpPk,
                     getCurrentEmployeeName(),
                     sessionPk.Value,
-                    tabInstanceId);
+                    tabInstanceId,
+                    getCurrentDepartmentName());
                 isSessionLeaseOwner = hb.isOwner;
                 currentOwnerTabId = hb.currentOwnerTabInstanceId;
             }
 
             List<int> myActiveOpenSessionPks = sqlDataService.getActiveLockedSessionPksForEmployee(currentEmpPk);
+            var allActiveLeasesBySession = sqlDataService.getAllActiveSessionLeasesBySessionPk();
 
-            // 查詢屬於該成員的所有投票議程 (votingSessionPk 傳 null)，以便同時偵測是否有新議程出現
+            // 查詢屬於該成員的所有投票議程 (votingSessionPk 傳 null)，以便同時偵測是否有新議程出現與各議程進場人員狀態
             var votingDs = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spGetVotingProcessHistory", new Dictionary<string, object?>
             {
                 ["votingSessionPk"] = null,
@@ -1263,6 +1300,12 @@ public class portalController : Controller
                     currentRoundNumber = 0,
                     voteCount = 0,
                     participantCount = 0,
+                    enteredParticipantCount = 0,
+                    enteredParticipantNamesCsv = "",
+                    notEnteredParticipantNamesCsv = "",
+                    presenceSignature = "",
+                    participants = Array.Empty<object>(),
+                    sessionPresenceMap = new Dictionary<int, object>(),
                     isRevealed = false,
                     allSessionPks = Array.Empty<int>(),
                     ongoingSessionPks = Array.Empty<int>(),
@@ -1276,11 +1319,13 @@ public class portalController : Controller
             }
 
             DataTable sTable = votingDs.Tables[0];
+            DataTable? pTable = votingDs.Tables.Count > 3 ? votingDs.Tables[3] : null;
             var allSessionPks = new List<int>();
             var ongoingSessionPks = new List<int>();
             var pendingJoinSessionPks = new List<int>();
             var participatingSessionPks = new List<int>();
             var sigParts = new List<string>();
+            var sessionPresenceMap = new Dictionary<int, object>();
             int latestVotingPk = 0;
             int latestOngoingPk = 0;
             int newestPk = 0;
@@ -1299,6 +1344,63 @@ public class portalController : Controller
                     : 0;
                 bool isViewerPart = !r.Table.Columns.Contains("isViewerParticipant")
                     || (r["isViewerParticipant"] != DBNull.Value && Convert.ToBoolean(r["isViewerParticipant"]));
+
+                // 整合記憶體內即時 Lease 與資料庫進場狀態，計算此 Session 已經有哪些人進場了
+                var leaseDictForPk = allActiveLeasesBySession.TryGetValue(pk, out var lList)
+                    ? lList.GroupBy(x => x.employeePk).ToDictionary(g => g.Key, g => g.First())
+                    : new Dictionary<int, sqlDataService.votingSessionPresenceLease>();
+
+                var enteredNames = new List<string>();
+                var notEnteredNames = new List<string>();
+                var enteredEmpPks = new List<int>();
+
+                if (pTable != null)
+                {
+                    foreach (DataRow pr in pTable.Rows)
+                    {
+                        if (Convert.ToInt32(pr["votingSessionPk"]) != pk) continue;
+                        int empId = Convert.ToInt32(pr["employeePk"]);
+                        string empName = pr["employeeName"]?.ToString() ?? "";
+                        bool dbEntered = (pr.Table.Columns.Contains("isEnteredEffective") && pr["isEnteredEffective"] != DBNull.Value && Convert.ToBoolean(pr["isEnteredEffective"]))
+                            || (pr.Table.Columns.Contains("hasEnteredSession") && pr["hasEnteredSession"] != DBNull.Value && Convert.ToBoolean(pr["hasEnteredSession"]))
+                            || (pr.Table.Columns.Contains("hasVotedCurrentRound") && pr["hasVotedCurrentRound"] != DBNull.Value && Convert.ToBoolean(pr["hasVotedCurrentRound"]));
+                        bool isEntered = leaseDictForPk.ContainsKey(empId) || dbEntered || (sessionPk.HasValue && sessionPk.Value == pk && empId == currentEmpPk);
+                        if (isEntered)
+                        {
+                            enteredNames.Add(empName);
+                            enteredEmpPks.Add(empId);
+                        }
+                        else
+                        {
+                            notEnteredNames.Add(empName);
+                        }
+                    }
+                }
+
+                // 若為開放全體員工模式且無指定名單，亦將實際有開啟獨立網頁 Lease 的員工納入已進場名單
+                foreach (var kv in leaseDictForPk)
+                {
+                    if (!enteredEmpPks.Contains(kv.Key) && !string.IsNullOrWhiteSpace(kv.Value.employeeName))
+                    {
+                        enteredNames.Add(kv.Value.employeeName);
+                        enteredEmpPks.Add(kv.Key);
+                    }
+                }
+
+                int enteredCnt = enteredNames.Count;
+                int totalPartCnt = pc > 0 ? pc : Math.Max(enteredCnt + notEnteredNames.Count, enteredCnt);
+                string enteredCsv = string.Join("、", enteredNames);
+                string notEnteredCsv = string.Join("、", notEnteredNames);
+
+                sessionPresenceMap[pk] = new
+                {
+                    votingSessionPk = pk,
+                    enteredCount = enteredCnt,
+                    participantCount = totalPartCnt,
+                    enteredNamesCsv = enteredCsv,
+                    notEnteredNamesCsv = notEnteredCsv,
+                    enteredEmployeePks = enteredEmpPks
+                };
 
                 if (st == "finalized" || isViewerPart)
                 {
@@ -1321,7 +1423,7 @@ public class portalController : Controller
                     if (st == "voting" && pk > latestVotingPk) latestVotingPk = pk;
                 }
 
-                sigParts.Add($"{pk}:{st}:{rn}:{vc}:{pc}:{(isViewerPart ? 1 : 0)}");
+                sigParts.Add($"{pk}:{st}:{rn}:{vc}:{pc}:{enteredCnt}:{(isViewerPart ? 1 : 0)}");
 
                 if (sessionPk.HasValue && sessionPk.Value > 0 && pk == sessionPk.Value)
                 {
@@ -1344,6 +1446,62 @@ public class portalController : Controller
                 ? Convert.ToInt32(targetRow["participantCount"])
                 : 0;
 
+            var targetLeaseMap = allActiveLeasesBySession.TryGetValue(vsPk, out var targetLeases)
+                ? targetLeases.GroupBy(x => x.employeePk).ToDictionary(g => g.Key, g => g.First())
+                : new Dictionary<int, sqlDataService.votingSessionPresenceLease>();
+
+            var targetParticipants = new List<object>();
+            var targetEnteredNames = new List<string>();
+            var targetNotEnteredNames = new List<string>();
+            var presenceSigParts = new List<string>();
+
+            if (pTable != null)
+            {
+                foreach (DataRow pr in pTable.Rows)
+                {
+                    if (Convert.ToInt32(pr["votingSessionPk"]) != vsPk) continue;
+                    int empId = Convert.ToInt32(pr["employeePk"]);
+                    string empName = pr["employeeName"]?.ToString() ?? "";
+                    string deptName = pr["departmentName"]?.ToString() ?? "";
+                    bool hasVoted = pr.Table.Columns.Contains("hasVotedCurrentRound") && pr["hasVotedCurrentRound"] != DBNull.Value && Convert.ToBoolean(pr["hasVotedCurrentRound"]);
+                    bool dbEntered = (pr.Table.Columns.Contains("isEnteredEffective") && pr["isEnteredEffective"] != DBNull.Value && Convert.ToBoolean(pr["isEnteredEffective"]))
+                        || (pr.Table.Columns.Contains("hasEnteredSession") && pr["hasEnteredSession"] != DBNull.Value && Convert.ToBoolean(pr["hasEnteredSession"]))
+                        || hasVoted;
+                    bool hasLease = targetLeaseMap.TryGetValue(empId, out var empLease);
+                    bool isEntered = hasLease || dbEntered || (sessionPk.HasValue && sessionPk.Value == vsPk && empId == currentEmpPk);
+
+                    string enteredAtText = "";
+                    if (hasLease && empLease != null)
+                    {
+                        enteredAtText = empLease.enteredAtLocal.ToString("HH:mm");
+                    }
+                    else if (pr.Table.Columns.Contains("enteredAt") && pr["enteredAt"] != DBNull.Value)
+                    {
+                        enteredAtText = Convert.ToDateTime(pr["enteredAt"]).ToString("HH:mm");
+                    }
+
+                    if (isEntered)
+                    {
+                        targetEnteredNames.Add(empName);
+                    }
+                    else
+                    {
+                        targetNotEnteredNames.Add(empName);
+                    }
+
+                    presenceSigParts.Add($"{empId}:{(isEntered ? 1 : 0)}:{(hasVoted ? 1 : 0)}");
+                    targetParticipants.Add(new
+                    {
+                        employeePk = empId,
+                        employeeName = empName,
+                        departmentName = deptName,
+                        isEntered = isEntered,
+                        hasVoted = hasVoted,
+                        enteredAtText = enteredAtText
+                    });
+                }
+            }
+
             return Json(new
             {
                 found = true,
@@ -1352,6 +1510,12 @@ public class portalController : Controller
                 currentRoundNumber = curRound,
                 voteCount = voteCnt,
                 participantCount = partCnt,
+                enteredParticipantCount = targetEnteredNames.Count,
+                enteredParticipantNamesCsv = string.Join("、", targetEnteredNames),
+                notEnteredParticipantNamesCsv = string.Join("、", targetNotEnteredNames),
+                presenceSignature = string.Join(",", presenceSigParts),
+                participants = targetParticipants,
+                sessionPresenceMap = sessionPresenceMap,
                 isRevealed = sStatus == "revealed" || sStatus == "finalized",
                 allSessionPks = allSessionPks,
                 ongoingSessionPks = ongoingSessionPks,
@@ -1383,7 +1547,8 @@ public class portalController : Controller
             empPk,
             getCurrentEmployeeName(),
             votingSessionPk,
-            tabInstanceId);
+            tabInstanceId,
+            getCurrentDepartmentName());
         return Json(new
         {
             ok = true,
@@ -1399,7 +1564,7 @@ public class portalController : Controller
     [HttpPost("voting/session/leave")]
     [HttpGet("voting/session/leave")]
     [Authorize]
-    public IActionResult votingSessionLeave(
+    public async Task<IActionResult> votingSessionLeave(
         [FromQuery] int? sessionPk = null,
         [FromForm] int? votingSessionPk = null,
         [FromQuery] string? tabInstanceId = null,
@@ -1407,6 +1572,7 @@ public class portalController : Controller
         [FromQuery] bool redirectLobby = false)
     {
         int empPk = getCurrentEmployeePk();
+        string empName = getCurrentEmployeeName();
         int targetSessionPk = votingSessionPk ?? sessionPk ?? 0;
         string? resolvedTabId = !string.IsNullOrWhiteSpace(tabInstanceId) ? tabInstanceId : formTabInstanceId;
 
@@ -1426,7 +1592,39 @@ public class portalController : Controller
 
         if (targetSessionPk > 0 && empPk > 0)
         {
-            sqlDataService.releaseVotingSessionLease(empPk, targetSessionPk, resolvedTabId);
+            bool released = sqlDataService.releaseVotingSessionLease(empPk, targetSessionPk, resolvedTabId);
+            try
+            {
+                await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpdateVotingParticipantPresence", new Dictionary<string, object?>
+                {
+                    ["votingSessionPk"] = targetSessionPk,
+                    ["employeePk"] = empPk,
+                    ["isEntered"] = false
+                });
+            }
+            catch
+            {
+                // 忽略離場同步例外，避免影響頁面導向
+            }
+
+            if (released)
+            {
+                try
+                {
+                    await _hubContext.Clients.All.SendAsync("onVotingSessionUpdated", new
+                    {
+                        votingSessionPk = targetSessionPk,
+                        eventName = "participantLeft",
+                        employeePk = empPk,
+                        employeeName = empName,
+                        messageText = $"↩️ {empName} 已暫離盲投議程 (#{targetSessionPk})。",
+                        timestamp = DateTime.Now.ToString("HH:mm:ss")
+                    });
+                }
+                catch
+                {
+                }
+            }
         }
 
         if (redirectLobby)
@@ -1590,6 +1788,7 @@ public class portalController : Controller
     /// 1. 當一個人進入一個盲投 session 時，使用獨立的網頁進行這整個 session（非 Modal 彈窗）
     /// 2. 讓人可以同時以多個獨立網頁參與「不同」的 session
     /// 3. 但「同一個」session 不能重複進入（若已在另一個獨立網頁開啟同一場 session，立即攔截並顯示禁止重複進入畫面）
+    /// 4. 即時紀錄並呈現「已經有哪些人進場了」與「尚未進場人員」
     /// </summary>
     [HttpGet("voting/session")]
     [HttpGet("voting/session/{routeSessionPk:int}")]
@@ -1663,12 +1862,14 @@ public class portalController : Controller
             }
 
             // 檢核同一員工是否已在另一個獨立網頁進入同一個盲投 Session
+            bool hadLeaseBefore = sqlDataService.getActiveLockedSessionPksForEmployee(currentEmpPk).Contains(targetSessionPk);
             var (isAllowed, assignedTabInstanceId, conflictLease) = sqlDataService.tryEnterOrRefreshVotingSessionLease(
                 currentEmpPk,
                 getCurrentEmployeeName(),
                 targetSessionPk,
                 tabInstanceId,
-                reloadCookieTabId);
+                reloadCookieTabId,
+                getCurrentDepartmentName());
 
             if (!isAllowed && conflictLease != null)
             {
@@ -1686,6 +1887,50 @@ public class portalController : Controller
                     conflictLease,
                     sessionTable);
                 return Content(blockedHtml, "text/html; charset=utf-8");
+            }
+
+            // 同步更新資料庫中該員工於此盲投議程的進場狀態 (hasEnteredSession = 1)
+            try
+            {
+                await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpdateVotingParticipantPresence", new Dictionary<string, object?>
+                {
+                    ["votingSessionPk"] = targetSessionPk,
+                    ["employeePk"] = currentEmpPk,
+                    ["isEntered"] = true
+                });
+
+                // 同步更新記憶體內 participantTable 的進場欄位，確保初次載入畫面時立即反映本人與全體最新進場狀態
+                foreach (DataRow pr in participantTable.Rows)
+                {
+                    if (Convert.ToInt32(pr["votingSessionPk"]) == targetSessionPk &&
+                        Convert.ToInt32(pr["employeePk"]) == currentEmpPk)
+                    {
+                        if (pr.Table.Columns.Contains("hasEnteredSession")) pr["hasEnteredSession"] = true;
+                        if (pr.Table.Columns.Contains("isEnteredEffective")) pr["isEnteredEffective"] = true;
+                        if (pr.Table.Columns.Contains("enteredAt") && pr["enteredAt"] == DBNull.Value) pr["enteredAt"] = DateTime.Now;
+                        if (pr.Table.Columns.Contains("lastHeartbeatAt")) pr["lastHeartbeatAt"] = DateTime.Now;
+                    }
+                }
+
+                if (!hadLeaseBefore)
+                {
+                    string empName = getCurrentEmployeeName();
+                    string deptName = getCurrentDepartmentName();
+                    await _hubContext.Clients.All.SendAsync("onVotingSessionUpdated", new
+                    {
+                        votingSessionPk = targetSessionPk,
+                        eventName = "participantEntered",
+                        employeePk = currentEmpPk,
+                        employeeName = empName,
+                        departmentName = deptName,
+                        messageText = $"🟢 【{empName} ({deptName})】已進場加入盲投議程「{targetSessionRow["sessionCode"]} - {targetSessionRow["sessionTitle"]}」！",
+                        timestamp = DateTime.Now.ToString("HH:mm:ss")
+                    });
+                }
+            }
+            catch
+            {
+                // 若進場狀態更新發生非預期錯誤，不影響主頁面渲染
             }
 
             // 載入輔助資料表（供管理者在獨立網頁內也可調整牌組/受邀參與者設定）
@@ -5397,6 +5642,58 @@ public class portalController : Controller
                 </div>
                 <div class='voting-sidebar-body' id='votingSidebarBody'>");
 
+        var allActiveLeasesBySessionForLobby = sqlDataService.getAllActiveSessionLeasesBySessionPk();
+
+        // 輔助函式：取得指定 Session 目前已進場人數與名單（整合記憶體即時 Lease 與資料庫進場紀錄）
+        (int enteredCount, int totalCount, string enteredNamesText, string notEnteredNamesText) getSessionPresenceSummary(DataRow sRow)
+        {
+            int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
+            int partCnt = sRow.Table.Columns.Contains("participantCount") && sRow["participantCount"] != DBNull.Value
+                ? Convert.ToInt32(sRow["participantCount"]) : 0;
+
+            var leaseDict = allActiveLeasesBySessionForLobby.TryGetValue(sPk, out var lList)
+                ? lList.GroupBy(x => x.employeePk).ToDictionary(g => g.Key, g => g.First())
+                : new Dictionary<int, sqlDataService.votingSessionPresenceLease>();
+
+            var enteredList = new List<string>();
+            var notEnteredList = new List<string>();
+            var enteredIds = new HashSet<int>();
+
+            foreach (DataRow pr in participantTable.Rows)
+            {
+                if (Convert.ToInt32(pr["votingSessionPk"]) != sPk) continue;
+                int empId = Convert.ToInt32(pr["employeePk"]);
+                string empName = pr["employeeName"]?.ToString() ?? "";
+                bool dbEntered = (pr.Table.Columns.Contains("isEnteredEffective") && pr["isEnteredEffective"] != DBNull.Value && Convert.ToBoolean(pr["isEnteredEffective"]))
+                    || (pr.Table.Columns.Contains("hasEnteredSession") && pr["hasEnteredSession"] != DBNull.Value && Convert.ToBoolean(pr["hasEnteredSession"]))
+                    || (pr.Table.Columns.Contains("hasVotedCurrentRound") && pr["hasVotedCurrentRound"] != DBNull.Value && Convert.ToBoolean(pr["hasVotedCurrentRound"]));
+                if (leaseDict.ContainsKey(empId) || dbEntered)
+                {
+                    enteredList.Add(empName);
+                    enteredIds.Add(empId);
+                }
+                else
+                {
+                    notEnteredList.Add(empName);
+                }
+            }
+
+            foreach (var kv in leaseDict)
+            {
+                if (!enteredIds.Contains(kv.Key) && !string.IsNullOrWhiteSpace(kv.Value.employeeName))
+                {
+                    enteredList.Add(kv.Value.employeeName);
+                    enteredIds.Add(kv.Key);
+                }
+            }
+
+            int enteredCnt = enteredList.Count;
+            int totalCnt = partCnt > 0 ? partCnt : Math.Max(enteredCnt + notEnteredList.Count, enteredCnt);
+            string enteredCsv = enteredList.Count > 0 ? string.Join("、", enteredList) : "尚無人進場";
+            string notEnteredCsv = notEnteredList.Count > 0 ? string.Join("、", notEnteredList) : "全員已進場";
+            return (enteredCnt, totalCnt, enteredCsv, notEnteredCsv);
+        }
+
         // 輔助函式：渲染單一投票議程邊項（個人從「待參與」點選進入「參與中」獨立網頁；所有操作統一由滑鼠右鍵快捷選單提供，不放佔空間的按鈕）
         void renderSessionAgendaItem(DataRow sRow)
         {
@@ -5425,6 +5722,7 @@ public class portalController : Controller
             string itemDetailCollapsed = isFinalized ? "collapsed" : "";
             string toggleBtnText = isFinalized ? "▾ 詳情" : "▴ 收合";
             string jsSafeTitle = escapeJsString($"{sCodeStr} - {sTitleStr}");
+            var (enteredCnt, totalPartCnt, enteredNamesText, notEnteredNamesText) = getSessionPresenceSummary(sRow);
 
             string stateBadgeHtml = isFinalized
                 ? ""
@@ -5449,12 +5747,14 @@ public class portalController : Controller
                 <a href=""{titleHref}"" {titleTargetAttr} data-session-title-link=""{sPk}"" {titleOnClickAttr} style=""text-decoration:none;color:inherit;display:block;"">
                     <div style=""font-size:13px;font-weight:700;margin-bottom:3px;color:#0f172a;"">{h(sTitleStr)}</div>
                     <div style=""font-size:12px;color:#64748b;"">{h(sRow["targetKindText"])}{finalPtStr} <span style=""color:#2563eb;font-weight:600;"">｜🖱️ 右鍵選單</span></div>
+                    <div data-session-presence-text=""{sPk}"" style=""font-size:11.5px;color:#15803d;font-weight:700;margin-top:3px;background:#f0fdf4;border:1px solid #bbf7d0;padding:3px 7px;border-radius:6px;"">🟢 已進場：<strong>{enteredCnt} / {totalPartCnt}</strong> 人（{h(enteredNamesText)}）{(notEnteredNamesText != "全員已進場" ? $"<span style='color:#64748b;font-weight:600;'>｜⏳ 未進場：{h(notEnteredNamesText)}</span>" : "")}</div>
                     {(!string.IsNullOrWhiteSpace(decisionNote) ? $@"<div style=""font-size:12px;color:#15803d;font-weight:700;margin-top:3px;"">🏆 定案決議說明：{h(decisionNote)}</div>" : "")}
                 </a>
                 <div id=""session-detail-{sPk}"" class=""session-item-detail {itemDetailCollapsed}"">
                     <div>🎯 <strong>估算標的：</strong>{h(sRow["targetDisplayName"])}</div>
                     <div>📏 <strong>點數範圍：</strong>{minPt:0.##} ~ {maxPt:0.##} pt ｜ <strong>共識規則：</strong>{h(consensusText)}</div>
                     <div>👥 <strong>誰可參與：</strong>{(restrictPart ? $"僅限指定名單 ({partCnt} 人)" : $"全體啟用員工 (目前 {partCnt} 人)")}</div>
+                    <div data-session-presence-detail=""{sPk}"">🟢 <strong>已進場人員 ({enteredCnt}/{totalPartCnt})：</strong><span style=""color:#15803d;font-weight:700;"">{h(enteredNamesText)}</span> ｜ ⏳ <strong>待進場：</strong><span style=""color:#64748b;"">{h(notEnteredNamesText)}</span></div>
                     {(!string.IsNullOrWhiteSpace(goalNote) ? $"<div>📝 <strong>回合重點：</strong>{h(goalNote)}</div>" : "")}
                     {(!string.IsNullOrWhiteSpace(decisionNote) ? $@"<div style=""color:#166534;background:#dcfce7;border:1px solid #86efac;padding:4px 8px;border-radius:6px;margin-top:2px;"">🏆 <strong>定案決議說明：</strong>{h(decisionNote)}</div>" : "")}
                 </div>
@@ -5599,6 +5899,7 @@ public class portalController : Controller
             string consensusText = sRow.Table.Columns.Contains("consensusRuleText") ? (sRow["consensusRuleText"]?.ToString() ?? "對齊最接近費氏牌面") : "對齊最接近費氏牌面";
             bool isOpenNow = myLockedSessionSet.Contains(sPk);
             string jsCardTitle = escapeJsString($"{sCodeStr} - {sTitleStr}");
+            var (enteredCnt, totalPartCnt, enteredNamesText, notEnteredNamesText) = getSessionPresenceSummary(sRow);
 
             sb.Append($@"
                 <div class=""lobby-session-card sp-context-card"" id=""lobbySessionCard_{sPk}"" data-row-kind=""session"" data-session-pk=""{sPk}"" data-session-code=""{h(sCodeStr)}"" data-session-title=""{h(sTitleStr)}"" data-session-status=""{h(sStatus)}"" data-session-round=""{curRound}"" data-session-total-rounds=""{totalRoundCnt}"" data-session-locked=""{(isOpenNow ? "1" : "0")}"" data-return-tab=""voting"" style=""border:{(isOpenNow ? "2px solid #16a34a" : "1.5px solid #cbd5e1")};border-radius:10px;padding:12px 14px;background:{(isOpenNow ? "#f0fdf4" : "#f8fafc")};display:flex;flex-direction:column;justify-content:space-between;gap:8px;"" title=""💡 左鍵點選標題進入獨立盲投網頁｜按滑鼠右鍵開啟快捷選單（退出 Session、暫離移回待參與、重啟新一輪、全部重新開始、設定、刪除回合）"">
@@ -5616,7 +5917,10 @@ public class portalController : Controller
                         <div style=""font-size:12.5px;color:#334155;margin-bottom:3px;"">🎯 <strong>估算標的：</strong>{h(sRow["targetDisplayName"])} ({h(sRow["targetKindText"])})</div>
                         <div style=""font-size:12px;color:#64748b;"">
                             📏 點數範圍：{minPt:0.##}~{maxPt:0.##} pt ｜ 🧮 共識：{h(consensusText)}<br/>
-                            👥 本回合已出牌：<strong>{voteCnt} / {partCnt} 人</strong> ｜ 主持：{h(sRow["hostEmployeeName"])}
+                            🃏 本回合已出牌：<strong>{voteCnt} / {partCnt} 人</strong> ｜ 主持：{h(sRow["hostEmployeeName"])}
+                        </div>
+                        <div data-session-presence-text=""{sPk}"" style=""margin-top:6px;padding:5px 8px;border-radius:7px;background:#ecfdf5;border:1px solid #86efac;font-size:12px;color:#166534;font-weight:700;line-height:1.45;"">
+                            🟢 已進場：<strong>{enteredCnt} / {totalPartCnt}</strong> 人（{h(enteredNamesText)}）{(notEnteredNamesText != "全員已進場" ? $"<span style='color:#64748b;font-weight:600;'>｜⏳ 未進場：{h(notEnteredNamesText)}</span>" : "")}
                         </div>
                     </div>
                     <div style=""display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:#64748b;padding-top:6px;border-top:1px dashed #cbd5e1;"">
@@ -5712,7 +6016,7 @@ public class portalController : Controller
                 <div>
                     <span style='font-size:18px;'>⚙️ 多人盲投回合開始前設定 (Pre-Round Configuration Wizard)</span>
                     <div style='font-size:12.5px;color:#64748b;font-weight:normal;margin-top:3px;'>
-                        投票主要投「<strong>基本工項 (如：資料庫健檢)</strong>」：先選擇「<strong>目標工項代表類型 (專案、維運、顧問時數...)</strong>」自動帶出一般工項基本規範與一般 Story Point 範圍，再選擇要投票的基本工項！
+                        若是新增「<strong>基本工項 (如：資料庫健檢)</strong>」的投票，只要設定<strong>參照類型（專案、維運、顧問時數...）</strong>；若是新增「<strong>一般工項 (如：集保健檢)</strong>」的投票，應該設定<strong>該一般工項要參照的基本工項</strong>！
                     </div>
                 </div>
                 <button type='button' class='btn btn-outline' onclick=""switchTab('voting')"">🔙 返回多人即時盲投大廳</button>
@@ -5775,28 +6079,23 @@ public class portalController : Controller
                 <!-- 區塊 1：投什麼 (What to vote on) -->
                 <div class='setup-section'>
                     <div class='setup-section-title'>
-                        <span>1️⃣ 投什麼：選擇估算標的、目標工項代表類型（專案、維運、顧問時數...）與目標基本工項（如：資料庫健檢）</span>
-                        <span class='badge badge-user'>必填項目｜投票主要投「基本工項」</span>
+                        <span>1️⃣ 投什麼：選擇估算標的（新增「基本工項」投票只要參照類型；新增「一般工項」投票應設定要參照的基本工項）</span>
+                        <span class='badge badge-user'>必填項目｜基本工項參照類型・一般工項參照基本工項</span>
                     </div>
                     <div class='form-row'>
                         <div>
-                            <label data-tip='多人盲投主要投「基本工項（如：資料庫健檢）」，定案後一般工項（如：集保健檢）即可套用其標準 Story Point 並可微調；亦可針對單一特殊「一般工項」進行投票' title='多人盲投主要投「基本工項（如：資料庫健檢）」，定案後一般工項（如：集保健檢）即可套用其標準 Story Point 並可微調'>估算標的類型 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='若是新增「基本工項」的投票，只要參照工項類型（專案、維運、顧問時數...）；若是新增「一般工項」的投票，應該設定該一般工項要參照的基本工項（如：資料庫健檢）' title='若是新增「基本工項」的投票，只要參照工項類型（專案、維運、顧問時數...）；若是新增「一般工項」的投票，應該設定該一般工項要參照的基本工項（如：資料庫健檢）'>估算標的類型 <span class='sp-tip-icon'>ⓘ</span></label>
                             <select name='targetKind' id='setupTargetKind' onchange='toggleSetupTargetKind()'>
-                                <option value='workItemType'>🏷️ 投「基本工項」(主要投票標的，如：資料庫健檢；定案後供一般工項套用標準點數)</option>
-                                <option value='workItem'>📋 投「一般工項」(針對單一特殊一般工項如：集保健檢 微調或估算點數)</option>
+                                <option value='workItemType'>🏷️ 投「基本工項」(主要投票標的，如：資料庫健檢；新增基本工項投票只要參照類型)</option>
+                                <option value='workItem'>📋 投「一般工項」(針對單一特殊一般工項如：集保健檢；新增一般工項投票應設定要參照的基本工項)</option>
                             </select>
                         </div>
                         <div id='setupBoxType' style='grid-column: span 2;'>
-                            <div style='display:grid;grid-template-columns:1fr 1.25fr;gap:10px;'>
+                            <div style='display:grid;grid-template-columns:1.25fr 1fr;gap:10px;'>
                                 <div>
-                                    <label data-tip='帶入 3-3 工項類型（專案、維運、顧問時數、教育訓練、開發產品...等），自動告知該類型的一般工項基本規範與一般 Story Point 範圍上下限' title='帶入 3-3 工項類型（專案、維運、顧問時數、教育訓練、開發產品...等），自動告知該類型的一般工項基本規範與一般 Story Point 範圍上下限'>目標工項代表類型 (專案、維運、顧問時數...) <span class='sp-tip-icon'>ⓘ</span></label>
-                                    <select name='defaultWorkItemKind' id='setupWorkItemKind' onchange='onSetupWorkItemKindChange()' style='border-color:#2563eb;font-weight:700;background:#eff6ff;'>
-                                        " + dynamicKindOptionsHtml + @"
-                                    </select>
-                                </div>
-                                <div>
-                                    <label data-tip='選擇本回合要進行多人盲投估算的「3-2 基本工項」（如：資料庫健檢、資料庫效能調校；基本工項無起訖時間，定案後供一般工項套用 SP）' title='選擇本回合要進行多人盲投估算的「3-2 基本工項」（如：資料庫健檢、資料庫效能調校；基本工項無起訖時間，定案後供一般工項套用 SP）'>目標基本工項 (如：資料庫健檢｜無起訖時間) <span class='sp-tip-icon'>ⓘ</span></label>
+                                    <label data-tip='選擇本回合要進行多人盲投估算的「3-2 基本工項」（如：資料庫健檢），或選「➕ 依下方盲投議程標題自動建立新基本工項」（新增基本工項的投票，只要設定右方參照類型）' title='選擇本回合要進行多人盲投估算的「3-2 基本工項」（如：資料庫健檢），或選「➕ 依下方盲投議程標題自動建立新基本工項」（新增基本工項的投票，只要設定右方參照類型）'>目標基本工項 (如：資料庫健檢｜無起訖時間) <span class='sp-tip-icon'>ⓘ</span></label>
                                     <select name='workItemTypePk' id='setupWorkItemTypePk' onchange='onSetupBasicWorkItemSelectChange()'>");
+            var refBasicTypeOptionsBuilder = new StringBuilder();
             foreach (DataRow tRow in typeTable.Rows)
             {
                 string tCodeVal = tRow["typeCode"]?.ToString() ?? "";
@@ -5807,25 +6106,52 @@ public class portalController : Controller
                 string optIconPrefix = isImageIconValue(rawIconVal)
                     ? (tKindVal == "maintenance" ? "🛠️" : tKindVal == "consultingHour" ? "⏳" : tKindVal == "training" ? "🎓" : tKindVal == "productDevelopment" ? "🚀" : "🏗️")
                     : rawIconVal;
+                string stdPtVal = tRow["standardStoryPoint"] != DBNull.Value ? Convert.ToDecimal(tRow["standardStoryPoint"]).ToString("0.##", CultureInfo.InvariantCulture) : "5";
                 string curPt = tRow["standardStoryPoint"] != DBNull.Value ? $" (目前標準: {tRow["standardStoryPoint"]} pt)" : " (待估算)";
                 string displayLabel = $"{optIconPrefix} [{tKindTextVal}] {tNameVal} ({tCodeVal}){curPt}";
-                sb.Append($"<option value='{tRow["workItemTypePk"]}' data-code='{h(tCodeVal)}' data-kind='{h(tKindVal)}' data-name='{h(tNameVal)}'>{h(displayLabel)}</option>");
+                string optTag = $"<option value='{tRow["workItemTypePk"]}' data-code='{h(tCodeVal)}' data-kind='{h(tKindVal)}' data-kind-name='{h(tKindTextVal)}' data-icon='{h(rawIconVal)}' data-name='{h(tNameVal)}' data-std-pt='{h(stdPtVal)}'>{h(displayLabel)}</option>";
+                sb.Append(optTag);
+                refBasicTypeOptionsBuilder.Append(optTag);
             }
-            sb.Append(@"<option value='0' data-code='' data-kind='' data-name=''>➕ 依下方「盲投議程標題」自動建立新基本工項</option>
+            string refBasicTypeOptionsHtml = refBasicTypeOptionsBuilder.ToString();
+            sb.Append(@"<option value='0' data-code='' data-kind='' data-kind-name='' data-icon='' data-name='' data-std-pt=''>➕ 依下方「盲投議程標題」自動建立新基本工項（只要參照右方類型）</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label data-tip='若是新增基本工項的投票，只要參照類型（專案、維運、顧問時數、教育訓練、開發產品...），自動帶出該類型的一般工項基本規範與一般 Story Point 範圍上下限' title='若是新增基本工項的投票，只要參照類型（專案、維運、顧問時數、教育訓練、開發產品...），自動帶出該類型的一般工項基本規範與一般 Story Point 範圍上下限'>參照工項類型 (專案、維運、顧問時數...｜新增基本工項只要參照類型) <span class='sp-tip-icon'>ⓘ</span></label>
+                                    <select name='defaultWorkItemKind' id='setupWorkItemKind' onchange='onSetupWorkItemKindChange()' style='border-color:#2563eb;font-weight:700;background:#eff6ff;'>
+                                        " + dynamicKindOptionsHtml + @"
                                     </select>
                                 </div>
                             </div>
                             <div id='setupKindNormBanner' style='margin-top:8px;'></div>
                         </div>
                         <div id='setupBoxItem' style='display:none;grid-column: span 2;'>
-                            <label data-tip='選擇本回合要單獨進行多人盲投估算的「3-1 一般工項」（如：集保健檢；一般工項才有起訖時間，通常直接套用基本工項 SP 並可微調）' title='選擇本回合要單獨進行多人盲投估算的「3-1 一般工項」（如：集保健檢；一般工項才有起訖時間，通常直接套用基本工項 SP 並可微調）'>目標一般工項 (如：集保健檢｜具起訖時間) <span class='sp-tip-icon'>ⓘ</span></label>
-                            <select name='workItemPk' id='setupWorkItemPk' onchange='autoFillSetupTitle()'>");
+                            <div style='display:grid;grid-template-columns:1.15fr 1.15fr;gap:10px;'>
+                                <div>
+                                    <label data-tip='選擇本回合要進行多人盲投估算的「3-1 一般工項」（如：集保健檢），或選「➕ 依下方盲投議程標題自動建立新一般工項」（新增一般工項的投票，應於右方設定該一般工項要參照的基本工項）' title='選擇本回合要進行多人盲投估算的「3-1 一般工項」（如：集保健檢），或選「➕ 依下方盲投議程標題自動建立新一般工項」（新增一般工項的投票，應於右方設定該一般工項要參照的基本工項）'>目標一般工項 (如：集保健檢｜具起訖時間) <span class='sp-tip-icon'>ⓘ</span></label>
+                                    <select name='workItemPk' id='setupWorkItemPk' onchange='onSetupWorkItemSelectChange()'>");
             foreach (DataRow wRow in itemTable.Rows)
             {
-                sb.Append($"<option value='{wRow["workItemPk"]}' data-name='{h(wRow["itemTitle"])}'>{h(wRow["itemCode"])} - {h(wRow["itemTitle"])} (目前: {wRow["storyPoint"]} pt)</option>");
+                string wCodeVal = wRow["itemCode"]?.ToString() ?? "";
+                string wTitleVal = wRow["itemTitle"]?.ToString() ?? "";
+                string wRefTypePkVal = wRow.Table.Columns.Contains("workItemTypePk") && wRow["workItemTypePk"] != DBNull.Value ? wRow["workItemTypePk"].ToString()! : "";
+                string wRefTypeNameVal = wRow.Table.Columns.Contains("typeName") && wRow["typeName"] != DBNull.Value ? wRow["typeName"].ToString()! : "";
+                string wKindVal = wRow.Table.Columns.Contains("workItemKind") && wRow["workItemKind"] != DBNull.Value ? wRow["workItemKind"].ToString()! : "project";
+                string wRefDisplay = !string.IsNullOrWhiteSpace(wRefTypeNameVal) ? $"參照基本工項: {wRefTypeNameVal}｜" : "";
+                sb.Append($"<option value='{wRow["workItemPk"]}' data-code='{h(wCodeVal)}' data-name='{h(wTitleVal)}' data-ref-type-pk='{h(wRefTypePkVal)}' data-ref-type-name='{h(wRefTypeNameVal)}' data-kind='{h(wKindVal)}'>{h(wCodeVal)} - {h(wTitleVal)} ({h(wRefDisplay)}目前: {wRow["storyPoint"]} pt)</option>");
             }
-            sb.Append(@"<option value='0' data-name=''>➕ 依下方「盲投議程標題」自動建立新一般工項</option>
-                            </select>
+            sb.Append(@"<option value='0' data-code='' data-name='' data-ref-type-pk='' data-ref-type-name='' data-kind=''>➕ 依下方「盲投議程標題」自動建立新一般工項（請設定右方要參照的基本工項）</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label data-tip='若是新增一般工項的投票，應該設定該一般工項要參照的基本工項（如：資料庫健檢）！一般工項會自動承接該基本工項所屬類型、基本規範與基準點數' title='若是新增一般工項的投票，應該設定該一般工項要參照的基本工項（如：資料庫健檢）！一般工項會自動承接該基本工項所屬類型、基本規範與基準點數'>該一般工項要參照的基本工項 (如：資料庫健檢｜決定所屬類型與基準點數) <span class='sp-tip-icon'>ⓘ</span></label>
+                                    <select name='referencedWorkItemTypePk' id='setupItemRefTypePk' onchange='onSetupItemRefTypeChange()' style='border-color:#2563eb;font-weight:700;background:#eff6ff;'>
+                                        " + refBasicTypeOptionsHtml + @"
+                                    </select>
+                                </div>
+                            </div>
+                            <div id='setupItemRefNormBanner' style='margin-top:8px;'></div>
                         </div>
                     </div>
                     <div class='form-row' style='margin-bottom:0;'>
@@ -6056,6 +6382,7 @@ public class portalController : Controller
             string rowDecisionNote = sRow.Table.Columns.Contains("finalDecisionNote") && sRow["finalDecisionNote"] != DBNull.Value
                 ? (sRow["finalDecisionNote"]?.ToString() ?? "").Trim()
                 : "";
+            var (setupEnteredCnt, setupTotalCnt, setupEnteredNames, setupNotEnteredNames) = getSessionPresenceSummary(sRow);
 
             sb.Append($@"
                         <tr class='sp-context-row' data-row-kind='session' data-row-title='{h(sCodeStr)} - {h(sTitleStr)}' data-session-pk='{sPk}' data-session-code='{h(sCodeStr)}' data-session-title='{h(sTitleStr)}' data-session-status='{h(sStatus)}' data-session-round='{curRoundNum}' data-session-total-rounds='{totalRoundCnt}' title='💡 按滑鼠右鍵選擇此筆議程紀錄並開啟操作選單（彈出 Modal 單筆編輯、進入獨立盲投網頁、刪除此盲投回合／議程）'>
@@ -6074,7 +6401,10 @@ public class portalController : Controller
                                 <strong>{h(sRow["targetDisplayName"])}</strong>
                             </td>
                             <td><strong>{minPt:0.##} ~ {maxPt:0.##} pt</strong></td>
-                            <td>{(restPart ? $"🔒 指定名單 ({pCnt} 人)" : $"🌐 全體員工 ({pCnt} 人)")}</td>
+                            <td>
+                                <div>{(restPart ? $"🔒 指定名單 ({pCnt} 人)" : $"🌐 全體員工 ({pCnt} 人)")}</div>
+                                <div data-session-presence-text='{sPk}' style='font-size:11.5px;color:#15803d;font-weight:700;margin-top:3px;'>🟢 已進場：{setupEnteredCnt}/{setupTotalCnt} 人（{h(setupEnteredNames)}）</div>
+                            </td>
                             <td>{h(cRuleText)}<br/><span style='font-size:11.5px;color:#64748b;'>分歧警示門檻：{maxSpread:0.##} pt</span></td>
                             <td>
                                 自動翻牌：{(autoRev ? "✅ 是" : "手動")} ｜ 計時：{(tSec > 0 ? $"{tSec}秒" : "不限")}<br/>
@@ -8431,6 +8761,9 @@ public class portalController : Controller
             string tKind = sRow["targetKind"]?.ToString() ?? "workItemType";
             int tTypePk = sRow["workItemTypePk"] != DBNull.Value ? Convert.ToInt32(sRow["workItemTypePk"]) : 0;
             int tItemPk = sRow["workItemPk"] != DBNull.Value ? Convert.ToInt32(sRow["workItemPk"]) : 0;
+            int refTypePk = sRow.Table.Columns.Contains("referencedWorkItemTypePk") && sRow["referencedWorkItemTypePk"] != DBNull.Value
+                ? Convert.ToInt32(sRow["referencedWorkItemTypePk"])
+                : 0;
             int deckPk = sRow.Table.Columns.Contains("cardDeckPk") && sRow["cardDeckPk"] != DBNull.Value ? Convert.ToInt32(sRow["cardDeckPk"]) : 1;
             decimal minPt = sRow.Table.Columns.Contains("minStoryPoint") && sRow["minStoryPoint"] != DBNull.Value ? Convert.ToDecimal(sRow["minStoryPoint"]) : 0.5m;
             decimal maxPt = sRow.Table.Columns.Contains("maxStoryPoint") && sRow["maxStoryPoint"] != DBNull.Value ? Convert.ToDecimal(sRow["maxStoryPoint"]) : 21m;
@@ -8451,7 +8784,7 @@ public class portalController : Controller
             if (totalRoundCnt < 1) totalRoundCnt = 1;
 
             sessionMetaJsonList.Add(
-                $"'{sPk}':{{pk:{sPk},code:'{sCodeVal}',title:'{sTitle}',sessionStatus:'{sStatusVal}',currentRoundNumber:{curRoundNum},totalRoundCount:{totalRoundCnt},targetKind:'{tKind}',workItemTypePk:{tTypePk},workItemPk:{tItemPk},cardDeckPk:{deckPk}," +
+                $"'{sPk}':{{pk:{sPk},code:'{sCodeVal}',title:'{sTitle}',sessionStatus:'{sStatusVal}',currentRoundNumber:{curRoundNum},totalRoundCount:{totalRoundCnt},targetKind:'{tKind}',workItemTypePk:{tTypePk},referencedWorkItemTypePk:{refTypePk},workItemPk:{tItemPk},cardDeckPk:{deckPk}," +
                 $"minStoryPoint:{minPt.ToString(CultureInfo.InvariantCulture)},maxStoryPoint:{maxPt.ToString(CultureInfo.InvariantCulture)}," +
                 $"maxAllowedSpread:{maxSpread.ToString(CultureInfo.InvariantCulture)},consensusRule:'{cRule}'," +
                 $"autoRevealWhenAllVoted:{(autoRev ? "true" : "false")},roundTimeLimitSecond:{tSec}," +
@@ -8669,10 +9002,15 @@ public class portalController : Controller
             const boxItem = document.getElementById('setupBoxItem');
             if (boxType) boxType.style.display = (kind === 'workItemType') ? 'block' : 'none';
             if (boxItem) boxItem.style.display = (kind === 'workItem') ? 'block' : 'none';
+            if (kind === 'workItemType') {
+                onSetupWorkItemKindChange(true);
+            } else {
+                onSetupWorkItemSelectChange(true);
+            }
             autoFillSetupTitle();
         }
 
-        function onSetupWorkItemKindChange(skipSyncTypeDropdown) {
+        function onSetupWorkItemKindChange(skipAutoTitle) {
             const kindSel = document.getElementById('setupWorkItemKind');
             const banner = document.getElementById('setupKindNormBanner');
             if (!kindSel) return;
@@ -8692,7 +9030,7 @@ public class portalController : Controller
                         <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:4px;"">
                             <span style=""font-weight:800;color:#1e3a8a;display:inline-flex;align-items:center;gap:6px;"">
                                 ${renderIconHtmlJs(kIcon, kName)}
-                                <span>目前所選工項代表類型【${escapeModalHtml(kName)} (${escapeModalHtml(kCode)})】之一般工項基本規範：</span>
+                                <span>目前所選參照工項類型【${escapeModalHtml(kName)} (${escapeModalHtml(kCode)})】之一般工項基本規範：</span>
                             </span>
                             <span class=""badge"" style=""background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;font-size:12px;font-weight:800;"">📐 此類型一般 Story Point 範圍：${escapeModalHtml(kMinPt)} ~ ${escapeModalHtml(kMaxPt)} pt</span>
                         </div>
@@ -8712,17 +9050,7 @@ public class portalController : Controller
                 updateSetupCardPreview();
             }
 
-            if (!skipSyncTypeDropdown) {
-                const typeSel = document.getElementById('setupWorkItemTypePk');
-                if (typeSel) {
-                    const curOpt = typeSel.options[typeSel.selectedIndex];
-                    if (!curOpt || curOpt.value === '0' || curOpt.getAttribute('data-kind') !== kCode) {
-                        const matchOpt = Array.from(typeSel.options).find(o => o.value !== '0' && o.getAttribute('data-kind') === kCode);
-                        if (matchOpt) {
-                            typeSel.value = matchOpt.value;
-                        }
-                    }
-                }
+            if (!skipAutoTitle) {
                 autoFillSetupTitle();
             }
         }
@@ -8741,6 +9069,79 @@ public class portalController : Controller
             autoFillSetupTitle();
         }
 
+        function onSetupWorkItemSelectChange(skipAutoTitle) {
+            const wiSel = document.getElementById('setupWorkItemPk');
+            const refTypeSel = document.getElementById('setupItemRefTypePk');
+            if (wiSel && refTypeSel) {
+                const opt = wiSel.options[wiSel.selectedIndex];
+                const refTypePk = opt?.getAttribute('data-ref-type-pk') || '';
+                if (refTypePk && String(opt.value) !== '0') {
+                    refTypeSel.value = String(refTypePk);
+                }
+            }
+            onSetupItemRefTypeChange(true);
+            if (!skipAutoTitle) {
+                autoFillSetupTitle();
+            }
+        }
+
+        function onSetupItemRefTypeChange(skipAutoTitle) {
+            const refTypeSel = document.getElementById('setupItemRefTypePk');
+            const banner = document.getElementById('setupItemRefNormBanner');
+            const kindSel = document.getElementById('setupWorkItemKind');
+            if (!refTypeSel) return;
+            const refOpt = refTypeSel.options[refTypeSel.selectedIndex];
+            const refName = refOpt?.getAttribute('data-name') || '';
+            const refCode = refOpt?.getAttribute('data-code') || '';
+            const refKind = refOpt?.getAttribute('data-kind') || 'project';
+            const refKindName = refOpt?.getAttribute('data-kind-name') || '專案';
+            const refStdPt = refOpt?.getAttribute('data-std-pt') || '5';
+            const refIcon = refOpt?.getAttribute('data-icon') || '🏗️';
+
+            // 同步 defaultWorkItemKind 為所參照基本工項之工項類型
+            if (kindSel && refKind && kindSel.value !== refKind) {
+                kindSel.value = refKind;
+            }
+            const kindOpt = kindSel ? Array.from(kindSel.options).find(o => (o.getAttribute('data-kind-code') || o.value) === refKind) : null;
+            const kMinPt = kindOpt?.getAttribute('data-kind-min-pt') || '1';
+            const kMaxPt = kindOpt?.getAttribute('data-kind-max-pt') || '8';
+            const kFeature = kindOpt?.getAttribute('data-kind-feature') || '';
+            const kEst = kindOpt?.getAttribute('data-kind-estimation') || '';
+            const kDeliv = kindOpt?.getAttribute('data-kind-deliverable') || '';
+
+            if (banner) {
+                banner.innerHTML = `
+                    <div style=""background:#f0f9ff;border:1.5px solid #93c5fd;border-radius:9px;padding:10px 12px;font-size:12.5px;color:#0f172a;line-height:1.5;"">
+                        <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:4px;"">
+                            <span style=""font-weight:800;color:#1e3a8a;display:inline-flex;align-items:center;gap:6px;"">
+                                ${renderIconHtmlJs(refIcon, refKindName)}
+                                <span>目前一般工項所參照的基本工項【${escapeModalHtml(refName)} (${escapeModalHtml(refCode)})】｜所屬類型：${escapeModalHtml(refKindName)} (${escapeModalHtml(refKind)})</span>
+                            </span>
+                            <div style=""display:flex;gap:6px;flex-wrap:wrap;"">
+                                <span class=""badge"" style=""background:#fef3c7;color:#92400e;border:1px solid #fcd34d;font-size:12px;font-weight:800;"">🏷️ 參照基本工項標準點數：${escapeModalHtml(refStdPt)} pt</span>
+                                <span class=""badge"" style=""background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;font-size:12px;font-weight:800;"">📐 所屬類型一般 SP 範圍：${escapeModalHtml(kMinPt)} ~ ${escapeModalHtml(kMaxPt)} pt</span>
+                            </div>
+                        </div>
+                        ${kFeature ? `<div><strong>⭐ 基本規範一（核心工作性質）：</strong><span>${escapeModalHtml(kFeature)}</span></div>` : ''}
+                        ${kEst ? `<div><strong>📐 基本規範二（點數範圍與計量規範）：</strong><span style=""color:#1e40af;font-weight:700;"">${escapeModalHtml(kEst)}</span></div>` : ''}
+                        ${kDeliv ? `<div><strong>⏰ 基本規範三（一般工項起訖與交付規範）：</strong><span style=""color:#334155;"">${escapeModalHtml(kDeliv)}</span></div>` : ''}
+                    </div>`;
+            }
+
+            const selSession = document.getElementById('setupSessionSelector');
+            if (!selSession || selSession.value === '') {
+                const minInput = document.getElementById('setupMinStoryPoint');
+                const maxInput = document.getElementById('setupMaxStoryPoint');
+                if (minInput && kMinPt) minInput.value = kMinPt;
+                if (maxInput && kMaxPt) maxInput.value = kMaxPt;
+                updateSetupCardPreview();
+            }
+
+            if (!skipAutoTitle) {
+                autoFillSetupTitle();
+            }
+        }
+
         function autoFillSetupTitle() {
             const selSession = document.getElementById('setupSessionSelector');
             if (selSession && selSession.value !== '') return; // 修改既有議程時不自動覆蓋標題
@@ -8754,19 +9155,28 @@ public class portalController : Controller
                 const sel = document.getElementById('setupWorkItemTypePk');
                 const opt = sel?.options[sel.selectedIndex];
                 const name = opt?.getAttribute('data-name') || '';
-                if (name) {
+                if (name && String(opt?.value) !== '0') {
                     titleInput.value = '【基本工項盲投｜' + kindName + '】' + name + ' 標準點數訂定';
                 } else {
-                    titleInput.placeholder = '請輸入新基本工項名稱（例如：資料庫健檢）';
+                    if (titleInput.value.indexOf('【') === 0) {
+                        titleInput.value = '';
+                    }
+                    titleInput.placeholder = '請輸入新基本工項名稱（例如：資料庫健檢，將參照【' + kindName + '】類型建立）';
                 }
             } else {
                 const sel = document.getElementById('setupWorkItemPk');
                 const opt = sel?.options[sel.selectedIndex];
                 const name = opt?.getAttribute('data-name') || '';
-                if (name) {
-                    titleInput.value = '【一般工項微調盲投】' + name;
+                const refTypeSel = document.getElementById('setupItemRefTypePk');
+                const refOpt = refTypeSel?.options[refTypeSel.selectedIndex];
+                const refName = refOpt?.getAttribute('data-name') || '';
+                if (name && String(opt?.value) !== '0') {
+                    titleInput.value = '【一般工項微調盲投' + (refName ? '｜參照：' + refName : '') + '】' + name;
                 } else {
-                    titleInput.placeholder = '請輸入新一般工項名稱（例如：集保健檢）';
+                    if (titleInput.value.indexOf('【') === 0) {
+                        titleInput.value = '';
+                    }
+                    titleInput.placeholder = '請輸入新一般工項名稱（例如：集保健檢' + (refName ? '，將參照基本工項【' + refName + '】建立' : '') + '）';
                 }
             }
         }
@@ -8948,8 +9358,15 @@ public class portalController : Controller
             toggleSetupTargetKind();
             if (cfg.targetKind === 'workItemType' && cfg.workItemTypePk > 0) {
                 document.getElementById('setupWorkItemTypePk').value = cfg.workItemTypePk;
+                onSetupBasicWorkItemSelectChange();
             } else if (cfg.targetKind === 'workItem' && cfg.workItemPk > 0) {
                 document.getElementById('setupWorkItemPk').value = cfg.workItemPk;
+                if (cfg.referencedWorkItemTypePk > 0 && document.getElementById('setupItemRefTypePk')) {
+                    document.getElementById('setupItemRefTypePk').value = String(cfg.referencedWorkItemTypePk);
+                    onSetupItemRefTypeChange(true);
+                } else {
+                    onSetupWorkItemSelectChange(true);
+                }
             }
             document.getElementById('setupSessionTitle').value = cfg.title || '';
             document.getElementById('setupRoundGoalNote').value = cfg.roundGoalNote || '';
@@ -9015,8 +9432,10 @@ public class portalController : Controller
                     toggleSetupTargetKind();
                     if (targetKind === 'workItemType' && targetPk) {
                         document.getElementById('setupWorkItemTypePk').value = String(targetPk);
+                        onSetupBasicWorkItemSelectChange();
                     } else if (targetKind === 'workItem' && targetPk) {
                         document.getElementById('setupWorkItemPk').value = String(targetPk);
+                        onSetupWorkItemSelectChange();
                     }
                     autoFillSetupTitle();
                 }
@@ -9122,6 +9541,7 @@ public class portalController : Controller
             initAllSortableLockableTables();
             initTableRowContextMenu();
             onSetupWorkItemKindChange(true);
+            onSetupWorkItemSelectChange(true);
             if (document.getElementById('setupSessionTitle') && !document.getElementById('setupSessionTitle').value) {
                 autoFillSetupTitle();
             }
@@ -10716,7 +11136,50 @@ public class portalController : Controller
             const kEst = opt.getAttribute('data-kind-estimation') || '';
             if (banner) {
                 banner.innerHTML = `<div style=""background:#f0f9ff;border:1px solid #93c5fd;border-radius:7px;padding:7px 10px;font-size:12px;color:#0f172a;margin-top:6px;line-height:1.45;"">
-                    <div><strong style=""color:#1e3a8a;"">${renderIconHtmlJs(kIcon, kName)} 【${escapeModalHtml(kName)}】工項基本規範與一般 Story Point 範圍：</strong><span class=""badge"" style=""background:#dbeafe;color:#1d4ed8;font-weight:800;margin-left:4px;"">一般 SP 範圍：${kMin} ~ ${kMax} pt</span></div>
+                    <div><strong style=""color:#1e3a8a;"">${renderIconHtmlJs(kIcon, kName)} 參照類型【${escapeModalHtml(kName)}】工項基本規範與一般 Story Point 範圍：</strong><span class=""badge"" style=""background:#dbeafe;color:#1d4ed8;font-weight:800;margin-left:4px;"">一般 SP 範圍：${kMin} ~ ${kMax} pt</span></div>
+                    ${kFeature ? `<div style=""margin-top:2px;""><strong>⭐ 基本規範：</strong>${escapeModalHtml(kFeature)}</div>` : ''}
+                    ${kEst ? `<div style=""margin-top:2px;color:#1e40af;""><strong>📐 估算規範：</strong>${escapeModalHtml(kEst)}</div>` : ''}
+                </div>`;
+            }
+            const minInput = document.getElementById('modalSetupMinPt');
+            const maxInput = document.getElementById('modalSetupMaxPt');
+            if (minInput && !isNaN(kMin)) minInput.value = kMin;
+            if (maxInput && !isNaN(kMax)) maxInput.value = kMax;
+            updateModalSessionCardPreview();
+        }
+
+        function onModalSetupItemRefTypeChange() {
+            const refSel = document.getElementById('modalSetupItemRefTypePk');
+            const banner = document.getElementById('modalSetupItemRefNormBanner');
+            const kSel = document.getElementById('modalSetupWorkItemKind');
+            if (!refSel) return;
+            const refOpt = refSel.options[refSel.selectedIndex];
+            if (!refOpt) return;
+            const refName = refOpt.getAttribute('data-name') || '';
+            const refCode = refOpt.getAttribute('data-code') || '';
+            const refKind = refOpt.getAttribute('data-kind') || 'project';
+            const refKindName = refOpt.getAttribute('data-kind-name') || '專案';
+            const refStdPt = refOpt.getAttribute('data-std-pt') || '5';
+            const refIcon = refOpt.getAttribute('data-icon') || '🏗️';
+
+            if (kSel && refKind && kSel.value !== refKind) {
+                kSel.value = refKind;
+            }
+            const kindOpt = kSel ? Array.from(kSel.options).find(o => (o.getAttribute('data-kind-code') || o.value) === refKind) : null;
+            const kMin = parseFloat(kindOpt?.getAttribute('data-kind-min-pt') || '0.5');
+            const kMax = parseFloat(kindOpt?.getAttribute('data-kind-max-pt') || '21');
+            const kFeature = kindOpt?.getAttribute('data-kind-feature') || '';
+            const kEst = kindOpt?.getAttribute('data-kind-estimation') || '';
+
+            if (banner) {
+                banner.innerHTML = `<div style=""background:#f0f9ff;border:1px solid #93c5fd;border-radius:7px;padding:7px 10px;font-size:12px;color:#0f172a;margin-top:6px;line-height:1.45;"">
+                    <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;"">
+                        <strong style=""color:#1e3a8a;"">${renderIconHtmlJs(refIcon, refKindName)} 參照基本工項【${escapeModalHtml(refName)} (${escapeModalHtml(refCode)})】｜所屬類型：${escapeModalHtml(refKindName)}</strong>
+                        <div>
+                            <span class=""badge"" style=""background:#fef3c7;color:#92400e;font-weight:800;"">標準點數：${escapeModalHtml(refStdPt)} pt</span>
+                            <span class=""badge"" style=""background:#dbeafe;color:#1d4ed8;font-weight:800;margin-left:4px;"">類型一般 SP 範圍：${kMin} ~ ${kMax} pt</span>
+                        </div>
+                    </div>
                     ${kFeature ? `<div style=""margin-top:2px;""><strong>⭐ 基本規範：</strong>${escapeModalHtml(kFeature)}</div>` : ''}
                     ${kEst ? `<div style=""margin-top:2px;color:#1e40af;""><strong>📐 估算規範：</strong>${escapeModalHtml(kEst)}</div>` : ''}
                 </div>`;
@@ -10741,9 +11204,26 @@ public class portalController : Controller
                     kSel.value = optKind;
                     onModalSetupKindChange();
                 }
+            } else if (tKind === 'workItem' && opt) {
+                const refTypePk = opt.getAttribute('data-ref-type-pk') || '';
+                const refSel = document.getElementById('modalSetupItemRefTypePk');
+                if (refTypePk && refSel && String(opt.value) !== '0') {
+                    refSel.value = String(refTypePk);
+                }
+                onModalSetupItemRefTypeChange();
             }
-            if (opt && String(opt.value) !== '0' && (!titleInput.value || titleInput.value.indexOf('【') === 0)) {
-                titleInput.value = (tKind === 'workItem' ? '【一般工項點數盲投】' : '【基本工項點數盲投】') + opt.text.split('(')[0].replace(/^\[[^\]]+\]\s*/, '').trim();
+            if (opt && String(opt.value) !== '0') {
+                if (!titleInput.value || titleInput.value.indexOf('【') === 0) {
+                    const cleanName = opt.getAttribute('data-name') || opt.text.split('(')[0].replace(/^\[[^\]]+\]\s*/, '').trim();
+                    titleInput.value = (tKind === 'workItem' ? '【一般工項點數盲投】' : '【基本工項點數盲投】') + cleanName;
+                }
+            } else if (opt && String(opt.value) === '0') {
+                if (titleInput.value.indexOf('【') === 0) {
+                    titleInput.value = '';
+                }
+                titleInput.placeholder = tKind === 'workItem'
+                    ? '請輸入新一般工項名稱（例如：集保健檢，將參照右方所選基本工項建立）'
+                    : '請輸入新基本工項名稱（例如：資料庫健檢，只要參照右方類型建立）';
             }
         }
 
@@ -10764,10 +11244,12 @@ public class portalController : Controller
             const tKind = targetKindOverride || (cfg ? cfg.targetKind : 'workItemType');
             const wiTypePk = (tKind === 'workItemType' && targetPkOverride) ? targetPkOverride : (cfg ? cfg.workItemTypePk : 0);
             const wiPk = (tKind === 'workItem' && targetPkOverride) ? targetPkOverride : (cfg ? cfg.workItemPk : 0);
+            const refWiTypePk = cfg && cfg.referencedWorkItemTypePk > 0 ? cfg.referencedWorkItemTypePk : 0;
             const kindOptionsHtml = document.getElementById('setupWorkItemKind')
                 ? document.getElementById('setupWorkItemKind').innerHTML
                 : (document.getElementById('typeKind') ? document.getElementById('typeKind').innerHTML : '<option value=""project"">🏗️ 專案 (project)</option>');
             const typeOptionsHtml = document.getElementById('setupWorkItemTypePk') ? document.getElementById('setupWorkItemTypePk').innerHTML : '';
+            const refTypeOptionsHtml = document.getElementById('setupItemRefTypePk') ? document.getElementById('setupItemRefTypePk').innerHTML : typeOptionsHtml;
             const wiOptionsHtml = document.getElementById('setupWorkItemPk') ? document.getElementById('setupWorkItemPk').innerHTML : '';
             const deckOptionsHtml = document.getElementById('setupCardDeckPk') ? document.getElementById('setupCardDeckPk').innerHTML : '<option value=""1"">標準 Fibonacci 牌組</option>';
             const deptQuickOptionsHtml = document.getElementById('setupQuickDeptSelect') ? document.getElementById('setupQuickDeptSelect').innerHTML : '<option value="""">-- 選擇部門一鍵加入勾選 --</option>';
@@ -10780,7 +11262,7 @@ public class portalController : Controller
                         ? Array.from(srcSel.options).find(o => String(o.value) === String(targetPkOverride))
                         : srcSel.options[0];
                     if (matchOpt && String(matchOpt.value) !== '0') {
-                        defaultTitle = (tKind === 'workItem' ? '【一般工項點數盲投】' : '【基本工項點數盲投】') + matchOpt.text.split('(')[0].replace(/^\[[^\]]+\]\s*/, '').trim();
+                        defaultTitle = (tKind === 'workItem' ? '【一般工項點數盲投】' : '【基本工項點數盲投】') + (matchOpt.getAttribute('data-name') || matchOpt.text.split('(')[0].replace(/^\[[^\]]+\]\s*/, '').trim());
                     }
                 }
             }
@@ -10835,28 +11317,37 @@ public class portalController : Controller
                     </div>
                     <div class=""form-row"">
                         <div>
-                            <label>1️⃣ 估算標的層級（投票主要投基本工項）</label>
+                            <label>1️⃣ 估算標的層級（基本工項參照類型・一般工項參照基本工項）</label>
                             <select name=""targetKind"" id=""modalSetupTargetKind"" onchange=""const isWi=this.value==='workItem'; document.getElementById('modalSetupTypeBox').style.display=isWi?'none':''; document.getElementById('modalSetupWiBox').style.display=isWi?'':'none'; onModalSessionTargetOptionChange();"">
-                                <option value=""workItemType"" ${tKind === 'workItemType' ? 'selected' : ''}>🏷️ 基本工項 (3-2 tbWorkItemType，如：資料庫健檢 - 推薦主要投票標的)</option>
-                                <option value=""workItem"" ${tKind === 'workItem' ? 'selected' : ''}>📋 一般工項 (3-1 tbWorkItem，如：集保健檢 - 個別微調估算)</option>
+                                <option value=""workItemType"" ${tKind === 'workItemType' ? 'selected' : ''}>🏷️ 投「基本工項」(如：資料庫健檢｜新增基本工項投票只要參照類型)</option>
+                                <option value=""workItem"" ${tKind === 'workItem' ? 'selected' : ''}>📋 投「一般工項」(如：集保健檢｜新增一般工項投票應設定要參照的基本工項)</option>
                             </select>
                         </div>
                         <div id=""modalSetupTypeBox"" style=""grid-column: span 2; ${tKind === 'workItem' ? 'display:none;' : ''}"">
-                            <div style=""display:grid;grid-template-columns:1fr 1.2fr;gap:8px;"">
-                                <div>
-                                    <label>目標工項代表類型（專案、維運、顧問時數...）</label>
-                                    <select name=""defaultWorkItemKind"" id=""modalSetupWorkItemKind"" onchange=""onModalSetupKindChange()"" style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">${kindOptionsHtml}</select>
-                                </div>
+                            <div style=""display:grid;grid-template-columns:1.2fr 1fr;gap:8px;"">
                                 <div>
                                     <label>目標基本工項（如：資料庫健檢）</label>
                                     <select name=""workItemTypePk"" id=""modalSetupWorkItemTypePk"" onchange=""onModalSessionTargetOptionChange()"">${typeOptionsHtml}</select>
+                                </div>
+                                <div>
+                                    <label>參照工項類型（專案、維運、顧問時數...｜新增基本工項只要參照類型）</label>
+                                    <select name=""defaultWorkItemKind"" id=""modalSetupWorkItemKind"" onchange=""onModalSetupKindChange()"" style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">${kindOptionsHtml}</select>
                                 </div>
                             </div>
                             <div id=""modalSetupKindNormBanner""></div>
                         </div>
                         <div id=""modalSetupWiBox"" style=""grid-column: span 2; ${tKind === 'workItem' ? '' : 'display:none;'}"">
-                            <label>選擇一般工項（如：集保健檢）</label>
-                            <select name=""workItemPk"" id=""modalSetupWorkItemPk"" onchange=""onModalSessionTargetOptionChange()"">${wiOptionsHtml}</select>
+                            <div style=""display:grid;grid-template-columns:1.15fr 1.15fr;gap:8px;"">
+                                <div>
+                                    <label>目標一般工項（如：集保健檢）</label>
+                                    <select name=""workItemPk"" id=""modalSetupWorkItemPk"" onchange=""onModalSessionTargetOptionChange()"">${wiOptionsHtml}</select>
+                                </div>
+                                <div>
+                                    <label>該一般工項要參照的基本工項（如：資料庫健檢）</label>
+                                    <select name=""referencedWorkItemTypePk"" id=""modalSetupItemRefTypePk"" onchange=""onModalSetupItemRefTypeChange()"" style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">${refTypeOptionsHtml}</select>
+                                </div>
+                            </div>
+                            <div id=""modalSetupItemRefNormBanner""></div>
                         </div>
                     </div>
                     <div class=""form-row"">
@@ -10993,11 +11484,20 @@ public class portalController : Controller
                     document.getElementById('modalSetupWorkItemKind').value = selOpt.getAttribute('data-kind');
                 }
             }
-            if (document.getElementById('modalSetupWorkItemPk') && wiPk) document.getElementById('modalSetupWorkItemPk').value = String(wiPk);
+            if (document.getElementById('modalSetupWorkItemPk') && wiPk) {
+                document.getElementById('modalSetupWorkItemPk').value = String(wiPk);
+                const wSel = document.getElementById('modalSetupWorkItemPk');
+                const wOpt = wSel.options[wSel.selectedIndex];
+                const wRefTypePk = refWiTypePk > 0 ? String(refWiTypePk) : (wOpt ? (wOpt.getAttribute('data-ref-type-pk') || '') : '');
+                if (wRefTypePk && document.getElementById('modalSetupItemRefTypePk')) {
+                    document.getElementById('modalSetupItemRefTypePk').value = String(wRefTypePk);
+                }
+            }
             if (cfg && document.getElementById('modalSetupDeckPk') && cfg.cardDeckPk) document.getElementById('modalSetupDeckPk').value = String(cfg.cardDeckPk);
             if (cfg && document.getElementById('modalSetupConsensusRule')) document.getElementById('modalSetupConsensusRule').value = cfg.consensusRule || 'nearestFibonacci';
             if (cfg && document.getElementById('modalSetupTimeSec') && cfg.roundTimeLimitSecond !== undefined) document.getElementById('modalSetupTimeSec').value = String(cfg.roundTimeLimitSecond);
             onModalSetupKindChange();
+            onModalSetupItemRefTypeChange();
             if (cfg) {
                 if (document.getElementById('modalSetupMinPt')) document.getElementById('modalSetupMinPt').value = cfg.minStoryPoint;
                 if (document.getElementById('modalSetupMaxPt')) document.getElementById('modalSetupMaxPt').value = cfg.maxStoryPoint;
@@ -13583,6 +14083,28 @@ public class portalController : Controller
                 });
         }
 
+        function updateLobbySessionPresenceDisplay(presenceMap) {
+            if (!presenceMap || typeof presenceMap !== 'object') return;
+            Object.keys(presenceMap).forEach(function (pkKey) {
+                const info = presenceMap[pkKey];
+                if (!info) return;
+                const entCnt = Number(info.enteredCount || 0);
+                const partCnt = Number(info.participantCount || 0);
+                const entNames = info.enteredNamesCsv ? String(info.enteredNamesCsv) : '尚無人進場';
+                const notEntNames = info.notEnteredNamesCsv ? String(info.notEnteredNamesCsv) : '全員已進場';
+                const safeEnt = entNames.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const safeNotEnt = notEntNames.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+                document.querySelectorAll('[data-session-presence-text=""' + pkKey + '""]').forEach(function (el) {
+                    el.innerHTML = '🟢 已進場：<strong>' + entCnt + ' / ' + partCnt + '</strong> 人（' + safeEnt + '）' +
+                        (notEntNames !== '全員已進場' ? '<span style=""color:#64748b;font-weight:600;"">｜⏳ 未進場：' + safeNotEnt + '</span>' : '');
+                });
+                document.querySelectorAll('[data-session-presence-detail=""' + pkKey + '""]').forEach(function (el) {
+                    el.innerHTML = '🟢 <strong>已進場人員 (' + entCnt + '/' + partCnt + ')：</strong><span style=""color:#15803d;font-weight:700;"">' + safeEnt + '</span> ｜ ⏳ <strong>待進場：</strong><span style=""color:#64748b;"">' + safeNotEnt + '</span>';
+                });
+            });
+        }
+
         // 檢查並自動同步屬於該成員的最新投票議程與大廳鎖定狀態
         function pollMemberVotingStatus(preferSessionPk, customNewSessionMsg) {
             if (isAutoReloading) return;
@@ -13592,6 +14114,9 @@ public class portalController : Controller
                     if (!data) return;
                     if (Array.isArray(data.myActiveOpenSessionPks)) {
                         updateLobbyActiveSessionLocks(data.myActiveOpenSessionPks);
+                    }
+                    if (data.sessionPresenceMap) {
+                        updateLobbySessionPresenceDisplay(data.sessionPresenceMap);
                     }
                     if (!data.found) return;
 
@@ -15901,34 +16426,33 @@ public class portalController : Controller
                 CategoryName = "🃏 多人即時盲投與回合設定",
                 RoleScope = "admin",
                 RoleBadge = "<span class='badge badge-admin'>👑 管理者主持適用</span>",
-                Title = "設定盲投回合（主要投基本工項、先選工項代表類型帶出規範與 SP 範圍、誰可參與與共識規則）",
-                Keywords = "設定回合 盲投開始前設定 估算標的 基本工項 資料庫健檢 目標工項代表類型 專案 維運 顧問時數 一般SP範圍 最低點數 最高點數 共識規則 nearestFibonacci 分歧門檻 倒數計時 受邀參與者 快速範本",
+                Title = "設定盲投回合（新增基本工項投票只要參照類型；新增一般工項投票應設定要參照的基本工項）",
+                Keywords = "設定回合 盲投開始前設定 估算標的 基本工項 資料庫健檢 參照類型 參照基本工項 一般工項 集保健檢 專案 維運 顧問時數 一般SP範圍 最低點數 最高點數 共識規則 nearestFibonacci 分歧門檻 倒數計時 受邀參與者 快速範本",
                 RouteUrl = "http://localhost:5088/?tab=roundSetup",
                 ImageFile = "/help/images/screen_04_round_setup.png",
                 ActionHtml = isStandalonePage
                     ? "<a href='/?tab=roundSetup' class='btn btn-primary' style='padding:6px 12px;font-size:12px;'>⚙️ 前往設定盲投回合</a>"
                     : "<div style='display:flex;gap:6px;flex-wrap:wrap;'><button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12px;' onclick=\"switchTab('roundSetup')\">⚡ 切換至「2. ⚙️ 設定回合 (1-2)」頁面</button>" +
                       (isAdmin ? "<button type='button' class='btn btn-outline' style='padding:6px 12px;font-size:12px;border-color:#2563eb;color:#1d4ed8;' onclick=\"openSessionSetupEditModal(0)\">🪟 直接彈出「快速發起盲投 Modal」</button>" : "") + "</div>",
-                Summary = "投票主要投「3-2 基本工項（如：資料庫健檢）」。於盲投開始前先選擇「目標工項代表類型（專案、維運、顧問時數...）」自動帶出基本規範與該類型一般 Story Point 範圍上下限，再選擇或建立要投票的「目標基本工項」，設定受邀參與成員名單、共識演算法與單回合思考倒數計時。",
+                Summary = "若是新增「3-2 基本工項（如：資料庫健檢）」的投票，只要設定「參照工項類型（專案、維運、顧問時數...）」自動帶出基本規範與該類型一般 Story Point 範圍上下限；若是新增「3-1 一般工項（如：集保健檢）」的投票，則應設定「該一般工項要參照的基本工項（如：資料庫健檢）」，自動承接該基本工項所屬類型、基本規範與基準點數。",
                 Steps = new[]
                 {
                     "點擊頂部「<strong>2. ⚙️ 設定回合</strong>」主選單（或「1. 🃏 多人估算 ➔ 1-2. 設定盲投回合」），或於大廳點擊「<strong>⚡ 快速發起盲投議程 (彈出 Modal)</strong>」；可一鍵套用上方「<strong>📐 標準 Scrum 範本</strong>」、「<strong>🚀 快速閃電範本</strong>」或「<strong>🏛️ 嚴謹架構評審範本</strong>」。",
-                    "<strong>設定【1. 投什麼（主要投基本工項）】</strong>：預設選擇「<strong>🏷️ 基本工項 (3-2 <code>tbWorkItemType</code>，如：資料庫健檢)</strong>」。先選擇「<strong>目標工項代表類型（專案、維運、顧問時數、教育訓練、開發產品...）</strong>」，畫面即自動顯示該類型的一般工項基本規範與一般 Story Point 範圍（如維運 <code>0.5 ~ 5 pt</code>、專案 <code>3 ~ 21 pt</code>），接著選擇或自動建立要投票的「<strong>目標基本工項（如：資料庫健檢）</strong>」；若有特殊個案亦可切換為針對「📋 一般工項 (3-1，如：集保健檢)」進行個別微調盲投。",
-                    "<strong>設定【2. 點數上下限與規則】</strong>：切換目標工項代表類型時，系統會自動將該類型的一般 SP 範圍帶入本回合的最低點數 (<code>minStoryPoint</code>) 與最高點數 (<code>maxStoryPoint</code>)，主持人亦可依需求微調、選擇撲克牌組、共識計算規則（對齊費氏數列、算術平均、中位數、眾數等）與計時秒數，下方會即時預覽本回合可投出的撲克牌面。",
+                    "<strong>設定【1. 投什麼】— 投「基本工項」vs 投「一般工項」</strong>：<br/>• <strong>🏷️ 投「基本工項」(3-2 <code>tbWorkItemType</code>)</strong>：可選既有基本工項重投，或選「<code>➕ 依下方盲投議程標題自動建立新基本工項</code>」；<strong>若是新增基本工項的投票，只要於右方設定「參照工項類型（專案、維運、顧問時數...）」</strong>，畫面即自動顯示該類型的基本規範與一般 SP 範圍。<br/>• <strong>📋 投「一般工項」(3-1 <code>tbWorkItem</code>)</strong>：可選既有一般工項微調重投，或選「<code>➕ 依下方盲投議程標題自動建立新一般工項</code>」；<strong>若是新增一般工項的投票，應該於右方設定「該一般工項要參照的基本工項（如：資料庫健檢）」</strong>，自動帶出該基本工項的標準點數、所屬類型基本規範與一般 SP 範圍。",
+                    "<strong>設定【2. 點數上下限與規則】</strong>：切換參照工項類型（投基本工項時）或參照基本工項（投一般工項時），系統會自動將對應類型的一般 SP 範圍帶入本回合的最低點數 (<code>minStoryPoint</code>) 與最高點數 (<code>maxStoryPoint</code>)，主持人亦可依需求微調、選擇撲克牌組、共識計算規則與計時秒數，下方即時預覽本回合可投出的撲克牌面。",
                     "<strong>設定【3. 誰可以參與】</strong>：支援「全選啟用員工」、「依部門批次勾選」或「僅勾選該工項負責員工」，最後點擊「<strong>🚀 儲存回合設定並開啟盲投桌面</strong>」。"
                 },
                 Callouts = new[]
                 {
-                    "① 投票主要投「3-2 基本工項（如：資料庫健檢）」",
-                    "② 先選「目標工項代表類型（專案/維運/顧問時數...）」自動帶出基本規範與一般 SP 範圍",
+                    "① 新增「基本工項」的投票：只要設定參照工項類型（專案/維運/顧問時數...）",
+                    "② 新增「一般工項」的投票：應該設定該一般工項要參照的基本工項（如：資料庫健檢）",
                     "③ 設定最低/最高 Story Point、共識規則與即時撲克牌面預覽",
                     "④ 依部門或全選勾選受邀參與員工並儲存啟動盲投"
                 },
                 UiDiagramHtml = @"<div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
                     <span class='badge' style='background:#1e293b;color:#fff;'>畫面元件示意：</span>
-                    <span style='background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;padding:3px 8px;border-radius:6px;font-weight:700;'>🗂️ 目標工項代表類型：[ 🛠️ 維運 (0.5~5pt) ▼ ]</span>
-                    <span style='background:#f0fdf4;border:1px solid #86efac;color:#166534;padding:3px 8px;border-radius:6px;font-weight:700;'>🏷️ 目標基本工項：[ 資料庫健檢 ▼ ]</span>
-                    <span style='background:#fff;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-weight:700;'>📉 最低：0.5 pt ～ 📈 最高：5 pt</span>
+                    <span style='background:#f0fdf4;border:1px solid #86efac;color:#166534;padding:3px 8px;border-radius:6px;font-weight:700;'>🏷️ 投基本工項 ➔ 只要參照類型 [ 🛠️ 維運 ▼ ]</span>
+                    <span style='background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;padding:3px 8px;border-radius:6px;font-weight:700;'>📋 投一般工項 ➔ 設定要參照的基本工項 [ 資料庫健檢 ▼ ]</span>
                     <span style='background:#2563eb;color:#fff;padding:3px 9px;border-radius:6px;font-weight:800;'>🚀 儲存回合設定並開啟盲投桌面</span>
                 </div>"
             },

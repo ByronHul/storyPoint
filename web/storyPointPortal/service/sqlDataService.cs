@@ -39,12 +39,13 @@ public class sqlDataService
     public static readonly string serverBootAuthToken = Guid.NewGuid().ToString("N");
 
     /// <summary>
-    /// 員工進入獨立盲投 Session 網頁之即時佔用鎖定紀錄（允許同一人同時以多個獨立網頁參與不同 Session，但嚴格禁止重複進入同一個 Session）
+    /// 員工進入獨立盲投 Session 網頁之即時佔用鎖定與進場紀錄（允許同一人同時以多個獨立網頁參與不同 Session，但嚴格禁止重複進入同一個 Session，並即時呈現已進場人員清單）
     /// </summary>
     public sealed class votingSessionPresenceLease
     {
         public int employeePk { get; set; }
         public string employeeName { get; set; } = string.Empty;
+        public string departmentName { get; set; } = string.Empty;
         public int votingSessionPk { get; set; }
         public string tabInstanceId { get; set; } = string.Empty;
         public DateTime enteredAtLocal { get; set; }
@@ -53,7 +54,7 @@ public class sqlDataService
 
     private static readonly ConcurrentDictionary<string, votingSessionPresenceLease> _activeVotingSessionLeases = new(StringComparer.OrdinalIgnoreCase);
     private static readonly object _leaseSyncLock = new();
-    private const double _leaseExpirationSeconds = 45.0;
+    private const double _leaseExpirationSeconds = 90.0;
 
     /// <summary>
     /// 嘗試進入或續約特定員工對特定盲投議程之獨立網頁佔用鎖定。
@@ -65,7 +66,8 @@ public class sqlDataService
         string employeeName,
         int votingSessionPk,
         string? requestedTabInstanceId,
-        string? reloadTokenTabInstanceId = null)
+        string? reloadTokenTabInstanceId = null,
+        string? departmentName = null)
     {
         if (employeePk <= 0 || votingSessionPk <= 0)
         {
@@ -74,6 +76,7 @@ public class sqlDataService
 
         string key = $"{employeePk}_{votingSessionPk}";
         DateTime nowUtc = DateTime.UtcNow;
+        DateTime nowTaipei = nowUtc.AddHours(8);
 
         lock (_leaseSyncLock)
         {
@@ -103,6 +106,10 @@ public class sqlDataService
                     {
                         existing.employeeName = employeeName;
                     }
+                    if (!string.IsNullOrWhiteSpace(departmentName))
+                    {
+                        existing.departmentName = departmentName;
+                    }
                     return (true, existing.tabInstanceId, null);
                 }
 
@@ -118,9 +125,10 @@ public class sqlDataService
             {
                 employeePk = employeePk,
                 employeeName = employeeName ?? string.Empty,
+                departmentName = departmentName ?? string.Empty,
                 votingSessionPk = votingSessionPk,
                 tabInstanceId = assignedId,
-                enteredAtLocal = DateTime.Now,
+                enteredAtLocal = nowTaipei,
                 lastHeartbeatUtc = nowUtc
             };
             _activeVotingSessionLeases[key] = newLease;
@@ -136,7 +144,8 @@ public class sqlDataService
         int employeePk,
         string employeeName,
         int votingSessionPk,
-        string? tabInstanceId)
+        string? tabInstanceId,
+        string? departmentName = null)
     {
         if (employeePk <= 0 || votingSessionPk <= 0 || string.IsNullOrWhiteSpace(tabInstanceId))
         {
@@ -146,6 +155,7 @@ public class sqlDataService
         string key = $"{employeePk}_{votingSessionPk}";
         string cleanId = tabInstanceId.Trim();
         DateTime nowUtc = DateTime.UtcNow;
+        DateTime nowTaipei = nowUtc.AddHours(8);
 
         lock (_leaseSyncLock)
         {
@@ -154,7 +164,11 @@ public class sqlDataService
                 if ((nowUtc - existing.lastHeartbeatUtc).TotalSeconds > _leaseExpirationSeconds)
                 {
                     existing.tabInstanceId = cleanId;
-                    existing.employeeName = employeeName ?? existing.employeeName;
+                    existing.employeeName = !string.IsNullOrWhiteSpace(employeeName) ? employeeName : existing.employeeName;
+                    if (!string.IsNullOrWhiteSpace(departmentName))
+                    {
+                        existing.departmentName = departmentName;
+                    }
                     existing.lastHeartbeatUtc = nowUtc;
                     return (true, cleanId);
                 }
@@ -162,6 +176,14 @@ public class sqlDataService
                 if (string.Equals(existing.tabInstanceId, cleanId, StringComparison.OrdinalIgnoreCase))
                 {
                     existing.lastHeartbeatUtc = nowUtc;
+                    if (!string.IsNullOrWhiteSpace(employeeName))
+                    {
+                        existing.employeeName = employeeName;
+                    }
+                    if (!string.IsNullOrWhiteSpace(departmentName))
+                    {
+                        existing.departmentName = departmentName;
+                    }
                     return (true, existing.tabInstanceId);
                 }
 
@@ -172,9 +194,10 @@ public class sqlDataService
             {
                 employeePk = employeePk,
                 employeeName = employeeName ?? string.Empty,
+                departmentName = departmentName ?? string.Empty,
                 votingSessionPk = votingSessionPk,
                 tabInstanceId = cleanId,
-                enteredAtLocal = DateTime.Now,
+                enteredAtLocal = nowTaipei,
                 lastHeartbeatUtc = nowUtc
             };
             _activeVotingSessionLeases[key] = recreated;
@@ -238,6 +261,81 @@ public class sqlDataService
         }
 
         return releasedCount;
+    }
+
+    /// <summary>
+    /// 取得指定盲投議程 (votingSessionPk) 目前所有已進場且活躍中之員工清單
+    /// </summary>
+    public static List<votingSessionPresenceLease> getActivePresentLeasesForSession(int votingSessionPk)
+    {
+        var result = new List<votingSessionPresenceLease>();
+        if (votingSessionPk <= 0)
+        {
+            return result;
+        }
+
+        DateTime nowUtc = DateTime.UtcNow;
+
+        lock (_leaseSyncLock)
+        {
+            foreach (var kv in _activeVotingSessionLeases.ToArray())
+            {
+                if (kv.Value.votingSessionPk != votingSessionPk)
+                {
+                    continue;
+                }
+
+                if ((nowUtc - kv.Value.lastHeartbeatUtc).TotalSeconds <= _leaseExpirationSeconds)
+                {
+                    result.Add(kv.Value);
+                }
+                else
+                {
+                    _activeVotingSessionLeases.TryRemove(kv.Key, out _);
+                }
+            }
+        }
+
+        return result
+            .OrderBy(x => x.enteredAtLocal)
+            .ThenBy(x => x.employeePk)
+            .ToList();
+    }
+
+    /// <summary>
+    /// 取得全系統各盲投議程 (votingSessionPk) 目前已進場且活躍中之員工清單映射表
+    /// </summary>
+    public static Dictionary<int, List<votingSessionPresenceLease>> getAllActiveSessionLeasesBySessionPk()
+    {
+        var map = new Dictionary<int, List<votingSessionPresenceLease>>();
+        DateTime nowUtc = DateTime.UtcNow;
+
+        lock (_leaseSyncLock)
+        {
+            foreach (var kv in _activeVotingSessionLeases.ToArray())
+            {
+                if ((nowUtc - kv.Value.lastHeartbeatUtc).TotalSeconds <= _leaseExpirationSeconds)
+                {
+                    if (!map.TryGetValue(kv.Value.votingSessionPk, out var list))
+                    {
+                        list = new List<votingSessionPresenceLease>();
+                        map[kv.Value.votingSessionPk] = list;
+                    }
+                    list.Add(kv.Value);
+                }
+                else
+                {
+                    _activeVotingSessionLeases.TryRemove(kv.Key, out _);
+                }
+            }
+        }
+
+        foreach (var k in map.Keys.ToList())
+        {
+            map[k] = map[k].OrderBy(x => x.enteredAtLocal).ThenBy(x => x.employeePk).ToList();
+        }
+
+        return map;
     }
 
     /// <summary>

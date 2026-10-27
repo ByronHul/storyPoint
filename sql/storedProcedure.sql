@@ -2472,6 +2472,22 @@ begin
                 end
             end
 
+            declare @prevEnteredParticipants table (
+                employeePk int primary key,
+                hasEnteredSession bit,
+                enteredAt datetime2(3),
+                lastHeartbeatAt datetime2(3),
+                joinedAt datetime2(3)
+            );
+
+            insert into @prevEnteredParticipants (
+                employeePk, hasEnteredSession, enteredAt, lastHeartbeatAt, joinedAt
+            )
+            select
+                employeePk, hasEnteredSession, enteredAt, lastHeartbeatAt, joinedAt
+            from storyPoint.tbVotingSessionParticipant
+            where votingSessionPk = @sessionPk;
+
             delete from storyPoint.tbVotingSessionParticipant
             where votingSessionPk = @sessionPk;
         end
@@ -2540,33 +2556,48 @@ begin
             where pk = @workItemTypePk;
         end
 
-        -- 建立授權參與投票之員工清單
+        -- 建立授權參與投票之員工清單（若為既有議程則保留已進場人員之進場狀態與時間）
         if isnull(ltrim(rtrim(@participantPkCsv)), '') <> ''
         begin
             insert into storyPoint.tbVotingSessionParticipant (
-                votingSessionPk, employeePk, isRequiredVoter, joinedAt
+                votingSessionPk, employeePk, isRequiredVoter,
+                hasEnteredSession, enteredAt, lastHeartbeatAt, joinedAt
             )
             select distinct
                 @sessionPk,
-                try_cast(ltrim(rtrim(s.value)) as int),
+                e.pk,
                 1,
-                sysdatetime()
-            from string_split(@participantPkCsv, ',') as s
+                isnull(prev.hasEnteredSession, 0),
+                prev.enteredAt,
+                prev.lastHeartbeatAt,
+                isnull(prev.joinedAt, sysdatetime())
+            from (
+                select distinct try_cast(ltrim(rtrim(s.value)) as int) as empPk
+                from string_split(@participantPkCsv, ',') as s
+            ) as parsed
             inner join storyPoint.tbEmployee as e
-                on e.pk = try_cast(ltrim(rtrim(s.value)) as int)
+                on e.pk = parsed.empPk
+            left join @prevEnteredParticipants as prev
+                on prev.employeePk = e.pk
             where e.isActive = 1;
         end
         else
         begin
             insert into storyPoint.tbVotingSessionParticipant (
-                votingSessionPk, employeePk, isRequiredVoter, joinedAt
+                votingSessionPk, employeePk, isRequiredVoter,
+                hasEnteredSession, enteredAt, lastHeartbeatAt, joinedAt
             )
             select
                 @sessionPk,
                 e.pk,
                 1,
-                sysdatetime()
+                isnull(prev.hasEnteredSession, 0),
+                prev.enteredAt,
+                prev.lastHeartbeatAt,
+                isnull(prev.joinedAt, sysdatetime())
             from storyPoint.tbEmployee as e
+            left join @prevEnteredParticipants as prev
+                on prev.employeePk = e.pk
             where e.isActive = 1;
         end
 
@@ -2817,11 +2848,22 @@ begin
         if not exists (select 1 from storyPoint.tbVotingSessionParticipant where votingSessionPk = @votingSessionPk and employeePk = @employeePk)
         begin
             insert into storyPoint.tbVotingSessionParticipant (
-                votingSessionPk, employeePk, isRequiredVoter, joinedAt
+                votingSessionPk, employeePk, isRequiredVoter,
+                hasEnteredSession, enteredAt, lastHeartbeatAt, joinedAt
             )
             values (
-                @votingSessionPk, @employeePk, 1, sysdatetime()
+                @votingSessionPk, @employeePk, 1,
+                1, sysdatetime(), sysdatetime(), sysdatetime()
             );
+        end
+        else
+        begin
+            update storyPoint.tbVotingSessionParticipant
+            set hasEnteredSession = 1,
+                enteredAt = isnull(enteredAt, sysdatetime()),
+                lastHeartbeatAt = sysdatetime()
+            where votingSessionPk = @votingSessionPk
+              and employeePk = @employeePk;
         end
 
         if exists (select 1 from storyPoint.tbVoteRecord where votingRoundPk = @roundPk and employeePk = @employeePk)
@@ -3758,6 +3800,9 @@ begin
             v.restrictToParticipant,
             v.roundGoalNote,
             v.participantCount,
+            v.enteredParticipantCount,
+            v.enteredParticipantNameCsv,
+            v.notEnteredParticipantNameCsv,
             v.startedAt,
             v.finalizedAt,
             v.totalRoundCount,
@@ -3895,7 +3940,7 @@ begin
           and (@workItemPk is null or vs.workItemPk = @workItemPk)
         order by vrec.votingSessionPk desc, vrec.roundNumber asc, e.pk asc;
 
-        -- Result Set 4: 參與者清單與當前最新回合出牌桌面狀態 (盲投階段他人蓋牌；全員投完自動翻牌後所有人畫面同步翻開全部人的牌)
+        -- Result Set 4: 參與者清單與當前最新回合出牌桌面狀態及進場狀態 (盲投階段他人蓋牌；全員投完自動翻牌後所有人畫面同步翻開全部人的牌)
         select
             vsp.votingSessionPk,
             vsp.employeePk,
@@ -3903,9 +3948,17 @@ begin
             e.employeeName,
             e.jobTitle,
             d.departmentName,
+            isnull(vsp.hasEnteredSession, 0) as hasEnteredSession,
+            case
+                when isnull(vsp.hasEnteredSession, 0) = 1 or curVote.pk is not null then cast(1 as bit)
+                else cast(0 as bit)
+            end as isEnteredEffective,
+            isnull(vsp.enteredAt, curVote.votedAt) as enteredAt,
+            vsp.lastHeartbeatAt,
             case when curVote.pk is not null then 1 else 0 end as hasVotedCurrentRound,
             case
-                when curVote.pk is null then N'⏳ 尚未出牌'
+                when curVote.pk is null and isnull(vsp.hasEnteredSession, 0) = 0 then N'🚪 尚未進場'
+                when curVote.pk is null then N'⏳ 已進場(思考中)'
                 when vs.sessionStatus = 'voting' and isnull(@viewerEmployeePk, -1) <> vsp.employeePk then N'🎴 已出牌(盲投蓋牌)'
                 when curVote.cardValue = N'?' then N'? (需求不明)'
                 when curVote.cardValue = N'☕' then N'☕ (暫停休息)'
@@ -6862,6 +6915,147 @@ begin
             @objectName = 'storyPoint.spDeleteSystemLog',
             @durationMillisecond = @durationMs,
             @executionResult = N'刪除系統 Log 紀錄失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @operatorAccount;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
+-- 31. 更新盲投議程參與者進場與離場狀態預存程序 (storyPoint.spUpdateVotingParticipantPresence)
+-- ============================================================================
+/*
+用途說明: 記錄或更新指定員工進入 / 暫離盲投議程 Session (tbVotingSessionParticipant) 之即時進場狀態，
+          供牌桌與大廳即時呈現「已經有哪些人進場了（🟢 已進場 vs ⏳ 尚未進場）」。
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-27
+參數說明:
+    @votingSessionPk int          : 盲投議程主鍵 (若傳 null 或 <=0 且 @isEntered = 0，則清除該員工所有進行中議程之進場標記)
+    @employeePk      int          : 員工主鍵
+    @isEntered       bit          : 1=進入議程(已進場), 0=暫離議程(離場)
+    @operatorAccount varchar(128) : 操作者帳號
+修改歷程:
+    2026-10-27 初版建立
+*/
+create or alter procedure storyPoint.spUpdateVotingParticipantPresence
+    @votingSessionPk int = null,
+    @employeePk int,
+    @isEntered bit = 1,
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+
+    begin try
+        declare @wasAlreadyEntered bit = 0;
+        declare @restrictToPart bit = 1;
+
+        if isnull(@employeePk, 0) <= 0
+        begin
+            select top 1 @employeePk = pk
+            from storyPoint.tbEmployee
+            where loginAccount = @operatorAccount
+              and isActive = 1
+            order by pk asc;
+        end
+
+        if isnull(@votingSessionPk, 0) <= 0 and @isEntered = 0
+        begin
+            update storyPoint.tbVotingSessionParticipant
+            set hasEnteredSession = 0,
+                lastHeartbeatAt = sysdatetime()
+            where employeePk = @employeePk
+              and hasEnteredSession = 1;
+
+            select
+                0 as votingSessionPk,
+                @employeePk as employeePk,
+                cast(0 as bit) as isEntered,
+                cast(0 as bit) as wasNewlyEntered,
+                0 as enteredParticipantCount,
+                0 as participantCount,
+                N'' as enteredParticipantNameCsv,
+                N'' as notEnteredParticipantNameCsv;
+            return;
+        end
+
+        if isnull(@votingSessionPk, 0) > 0 and isnull(@employeePk, 0) > 0
+        begin
+            select @restrictToPart = isnull(restrictToParticipant, 1)
+            from storyPoint.tbVotingSession
+            where pk = @votingSessionPk;
+
+            select @wasAlreadyEntered = isnull(hasEnteredSession, 0)
+            from storyPoint.tbVotingSessionParticipant
+            where votingSessionPk = @votingSessionPk
+              and employeePk = @employeePk;
+
+            if @isEntered = 1
+            begin
+                if exists (
+                    select 1
+                    from storyPoint.tbVotingSessionParticipant
+                    where votingSessionPk = @votingSessionPk
+                      and employeePk = @employeePk
+                )
+                begin
+                    update storyPoint.tbVotingSessionParticipant
+                    set hasEnteredSession = 1,
+                        enteredAt = isnull(enteredAt, sysdatetime()),
+                        lastHeartbeatAt = sysdatetime()
+                    where votingSessionPk = @votingSessionPk
+                      and employeePk = @employeePk;
+                end
+                else if @restrictToPart = 0
+                begin
+                    insert into storyPoint.tbVotingSessionParticipant (
+                        votingSessionPk, employeePk, isRequiredVoter,
+                        hasEnteredSession, enteredAt, lastHeartbeatAt, joinedAt
+                    )
+                    values (
+                        @votingSessionPk, @employeePk, 1,
+                        1, sysdatetime(), sysdatetime(), sysdatetime()
+                    );
+                end
+            end
+            else
+            begin
+                update storyPoint.tbVotingSessionParticipant
+                set hasEnteredSession = 0,
+                    lastHeartbeatAt = sysdatetime()
+                where votingSessionPk = @votingSessionPk
+                  and employeePk = @employeePk;
+            end
+        end
+
+        select
+            v.votingSessionPk,
+            @employeePk as employeePk,
+            @isEntered as isEntered,
+            case when @isEntered = 1 and @wasAlreadyEntered = 0 then cast(1 as bit) else cast(0 as bit) end as wasNewlyEntered,
+            v.enteredParticipantCount,
+            v.participantCount,
+            v.enteredParticipantNameCsv,
+            v.notEnteredParticipantNameCsv
+        from storyPoint.vwVotingSessionSummary as v
+        where v.votingSessionPk = @votingSessionPk;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spUpdateVotingParticipantPresence',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'更新盲投議程參與者進場狀態失敗',
             @errorCode = @errCode,
             @errorLine = @errLine,
             @errorMessage = @errMsg,

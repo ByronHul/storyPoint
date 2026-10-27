@@ -574,6 +574,9 @@ select
     vs.restrictToParticipant,
     vs.roundGoalNote,
     isnull(partStat.participantCount, 0) as participantCount,
+    isnull(partStat.enteredParticipantCount, 0) as enteredParticipantCount,
+    isnull(partStat.enteredParticipantNameCsv, N'') as enteredParticipantNameCsv,
+    isnull(partStat.notEnteredParticipantNameCsv, N'') as notEnteredParticipantNameCsv,
     vs.startedAt,
     vs.finalizedAt,
     isnull(roundStat.totalRoundCount, 1) as totalRoundCount,
@@ -612,8 +615,27 @@ outer apply (
 ) as roundStat
 outer apply (
     select
-        count(vsp.pk) as participantCount
+        count(vsp.pk) as participantCount,
+        sum(case when vsp.hasEnteredSession = 1 or cvStat.hasVotedInCurRound = 1 then 1 else 0 end) as enteredParticipantCount,
+        string_agg(
+            case when vsp.hasEnteredSession = 1 or cvStat.hasVotedInCurRound = 1 then emp.employeeName else null end,
+            N'、'
+        ) within group (order by emp.departmentPk asc, emp.pk asc) as enteredParticipantNameCsv,
+        string_agg(
+            case when vsp.hasEnteredSession = 0 and isnull(cvStat.hasVotedInCurRound, 0) = 0 then emp.employeeName else null end,
+            N'、'
+        ) within group (order by emp.departmentPk asc, emp.pk asc) as notEnteredParticipantNameCsv
     from storyPoint.tbVotingSessionParticipant as vsp
+    inner join storyPoint.tbEmployee as emp
+        on vsp.employeePk = emp.pk
+    outer apply (
+        select top (1) 1 as hasVotedInCurRound
+        from storyPoint.tbVoteRecord as cv
+        where cv.votingSessionPk = vs.pk
+          and cv.votingRoundPk = curRound.pk
+          and cv.employeePk = vsp.employeePk
+    ) as cvStat
     where vsp.votingSessionPk = vs.pk
+      and emp.isActive = 1
 ) as partStat;
 go
