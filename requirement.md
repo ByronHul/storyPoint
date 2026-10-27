@@ -639,6 +639,18 @@
     3. **PowerShell 模組 (`ps/manageVotingSession.ps1`)**：
         * 支援 `-actionType 'updatePresence'` 呼叫 `storyPoint.spUpdateVotingParticipantPresence` 更新及查詢進場人員名單。
 
+### 2.33 已定案基本工項與已定案盲投議程結案保護，以及投「基本工項」時僅需選擇「參照工項類型」
+* **核心需求**：
+    1. **投「基本工項」時，投的就是基本工項本身，無須也不可再顯示「目標基本工項」下拉選單**：
+        * 在「`2. 設定回合` (`#pane-roundSetup`)」與「`⚡ 快速發起／重設盲投議程 Modal` (`openSessionSetupEditModal`)」的「`1️⃣ 投什麼 (What to vote on)`」區塊中：
+            * 當估算標的類型選擇「`🏷️ 投『基本工項』 (workItemType)`」時，因為投的就是基本工項本身（於下方「`盲投議程標題（要投票的基本工項名稱，如：資料庫健檢）`」輸入要投票的基本工項名稱），右方區塊 (`#setupBoxType` / `#modalSetupTypeBox`) **僅顯示「`參照工項類型（專案、維運、顧問時數、教育訓練、開發產品...｜帶出基本規範與一般 SP 範圍）`」下拉選單與基本規範橫幅**，不再顯示冗餘且易混淆的「`目標基本工項`」下拉選單（既有未定案議程之 `workItemTypePk` 改由隱藏欄位 `<input type="hidden" name="workItemTypePk" id="setupWorkItemTypePk" />` 傳遞）。
+            * 當估算標的類型選擇「`📋 投『一般工項』 (workItem)`」時，因為投的就是一般工項本身（於下方「`盲投議程標題（要投票的一般工項名稱，如：集保健檢）`」輸入要投票的一般工項名稱），右方區塊 (`#setupBoxItem` / `#modalSetupWiBox`) **僅顯示「`參照的基本工項（如：資料庫健檢｜決定所屬工項類型、基本規範與基準點數）`」下拉選單與規範橫幅**（既有未定案議程之 `workItemPk` 由隱藏欄位 `<input type="hidden" name="workItemPk" id="setupWorkItemPk" />` 傳遞）。
+    2. **已定案盲投議程 (`sessionStatus = 'finalized'`) 與已定案基本工項 (`estimationStatus = 'finalized'` / `standardStoryPoint is not null`) 已決定該基本工項的 Story Point 並結束投票，不得再出現於「2. 設定回合 (`1-2. 設定盲投回合`)」或「1-1. 即時盲投大廳」**：
+        * 在「`2. 設定回合` (`#pane-roundSetup`)」的「`1. 選擇目標盲投議程` (`#setupSessionSelector`)」下拉選單與下方「`📋 各投票議程的回合設定總覽` (`#roundSetupSessionTable`)」中，**僅列出進行中（未定案）之盲投議程**，完全排除「`🔄 已定案議程`」。
+        * 當盲投議程拍板定案 (`controlAction = 'finalize'`) 時，後端立即釋放該議程所有參與者之活躍分頁鎖定 (`sqlDataService.releaseAllLeasesForSession`)，使該議程同步從即時盲投大廳之「待參與／參與中」結束移除，僅保留於「`1-3. 估算過程查詢`」供歷史稽核查閱。
+    3. **建立新基本工項盲投議程時嚴格禁止覆寫既有基本工項 (`storyPoint.spCreateVotingSession`)**：
+        * 當發起新的基本工項盲投議程 (`@sessionPk <= 0`) 時，即使前端傳入既有 `@workItemTypePk`，若該筆基本工項已經定案 (`estimationStatus = 'finalized'` 或 `standardStoryPoint is not null`)，或標題解析出的新基本工項名稱 (`@autoTypeName`) 與該筆基本工項名稱不同，預存程序 `storyPoint.spCreateVotingSession` 一律自動將 `@workItemTypePk` 視為新基本工項，獨立建立專屬之 `storyPoint.tbWorkItemType` 紀錄（且不重用任何 `sessionStatus = 'finalized'` 之舊議程），確保新投完的基本工項（如 `test`）與既有基本工項（如 `資料庫健檢`）各自獨立顯示於「`3-2. 基本工項管理`」表格中。
+
 ---
 
 ## 3. 系統架構與技術開發規範

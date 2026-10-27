@@ -5600,6 +5600,7 @@ public class portalController : Controller
         // =====================================================================
         DataRow? activeSessionRow = null;
         var ongoingSessions = new List<DataRow>();
+        var allOngoingSessions = new List<DataRow>();
         var finalizedSessions = new List<DataRow>();
         foreach (DataRow r in sessionTable.Rows)
         {
@@ -5615,9 +5616,13 @@ public class portalController : Controller
             {
                 finalizedSessions.Add(r);
             }
-            else if (isViewerPart)
+            else
             {
-                ongoingSessions.Add(r);
+                allOngoingSessions.Add(r);
+                if (isViewerPart)
+                {
+                    ongoingSessions.Add(r);
+                }
             }
         }
 
@@ -6040,7 +6045,7 @@ public class portalController : Controller
                             <label data-tip='選擇設定作業模式：可建立並啟動全新的多人盲投議程，或載入進行中（未定案）議程重新設定投票人與所有相關選項（已定案議程已決定 Story Point，不會出現在此選單）' title='選擇設定作業模式：可建立並啟動全新的多人盲投議程，或載入進行中（未定案）議程重新設定投票人與所有相關選項'>1. 選擇目標盲投議程 <span class='sp-tip-icon'>ⓘ</span></label>
                             <select name='votingSessionPk' id='setupSessionSelector' onchange='onSetupSessionSelectChange()'>
                                 <option value=''>➕ 建立並啟動全新的多人盲投議程</option>");
-            foreach (DataRow sRow in ongoingSessions)
+            foreach (DataRow sRow in allOngoingSessions)
             {
                 int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
                 sb.Append($"<option value='{sPk}'>✏️ 進行中議程：{h(sRow["sessionCode"])} - {h(sRow["sessionTitle"])}</option>");
@@ -6064,23 +6069,32 @@ public class portalController : Controller
                 <!-- 區塊 1：投什麼 (What to vote on) -->
                 <div class='setup-section'>
                     <div class='setup-section-title'>
-                        <span>1️⃣ 投什麼：選擇估算標的（新增「基本工項」投票只要參照類型；新增「一般工項」投票應設定要參照的基本工項）</span>
+                        <span>1️⃣ 投什麼：選擇估算標的（投「基本工項」只要參照工項類型；投「一般工項」則設定要參照的基本工項）</span>
                         <span class='badge badge-user'>必填項目｜基本工項參照類型・一般工項參照基本工項</span>
                     </div>
                     <div class='form-row'>
                         <div>
-                            <label data-tip='若是新增「基本工項」的投票，只要參照工項類型（專案、維運、顧問時數...）；若是新增「一般工項」的投票，應該設定該一般工項要參照的基本工項（如：資料庫健檢）' title='若是新增「基本工項」的投票，只要參照工項類型（專案、維運、顧問時數...）；若是新增「一般工項」的投票，應該設定該一般工項要參照的基本工項（如：資料庫健檢）'>估算標的類型 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='若是投「基本工項（如：資料庫健檢）」，投的就是基本工項本身，右方只要選擇「參照工項類型（專案、維運、顧問時數...）」；若是投「一般工項（如：集保健檢）」，右方則選擇該一般工項要參照的基本工項' title='若是投「基本工項（如：資料庫健檢）」，投的就是基本工項本身，右方只要選擇「參照工項類型（專案、維運、顧問時數...）」；若是投「一般工項（如：集保健檢）」，右方則選擇該一般工項要參照的基本工項'>估算標的類型 <span class='sp-tip-icon'>ⓘ</span></label>
                             <select name='targetKind' id='setupTargetKind' onchange='toggleSetupTargetKind()'>
-                                <option value='workItemType'>🏷️ 投「基本工項」(主要投票標的，如：資料庫健檢；新增基本工項投票只要參照類型)</option>
-                                <option value='workItem'>📋 投「一般工項」(針對單一特殊一般工項如：集保健檢；新增一般工項投票應設定要參照的基本工項)</option>
+                                <option value='workItemType'>🏷️ 投「基本工項」(主要投票標的，如：資料庫健檢；只要參照工項類型)</option>
+                                <option value='workItem'>📋 投「一般工項」(針對單一特殊一般工項如：集保健檢；應設定要參照的基本工項)</option>
                             </select>
                         </div>
                         <div id='setupBoxType' style='grid-column: span 2;'>
-                            <div style='display:grid;grid-template-columns:1.25fr 1fr;gap:10px;'>
-                                <div>
-                                    <label data-tip='選擇本回合要進行多人盲投估算的「待估算／投票中基本工項」（已定案的基本工項已決定 SP，不會出現在此選單），或選「➕ 依下方盲投議程標題自動建立新基本工項」' title='選擇本回合要進行多人盲投估算的「待估算／投票中基本工項」（已定案的基本工項已決定 SP，不會出現在此選單），或選「➕ 依下方盲投議程標題自動建立新基本工項」'>目標基本工項 (僅列未定案基本工項或自動建立新基本工項) <span class='sp-tip-icon'>ⓘ</span></label>
-                                    <select name='workItemTypePk' id='setupWorkItemTypePk' onchange='onSetupBasicWorkItemSelectChange()'>
-                                        <option value='0' data-code='' data-kind='' data-kind-name='' data-icon='' data-name='' data-std-pt=''>➕ 依下方「盲投議程標題」自動建立新基本工項（只要參照右方類型）</option>");
+                            <input type='hidden' name='workItemTypePk' id='setupWorkItemTypePk' value='0' />
+                            <div>
+                                <label data-tip='投「基本工項」時，只要選擇此基本工項所參照的工項類型（專案、維運、顧問時數、教育訓練、開發產品...），即自動帶出該類型的一般工項基本規範與一般 Story Point 範圍上下限' title='投「基本工項」時，只要選擇此基本工項所參照的工項類型（專案、維運、顧問時數、教育訓練、開發產品...），即自動帶出該類型的一般工項基本規範與一般 Story Point 範圍上下限'>參照工項類型 (專案、維運、顧問時數、教育訓練、開發產品...｜帶出基本規範與一般 SP 範圍) <span class='sp-tip-icon'>ⓘ</span></label>
+                                <select name='defaultWorkItemKind' id='setupWorkItemKind' onchange='onSetupWorkItemKindChange()' style='border-color:#2563eb;font-weight:700;background:#eff6ff;'>
+                                    " + dynamicKindOptionsHtml + @"
+                                </select>
+                            </div>
+                            <div id='setupKindNormBanner' style='margin-top:8px;'></div>
+                        </div>
+                        <div id='setupBoxItem' style='display:none;grid-column: span 2;'>
+                            <input type='hidden' name='workItemPk' id='setupWorkItemPk' value='0' />
+                            <div>
+                                <label data-tip='投「一般工項」時，請設定該一般工項要參照的基本工項（如：資料庫健檢）！一般工項會自動承接該基本工項所屬類型、基本規範與基準點數' title='投「一般工項」時，請設定該一般工項要參照的基本工項（如：資料庫健檢）！一般工項會自動承接該基本工項所屬類型、基本規範與基準點數'>參照的基本工項 (如：資料庫健檢｜決定所屬工項類型、基本規範與基準點數) <span class='sp-tip-icon'>ⓘ</span></label>
+                                <select name='referencedWorkItemTypePk' id='setupItemRefTypePk' onchange='onSetupItemRefTypeChange()' style='border-color:#2563eb;font-weight:700;background:#eff6ff;'>");
             var refBasicTypeOptionsBuilder = new StringBuilder();
             foreach (DataRow tRow in typeTable.Rows)
             {
@@ -6092,70 +6106,24 @@ public class portalController : Controller
                 string optIconPrefix = isImageIconValue(rawIconVal)
                     ? (tKindVal == "maintenance" ? "🛠️" : tKindVal == "consultingHour" ? "⏳" : tKindVal == "training" ? "🎓" : tKindVal == "productDevelopment" ? "🚀" : "🏗️")
                     : rawIconVal;
-                string tEstStatus = tRow.Table.Columns.Contains("estimationStatus") ? (tRow["estimationStatus"]?.ToString() ?? "") : "";
-                bool isTypeFinalized = tRow["standardStoryPoint"] != DBNull.Value || string.Equals(tEstStatus, "finalized", StringComparison.OrdinalIgnoreCase);
                 string stdPtVal = tRow["standardStoryPoint"] != DBNull.Value ? Convert.ToDecimal(tRow["standardStoryPoint"]).ToString("0.##", CultureInfo.InvariantCulture) : "5";
                 string curPt = tRow["standardStoryPoint"] != DBNull.Value ? $" (目前標準: {tRow["standardStoryPoint"]} pt)" : " (待估算)";
                 string displayLabel = $"{optIconPrefix} [{tKindTextVal}] {tNameVal} ({tCodeVal}){curPt}";
                 string optTag = $"<option value='{tRow["workItemTypePk"]}' data-code='{h(tCodeVal)}' data-kind='{h(tKindVal)}' data-kind-name='{h(tKindTextVal)}' data-icon='{h(rawIconVal)}' data-name='{h(tNameVal)}' data-std-pt='{h(stdPtVal)}'>{h(displayLabel)}</option>";
-                if (!isTypeFinalized)
-                {
-                    sb.Append(optTag);
-                }
                 refBasicTypeOptionsBuilder.Append(optTag);
             }
             string refBasicTypeOptionsHtml = refBasicTypeOptionsBuilder.ToString();
+            sb.Append(refBasicTypeOptionsHtml);
             sb.Append(@"
-                                    </select>
-                                </div>
-                                <div>
-                                    <label data-tip='若是新增基本工項的投票，只要參照類型（專案、維運、顧問時數、教育訓練、開發產品...），自動帶出該類型的一般工項基本規範與一般 Story Point 範圍上下限' title='若是新增基本工項的投票，只要參照類型（專案、維運、顧問時數、教育訓練、開發產品...），自動帶出該類型的一般工項基本規範與一般 Story Point 範圍上下限'>參照工項類型 (專案、維運、顧問時數...｜新增基本工項只要參照類型) <span class='sp-tip-icon'>ⓘ</span></label>
-                                    <select name='defaultWorkItemKind' id='setupWorkItemKind' onchange='onSetupWorkItemKindChange()' style='border-color:#2563eb;font-weight:700;background:#eff6ff;'>
-                                        " + dynamicKindOptionsHtml + @"
-                                    </select>
-                                </div>
-                            </div>
-                            <div id='setupKindNormBanner' style='margin-top:8px;'></div>
-                        </div>
-                        <div id='setupBoxItem' style='display:none;grid-column: span 2;'>
-                            <div style='display:grid;grid-template-columns:1.15fr 1.15fr;gap:10px;'>
-                                <div>
-                                    <label data-tip='選擇本回合要進行多人盲投估算的「未定案 3-1 一般工項」（如：集保健檢），或選「➕ 依下方盲投議程標題自動建立新一般工項」（新增一般工項的投票，應於右方設定該一般工項要參照的基本工項）' title='選擇本回合要進行多人盲投估算的「未定案 3-1 一般工項」（如：集保健檢），或選「➕ 依下方盲投議程標題自動建立新一般工項」（新增一般工項的投票，應於右方設定該一般工項要參照的基本工項）'>目標一般工項 (如：集保健檢｜具起訖時間) <span class='sp-tip-icon'>ⓘ</span></label>
-                                    <select name='workItemPk' id='setupWorkItemPk' onchange='onSetupWorkItemSelectChange()'>
-                                        <option value='0' data-code='' data-name='' data-ref-type-pk='' data-ref-type-name='' data-kind=''>➕ 依下方「盲投議程標題」自動建立新一般工項（請設定右方要參照的基本工項）</option>");
-            foreach (DataRow wRow in itemTable.Rows)
-            {
-                string wEstStatus = wRow.Table.Columns.Contains("estimationStatus") ? (wRow["estimationStatus"]?.ToString() ?? "") : "";
-                string wExecStatus = wRow.Table.Columns.Contains("executionStatus") ? (wRow["executionStatus"]?.ToString() ?? "") : "";
-                if (string.Equals(wEstStatus, "finalized", StringComparison.OrdinalIgnoreCase) || string.Equals(wExecStatus, "done", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-                string wCodeVal = wRow["itemCode"]?.ToString() ?? "";
-                string wTitleVal = wRow["itemTitle"]?.ToString() ?? "";
-                string wRefTypePkVal = wRow.Table.Columns.Contains("workItemTypePk") && wRow["workItemTypePk"] != DBNull.Value ? wRow["workItemTypePk"].ToString()! : "";
-                string wRefTypeNameVal = wRow.Table.Columns.Contains("typeName") && wRow["typeName"] != DBNull.Value ? wRow["typeName"].ToString()! : "";
-                string wKindVal = wRow.Table.Columns.Contains("workItemKind") && wRow["workItemKind"] != DBNull.Value ? wRow["workItemKind"].ToString()! : "project";
-                string wRefDisplay = !string.IsNullOrWhiteSpace(wRefTypeNameVal) ? $"參照基本工項: {wRefTypeNameVal}｜" : "";
-                sb.Append($"<option value='{wRow["workItemPk"]}' data-code='{h(wCodeVal)}' data-name='{h(wTitleVal)}' data-ref-type-pk='{h(wRefTypePkVal)}' data-ref-type-name='{h(wRefTypeNameVal)}' data-kind='{h(wKindVal)}'>{h(wCodeVal)} - {h(wTitleVal)} ({h(wRefDisplay)}目前: {wRow["storyPoint"]} pt)</option>");
-            }
-            sb.Append(@"
-                                    </select>
-                                </div>
-                                <div>
-                                    <label data-tip='若是新增一般工項的投票，應該設定該一般工項要參照的基本工項（如：資料庫健檢）！一般工項會自動承接該基本工項所屬類型、基本規範與基準點數' title='若是新增一般工項的投票，應該設定該一般工項要參照的基本工項（如：資料庫健檢）！一般工項會自動承接該基本工項所屬類型、基本規範與基準點數'>該一般工項要參照的基本工項 (如：資料庫健檢｜決定所屬類型與基準點數) <span class='sp-tip-icon'>ⓘ</span></label>
-                                    <select name='referencedWorkItemTypePk' id='setupItemRefTypePk' onchange='onSetupItemRefTypeChange()' style='border-color:#2563eb;font-weight:700;background:#eff6ff;'>
-                                        " + refBasicTypeOptionsHtml + @"
-                                    </select>
-                                </div>
+                                </select>
                             </div>
                             <div id='setupItemRefNormBanner' style='margin-top:8px;'></div>
                         </div>
                     </div>
                     <div class='form-row' style='margin-bottom:0;'>
                         <div>
-                            <label data-tip='設定本次多人盲投議程的顯示標題（切換估算標的時會自動帶入建議標題）' title='設定本次多人盲投議程的顯示標題（切換估算標的時會自動帶入建議標題）'>盲投議程標題 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' name='sessionTitle' id='setupSessionTitle' required placeholder='例如：【基本工項估算】資料庫健檢 標準點數訂定' />
+                            <label id='setupSessionTitleLabel' data-tip='輸入本次要盲投估算的「基本工項名稱（如：資料庫健檢）」或「一般工項名稱（如：集保健檢）」作為盲投議程標題' title='輸入本次要盲投估算的「基本工項名稱（如：資料庫健檢）」或「一般工項名稱（如：集保健檢）」作為盲投議程標題'>盲投議程標題（要投票的基本工項名稱，如：資料庫健檢） <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' name='sessionTitle' id='setupSessionTitle' required placeholder='請輸入要盲投的基本工項名稱（例如：資料庫健檢）' />
                         </div>
                         <div>
                             <label data-tip='本回合估算範圍與驗收重點說明（DoD / 估算邊界提示），會直接顯示於所有參與者的出牌桌面供評估參考' title='本回合估算範圍與驗收重點說明（DoD / 估算邊界提示），會直接顯示於所有參與者的出牌桌面供評估參考'>估算範圍與驗收重點說明 (DoD) <span class='sp-tip-icon'>ⓘ</span></label>
@@ -6359,7 +6327,7 @@ public class portalController : Controller
                         </tr>
                     </thead>
                     <tbody>");
-        foreach (DataRow sRow in ongoingSessions)
+        foreach (DataRow sRow in allOngoingSessions)
         {
             int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
             string sCodeStr = sRow["sessionCode"]?.ToString() ?? "";
@@ -8745,7 +8713,7 @@ public class portalController : Controller
 
         // 建立前端設定回合所需的進行中議程設定與工項指派對應 JSON（已定案議程已決定 SP，不再列入重新設定選單）
         var sessionMetaJsonList = new List<string>();
-        foreach (DataRow sRow in ongoingSessions)
+        foreach (DataRow sRow in allOngoingSessions)
         {
             int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
             var pList = new List<int>();
@@ -8998,12 +8966,19 @@ public class portalController : Controller
             const kind = document.getElementById('setupTargetKind')?.value || 'workItemType';
             const boxType = document.getElementById('setupBoxType');
             const boxItem = document.getElementById('setupBoxItem');
+            const selSession = document.getElementById('setupSessionSelector');
+            if (!selSession || selSession.value === '') {
+                const typePkInput = document.getElementById('setupWorkItemTypePk');
+                const wiPkInput = document.getElementById('setupWorkItemPk');
+                if (typePkInput) typePkInput.value = '0';
+                if (wiPkInput) wiPkInput.value = '0';
+            }
             if (boxType) boxType.style.display = (kind === 'workItemType') ? 'block' : 'none';
             if (boxItem) boxItem.style.display = (kind === 'workItem') ? 'block' : 'none';
             if (kind === 'workItemType') {
                 onSetupWorkItemKindChange(true);
             } else {
-                onSetupWorkItemSelectChange(true);
+                onSetupItemRefTypeChange(true);
             }
             autoFillSetupTitle();
         }
@@ -9054,29 +9029,21 @@ public class portalController : Controller
         }
 
         function onSetupBasicWorkItemSelectChange() {
-            const typeSel = document.getElementById('setupWorkItemTypePk');
+            const typePk = document.getElementById('setupWorkItemTypePk')?.value || '0';
+            const refTypeSel = document.getElementById('setupItemRefTypePk');
             const kindSel = document.getElementById('setupWorkItemKind');
-            if (typeSel && kindSel) {
-                const opt = typeSel.options[typeSel.selectedIndex];
-                const dKind = opt?.getAttribute('data-kind') || '';
+            if (typePk && String(typePk) !== '0' && refTypeSel && kindSel) {
+                const matchOpt = Array.from(refTypeSel.options).find(o => String(o.value) === String(typePk));
+                const dKind = matchOpt?.getAttribute('data-kind') || '';
                 if (dKind && kindSel.value !== dKind) {
                     kindSel.value = dKind;
-                    onSetupWorkItemKindChange(true);
                 }
             }
+            onSetupWorkItemKindChange(true);
             autoFillSetupTitle();
         }
 
         function onSetupWorkItemSelectChange(skipAutoTitle) {
-            const wiSel = document.getElementById('setupWorkItemPk');
-            const refTypeSel = document.getElementById('setupItemRefTypePk');
-            if (wiSel && refTypeSel) {
-                const opt = wiSel.options[wiSel.selectedIndex];
-                const refTypePk = opt?.getAttribute('data-ref-type-pk') || '';
-                if (refTypePk && String(opt.value) !== '0') {
-                    refTypeSel.value = String(refTypePk);
-                }
-            }
             onSetupItemRefTypeChange(true);
             if (!skipAutoTitle) {
                 autoFillSetupTitle();
@@ -9145,37 +9112,40 @@ public class portalController : Controller
             if (selSession && selSession.value !== '') return; // 修改既有議程時不自動覆蓋標題
             const kind = document.getElementById('setupTargetKind')?.value || 'workItemType';
             const titleInput = document.getElementById('setupSessionTitle');
+            const titleLabel = document.getElementById('setupSessionTitleLabel');
             if (!titleInput) return;
             const kindSel = document.getElementById('setupWorkItemKind');
             const kindOpt = kindSel?.options[kindSel.selectedIndex];
             const kindName = kindOpt?.getAttribute('data-kind-name') || '專案';
             if (kind === 'workItemType') {
-                const sel = document.getElementById('setupWorkItemTypePk');
-                const opt = sel?.options[sel.selectedIndex];
-                const name = opt?.getAttribute('data-name') || '';
-                if (name && String(opt?.value) !== '0') {
+                if (titleLabel) {
+                    titleLabel.innerHTML = '盲投議程標題（要投票的基本工項名稱，如：資料庫健檢） <span class=""sp-tip-icon"">ⓘ</span>';
+                }
+                const typePk = document.getElementById('setupWorkItemTypePk')?.value || '0';
+                const refTypeSel = document.getElementById('setupItemRefTypePk');
+                const matchOpt = (typePk && String(typePk) !== '0' && refTypeSel)
+                    ? Array.from(refTypeSel.options).find(o => String(o.value) === String(typePk))
+                    : null;
+                const name = matchOpt?.getAttribute('data-name') || '';
+                if (name) {
                     titleInput.value = '【基本工項盲投｜' + kindName + '】' + name + ' 標準點數訂定';
                 } else {
                     if (titleInput.value.indexOf('【') === 0) {
                         titleInput.value = '';
                     }
-                    titleInput.placeholder = '請輸入新基本工項名稱（例如：資料庫健檢，將參照【' + kindName + '】類型建立）';
+                    titleInput.placeholder = '請輸入要盲投的基本工項名稱（例如：資料庫健檢，參照【' + kindName + '】類型）';
                 }
             } else {
-                const sel = document.getElementById('setupWorkItemPk');
-                const opt = sel?.options[sel.selectedIndex];
-                const name = opt?.getAttribute('data-name') || '';
+                if (titleLabel) {
+                    titleLabel.innerHTML = '盲投議程標題（要投票的一般工項名稱，如：集保健檢） <span class=""sp-tip-icon"">ⓘ</span>';
+                }
                 const refTypeSel = document.getElementById('setupItemRefTypePk');
                 const refOpt = refTypeSel?.options[refTypeSel.selectedIndex];
                 const refName = refOpt?.getAttribute('data-name') || '';
-                if (name && String(opt?.value) !== '0') {
-                    titleInput.value = '【一般工項微調盲投' + (refName ? '｜參照：' + refName : '') + '】' + name;
-                } else {
-                    if (titleInput.value.indexOf('【') === 0) {
-                        titleInput.value = '';
-                    }
-                    titleInput.placeholder = '請輸入新一般工項名稱（例如：集保健檢' + (refName ? '，將參照基本工項【' + refName + '】建立' : '') + '）';
+                if (titleInput.value.indexOf('【') === 0) {
+                    titleInput.value = '';
                 }
+                titleInput.placeholder = '請輸入要盲投的一般工項名稱（例如：集保健檢' + (refName ? '，參照基本工項【' + refName + '】' : '') + '）';
             }
         }
 
@@ -11191,37 +11161,33 @@ public class portalController : Controller
 
         function onModalSessionTargetOptionChange() {
             const tKind = document.getElementById('modalSetupTargetKind')?.value || 'workItemType';
-            const sel = document.getElementById(tKind === 'workItem' ? 'modalSetupWorkItemPk' : 'modalSetupWorkItemTypePk');
             const titleInput = document.getElementById('modalSetupTitleInput');
-            if (!sel || !titleInput) return;
-            const opt = sel.options[sel.selectedIndex];
-            if (tKind === 'workItemType' && opt) {
-                const optKind = opt.getAttribute('data-kind');
+            const titleLabel = document.getElementById('modalSetupTitleLabel');
+            if (!titleInput) return;
+            if (tKind === 'workItemType') {
+                if (titleLabel) {
+                    titleLabel.textContent = '盲投議程標題（要投票的基本工項名稱，如：資料庫健檢）';
+                }
+                onModalSetupKindChange();
                 const kSel = document.getElementById('modalSetupWorkItemKind');
-                if (optKind && kSel && kSel.value !== optKind) {
-                    kSel.value = optKind;
-                    onModalSetupKindChange();
-                }
-            } else if (tKind === 'workItem' && opt) {
-                const refTypePk = opt.getAttribute('data-ref-type-pk') || '';
-                const refSel = document.getElementById('modalSetupItemRefTypePk');
-                if (refTypePk && refSel && String(opt.value) !== '0') {
-                    refSel.value = String(refTypePk);
-                }
-                onModalSetupItemRefTypeChange();
-            }
-            if (opt && String(opt.value) !== '0') {
-                if (!titleInput.value || titleInput.value.indexOf('【') === 0) {
-                    const cleanName = opt.getAttribute('data-name') || opt.text.split('(')[0].replace(/^\[[^\]]+\]\s*/, '').trim();
-                    titleInput.value = (tKind === 'workItem' ? '【一般工項點數盲投】' : '【基本工項點數盲投】') + cleanName;
-                }
-            } else if (opt && String(opt.value) === '0') {
+                const kOpt = kSel ? kSel.options[kSel.selectedIndex] : null;
+                const kName = kOpt?.getAttribute('data-kind-name') || '專案';
                 if (titleInput.value.indexOf('【') === 0) {
                     titleInput.value = '';
                 }
-                titleInput.placeholder = tKind === 'workItem'
-                    ? '請輸入新一般工項名稱（例如：集保健檢，將參照右方所選基本工項建立）'
-                    : '請輸入新基本工項名稱（例如：資料庫健檢，只要參照右方類型建立）';
+                titleInput.placeholder = '請輸入要盲投的基本工項名稱（例如：資料庫健檢，參照【' + kName + '】類型）';
+            } else {
+                if (titleLabel) {
+                    titleLabel.textContent = '盲投議程標題（要投票的一般工項名稱，如：集保健檢）';
+                }
+                onModalSetupItemRefTypeChange();
+                const refSel = document.getElementById('modalSetupItemRefTypePk');
+                const refOpt = refSel ? refSel.options[refSel.selectedIndex] : null;
+                const refName = refOpt?.getAttribute('data-name') || '';
+                if (titleInput.value.indexOf('【') === 0) {
+                    titleInput.value = '';
+                }
+                titleInput.placeholder = '請輸入要盲投的一般工項名稱（例如：集保健檢' + (refName ? '，參照基本工項【' + refName + '】' : '') + '）';
             }
         }
 
@@ -11249,22 +11215,16 @@ public class portalController : Controller
             const kindOptionsHtml = document.getElementById('setupWorkItemKind')
                 ? document.getElementById('setupWorkItemKind').innerHTML
                 : (document.getElementById('typeKind') ? document.getElementById('typeKind').innerHTML : '<option value=""project"">🏗️ 專案 (project)</option>');
-            const typeOptionsHtml = document.getElementById('setupWorkItemTypePk') ? document.getElementById('setupWorkItemTypePk').innerHTML : '';
-            const refTypeOptionsHtml = document.getElementById('setupItemRefTypePk') ? document.getElementById('setupItemRefTypePk').innerHTML : typeOptionsHtml;
-            const wiOptionsHtml = document.getElementById('setupWorkItemPk') ? document.getElementById('setupWorkItemPk').innerHTML : '';
+            const refTypeOptionsHtml = document.getElementById('setupItemRefTypePk') ? document.getElementById('setupItemRefTypePk').innerHTML : '';
             const deckOptionsHtml = document.getElementById('setupCardDeckPk') ? document.getElementById('setupCardDeckPk').innerHTML : '<option value=""1"">標準 Fibonacci 牌組</option>';
             const deptQuickOptionsHtml = document.getElementById('setupQuickDeptSelect') ? document.getElementById('setupQuickDeptSelect').innerHTML : '<option value="""">-- 選擇部門一鍵加入勾選 --</option>';
 
             let defaultTitle = cfg ? (cfg.title || '') : '';
-            if (!defaultTitle) {
-                const srcSel = document.getElementById(tKind === 'workItem' ? 'setupWorkItemPk' : 'setupWorkItemTypePk');
-                if (srcSel) {
-                    const matchOpt = targetPkOverride
-                        ? Array.from(srcSel.options).find(o => String(o.value) === String(targetPkOverride))
-                        : srcSel.options[0];
-                    if (matchOpt && String(matchOpt.value) !== '0') {
-                        defaultTitle = (tKind === 'workItem' ? '【一般工項點數盲投】' : '【基本工項點數盲投】') + (matchOpt.getAttribute('data-name') || matchOpt.text.split('(')[0].replace(/^\[[^\]]+\]\s*/, '').trim());
-                    }
+            if (!defaultTitle && tKind === 'workItemType' && wiTypePk > 0) {
+                const refSel = document.getElementById('setupItemRefTypePk');
+                const matchOpt = refSel ? Array.from(refSel.options).find(o => String(o.value) === String(wiTypePk)) : null;
+                if (matchOpt) {
+                    defaultTitle = '【基本工項點數盲投】' + (matchOpt.getAttribute('data-name') || '');
                 }
             }
 
@@ -11318,43 +11278,33 @@ public class portalController : Controller
                     </div>
                     <div class=""form-row"">
                         <div>
-                            <label>1️⃣ 估算標的層級（基本工項參照類型・一般工項參照基本工項）</label>
+                            <label>1️⃣ 估算標的類型（投基本工項只要參照工項類型）</label>
                             <select name=""targetKind"" id=""modalSetupTargetKind"" onchange=""const isWi=this.value==='workItem'; document.getElementById('modalSetupTypeBox').style.display=isWi?'none':''; document.getElementById('modalSetupWiBox').style.display=isWi?'':'none'; onModalSessionTargetOptionChange();"">
-                                <option value=""workItemType"" ${tKind === 'workItemType' ? 'selected' : ''}>🏷️ 投「基本工項」(如：資料庫健檢｜新增基本工項投票只要參照類型)</option>
-                                <option value=""workItem"" ${tKind === 'workItem' ? 'selected' : ''}>📋 投「一般工項」(如：集保健檢｜新增一般工項投票應設定要參照的基本工項)</option>
+                                <option value=""workItemType"" ${tKind === 'workItemType' ? 'selected' : ''}>🏷️ 投「基本工項」(如：資料庫健檢｜只要參照工項類型)</option>
+                                <option value=""workItem"" ${tKind === 'workItem' ? 'selected' : ''}>📋 投「一般工項」(如：集保健檢｜設定要參照的基本工項)</option>
                             </select>
                         </div>
                         <div id=""modalSetupTypeBox"" style=""grid-column: span 2; ${tKind === 'workItem' ? 'display:none;' : ''}"">
-                            <div style=""display:grid;grid-template-columns:1.2fr 1fr;gap:8px;"">
-                                <div>
-                                    <label>目標基本工項（如：資料庫健檢）</label>
-                                    <select name=""workItemTypePk"" id=""modalSetupWorkItemTypePk"" onchange=""onModalSessionTargetOptionChange()"">${typeOptionsHtml}</select>
-                                </div>
-                                <div>
-                                    <label>參照工項類型（專案、維運、顧問時數...｜新增基本工項只要參照類型）</label>
-                                    <select name=""defaultWorkItemKind"" id=""modalSetupWorkItemKind"" onchange=""onModalSetupKindChange()"" style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">${kindOptionsHtml}</select>
-                                </div>
+                            <input type=""hidden"" name=""workItemTypePk"" id=""modalSetupWorkItemTypePk"" value=""${wiTypePk || 0}"" />
+                            <div>
+                                <label>參照工項類型（專案、維運、顧問時數、教育訓練、開發產品...｜帶出基本規範與一般 SP 範圍）</label>
+                                <select name=""defaultWorkItemKind"" id=""modalSetupWorkItemKind"" onchange=""onModalSetupKindChange()"" style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">${kindOptionsHtml}</select>
                             </div>
                             <div id=""modalSetupKindNormBanner""></div>
                         </div>
                         <div id=""modalSetupWiBox"" style=""grid-column: span 2; ${tKind === 'workItem' ? '' : 'display:none;'}"">
-                            <div style=""display:grid;grid-template-columns:1.15fr 1.15fr;gap:8px;"">
-                                <div>
-                                    <label>目標一般工項（如：集保健檢）</label>
-                                    <select name=""workItemPk"" id=""modalSetupWorkItemPk"" onchange=""onModalSessionTargetOptionChange()"">${wiOptionsHtml}</select>
-                                </div>
-                                <div>
-                                    <label>該一般工項要參照的基本工項（如：資料庫健檢）</label>
-                                    <select name=""referencedWorkItemTypePk"" id=""modalSetupItemRefTypePk"" onchange=""onModalSetupItemRefTypeChange()"" style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">${refTypeOptionsHtml}</select>
-                                </div>
+                            <input type=""hidden"" name=""workItemPk"" id=""modalSetupWorkItemPk"" value=""${wiPk || 0}"" />
+                            <div>
+                                <label>參照的基本工項（如：資料庫健檢｜決定所屬工項類型與基準點數）</label>
+                                <select name=""referencedWorkItemTypePk"" id=""modalSetupItemRefTypePk"" onchange=""onModalSetupItemRefTypeChange()"" style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">${refTypeOptionsHtml}</select>
                             </div>
                             <div id=""modalSetupItemRefNormBanner""></div>
                         </div>
                     </div>
                     <div class=""form-row"">
                         <div style=""grid-column: span 2;"">
-                            <label>盲投議程標題</label>
-                            <input type=""text"" name=""sessionTitle"" id=""modalSetupTitleInput"" value=""${escapeModalHtml(defaultTitle)}"" placeholder=""請輸入議程標題"" required />
+                            <label id=""modalSetupTitleLabel"">${tKind === 'workItem' ? '盲投議程標題（要投票的一般工項名稱，如：集保健檢）' : '盲投議程標題（要投票的基本工項名稱，如：資料庫健檢）'}</label>
+                            <input type=""text"" name=""sessionTitle"" id=""modalSetupTitleInput"" value=""${escapeModalHtml(defaultTitle)}"" placeholder=""${tKind === 'workItem' ? '請輸入要盲投的一般工項名稱（例如：集保健檢）' : '請輸入要盲投的基本工項名稱（例如：資料庫健檢）'}"" required />
                         </div>
                         <div>
                             <label>估算範圍與驗收重點說明 (DoD)</label>
@@ -11479,19 +11429,16 @@ public class portalController : Controller
             );
             if (document.getElementById('modalSetupWorkItemTypePk') && wiTypePk) {
                 document.getElementById('modalSetupWorkItemTypePk').value = String(wiTypePk);
-                const tSel = document.getElementById('modalSetupWorkItemTypePk');
-                const selOpt = tSel.options[tSel.selectedIndex];
+                const refSel = document.getElementById('modalSetupItemRefTypePk');
+                const selOpt = refSel ? Array.from(refSel.options).find(o => String(o.value) === String(wiTypePk)) : null;
                 if (selOpt && selOpt.getAttribute('data-kind') && document.getElementById('modalSetupWorkItemKind')) {
                     document.getElementById('modalSetupWorkItemKind').value = selOpt.getAttribute('data-kind');
                 }
             }
             if (document.getElementById('modalSetupWorkItemPk') && wiPk) {
                 document.getElementById('modalSetupWorkItemPk').value = String(wiPk);
-                const wSel = document.getElementById('modalSetupWorkItemPk');
-                const wOpt = wSel.options[wSel.selectedIndex];
-                const wRefTypePk = refWiTypePk > 0 ? String(refWiTypePk) : (wOpt ? (wOpt.getAttribute('data-ref-type-pk') || '') : '');
-                if (wRefTypePk && document.getElementById('modalSetupItemRefTypePk')) {
-                    document.getElementById('modalSetupItemRefTypePk').value = String(wRefTypePk);
+                if (refWiTypePk > 0 && document.getElementById('modalSetupItemRefTypePk')) {
+                    document.getElementById('modalSetupItemRefTypePk').value = String(refWiTypePk);
                 }
             }
             if (cfg && document.getElementById('modalSetupDeckPk') && cfg.cardDeckPk) document.getElementById('modalSetupDeckPk').value = String(cfg.cardDeckPk);
