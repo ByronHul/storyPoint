@@ -218,6 +218,17 @@ begin
 end
 go
 
+if object_id('storyPoint.tbVotingSessionParticipant', 'u') is not null
+begin
+    if col_length('storyPoint.tbVotingSessionParticipant', 'hasEnteredSession') is null
+        alter table storyPoint.tbVotingSessionParticipant add hasEnteredSession bit not null constraint dfMigratePartHasEntered default (0);
+    if col_length('storyPoint.tbVotingSessionParticipant', 'enteredAt') is null
+        alter table storyPoint.tbVotingSessionParticipant add enteredAt datetime2(3) null;
+    if col_length('storyPoint.tbVotingSessionParticipant', 'lastHeartbeatAt') is null
+        alter table storyPoint.tbVotingSessionParticipant add lastHeartbeatAt datetime2(3) null;
+end
+go
+
 if object_id('storyPoint.tbVotingSession', 'u') is not null
 begin
     select
@@ -235,7 +246,8 @@ end
 if object_id('storyPoint.tbVotingSessionParticipant', 'u') is not null
 begin
     select
-        pk, votingSessionPk, employeePk, isRequiredVoter, joinedAt
+        pk, votingSessionPk, employeePk, isRequiredVoter,
+        hasEnteredSession, enteredAt, lastHeartbeatAt, joinedAt
     into storyPoint.tbPreserveVotingSessionParticipant
     from storyPoint.tbVotingSessionParticipant;
 end
@@ -556,6 +568,9 @@ create table storyPoint.tbVotingSessionParticipant (
     votingSessionPk int not null,
     employeePk int not null,
     isRequiredVoter bit not null constraint dfTbSessionParticipantRequired default (1),
+    hasEnteredSession bit not null constraint dfTbSessionParticipantHasEntered default (0),
+    enteredAt datetime2(3) null,
+    lastHeartbeatAt datetime2(3) null,
     joinedAt datetime2(3) not null constraint dfTbSessionParticipantJoinedAt default (sysdatetime()),
     constraint pkTbVotingSessionParticipant primary key clustered (pk asc),
     constraint uqTbVotingSessionParticipant unique nonclustered (votingSessionPk asc, employeePk asc),

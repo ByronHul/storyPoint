@@ -2231,11 +2231,13 @@ public class portalController : Controller
     [Authorize]
     public async Task<IActionResult> deleteWorkItemType(
         [FromForm] int? workItemTypePk,
-        [FromForm] string? typeCode = null)
+        [FromForm] string? typeCode = null,
+        [FromForm] string? returnTab = "types")
     {
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "types" : returnTab.Trim();
         if (!isAdminUser())
         {
-            return Redirect("/?tab=types&err=" + Uri.EscapeDataString("僅管理者可刪除工項代表類型。"));
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("僅管理者可刪除工項代表類型。"));
         }
 
         try
@@ -2249,12 +2251,12 @@ public class portalController : Controller
 
             string delCode = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["deletedTypeCode"]?.ToString() ?? "") : "";
             string delName = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["deletedTypeName"]?.ToString() ?? "") : "";
-            return Redirect("/?tab=types&msg=" + Uri.EscapeDataString($"🗑️ 已成功刪除工項代表類型「{delCode} - {delName}」！"));
+            return Redirect($"/?tab={targetTab}&msg=" + Uri.EscapeDataString($"🗑️ 已成功刪除工項代表類型「{delCode} - {delName}」！"));
         }
         catch (Exception ex)
         {
             await logPortalExceptionAsync("portalController.deleteWorkItemType", ex);
-            return Redirect("/?tab=types&err=" + Uri.EscapeDataString("刪除工項代表類型失敗（已記錄至系統 Log）：" + ex.Message));
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("刪除工項代表類型失敗（已記錄至系統 Log）：" + ex.Message));
         }
     }
 
@@ -2359,11 +2361,13 @@ public class portalController : Controller
     [Authorize]
     public async Task<IActionResult> deleteWorkItem(
         [FromForm] int? workItemPk,
-        [FromForm] string? itemCode = null)
+        [FromForm] string? itemCode = null,
+        [FromForm] string? returnTab = "workitems")
     {
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "workitems" : returnTab.Trim();
         if (!isAdminUser())
         {
-            return Redirect("/?tab=workitems&err=" + Uri.EscapeDataString("僅管理者可刪除實際工項。"));
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("僅管理者可刪除實際工項。"));
         }
 
         try
@@ -2377,12 +2381,12 @@ public class portalController : Controller
 
             string delCode = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["deletedItemCode"]?.ToString() ?? "") : "";
             string delTitle = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["deletedItemTitle"]?.ToString() ?? "") : "";
-            return Redirect("/?tab=workitems&msg=" + Uri.EscapeDataString($"🗑️ 已成功刪除實際工項「{delCode} - {delTitle}」，並同步扣除重算員工與部門 Story Point！"));
+            return Redirect($"/?tab={targetTab}&msg=" + Uri.EscapeDataString($"🗑️ 已成功刪除實際工項「{delCode} - {delTitle}」，並同步扣除重算員工與部門 Story Point！"));
         }
         catch (Exception ex)
         {
             await logPortalExceptionAsync("portalController.deleteWorkItem", ex);
-            return Redirect("/?tab=workitems&err=" + Uri.EscapeDataString("刪除實際工項失敗（已記錄至系統 Log）：" + ex.Message));
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("刪除實際工項失敗（已記錄至系統 Log）：" + ex.Message));
         }
     }
 
@@ -2492,6 +2496,97 @@ public class portalController : Controller
         {
             await logPortalExceptionAsync("portalController.saveDepartment", ex);
             return Redirect("/?tab=employees&err=" + Uri.EscapeDataString("儲存部門失敗（已記錄至系統 Log）：" + ex.Message));
+        }
+    }
+
+    [HttpPost("employee/department/delete")]
+    [Authorize]
+    public async Task<IActionResult> deleteDepartment(
+        [FromForm] int? departmentPk,
+        [FromForm] string? departmentCode = null,
+        [FromForm] string? returnTab = "stats")
+    {
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "stats" : returnTab.Trim();
+        if (!isAdminUser())
+        {
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("僅管理者可刪除部門資料。"));
+        }
+
+        try
+        {
+            var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spDeleteDepartment", new Dictionary<string, object?>
+            {
+                ["departmentPk"] = departmentPk,
+                ["departmentCode"] = string.IsNullOrWhiteSpace(departmentCode) ? null : departmentCode.Trim(),
+                ["operatorAccount"] = getCurrentLoginAccount()
+            });
+
+            string delCode = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["deletedDepartmentCode"]?.ToString() ?? "") : "";
+            string delName = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["deletedDepartmentName"]?.ToString() ?? "") : "";
+            return Redirect($"/?tab={targetTab}&msg=" + Uri.EscapeDataString($"🗑️ 已成功刪除部門「{delCode} - {delName}」！"));
+        }
+        catch (Exception ex)
+        {
+            await logPortalExceptionAsync("portalController.deleteDepartment", ex);
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("刪除部門失敗（已記錄至系統 Log）：" + ex.Message));
+        }
+    }
+
+    [HttpPost("history/delete")]
+    [Authorize]
+    public async Task<IActionResult> deletePointHistory(
+        [FromForm] int pointHistoryPk,
+        [FromForm] string? returnTab = "history")
+    {
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "history" : returnTab.Trim();
+        if (!isAdminUser())
+        {
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("僅管理者可刪除點數異動稽核紀錄。"));
+        }
+
+        try
+        {
+            await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spDeletePointHistory", new Dictionary<string, object?>
+            {
+                ["pointHistoryPk"] = pointHistoryPk,
+                ["operatorAccount"] = getCurrentLoginAccount()
+            });
+
+            return Redirect($"/?tab={targetTab}&msg=" + Uri.EscapeDataString($"🗑️ 已成功刪除點數異動稽核歷程紀錄 #{pointHistoryPk}！"));
+        }
+        catch (Exception ex)
+        {
+            await logPortalExceptionAsync("portalController.deletePointHistory", ex);
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("刪除點數異動歷程失敗（已記錄至系統 Log）：" + ex.Message));
+        }
+    }
+
+    [HttpPost("admin/log/delete")]
+    [Authorize]
+    public async Task<IActionResult> deleteSystemLog(
+        [FromForm] int logPk,
+        [FromForm] string? returnTab = "logs")
+    {
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "logs" : returnTab.Trim();
+        if (!isAdminUser())
+        {
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("僅管理者可刪除系統 Log 紀錄。"));
+        }
+
+        try
+        {
+            await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spDeleteSystemLog", new Dictionary<string, object?>
+            {
+                ["logPk"] = logPk,
+                ["operatorAccount"] = getCurrentLoginAccount()
+            });
+
+            return Redirect($"/?tab={targetTab}&msg=" + Uri.EscapeDataString($"🗑️ 已成功刪除系統 Log 紀錄 #{logPk}！"));
+        }
+        catch (Exception ex)
+        {
+            await logPortalExceptionAsync("portalController.deleteSystemLog", ex);
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("刪除系統 Log 失敗：" + ex.Message));
         }
     }
 
@@ -2724,16 +2819,19 @@ public class portalController : Controller
 
     [HttpPost("employee/delete")]
     [Authorize]
-    public async Task<IActionResult> deleteEmployee([FromForm] int employeePk)
+    public async Task<IActionResult> deleteEmployee(
+        [FromForm] int employeePk,
+        [FromForm] string? returnTab = "employees")
     {
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "employees" : returnTab.Trim();
         if (!isAdminUser())
         {
-            return Redirect("/?tab=employees&err=" + Uri.EscapeDataString("僅管理者可刪除員工帳號。"));
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("僅管理者可刪除員工帳號。"));
         }
 
         if (employeePk == getCurrentEmployeePk())
         {
-            return Redirect("/?tab=employees&err=" + Uri.EscapeDataString("不可刪除目前正在登入操作中的管理者本人帳號。"));
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("不可刪除目前正在登入操作中的管理者本人帳號。"));
         }
 
         try
@@ -2745,12 +2843,12 @@ public class portalController : Controller
             });
 
             string empName = ds.Tables[0].Rows.Count > 0 ? (ds.Tables[0].Rows[0]["deletedEmployeeName"]?.ToString() ?? "") : "";
-            return Redirect("/?tab=employees&msg=" + Uri.EscapeDataString($"已成功刪除員工帳號「{empName}」！"));
+            return Redirect($"/?tab={targetTab}&msg=" + Uri.EscapeDataString($"🗑️ 已成功刪除員工帳號「{empName}」！"));
         }
         catch (Exception ex)
         {
             await logPortalExceptionAsync("portalController.deleteEmployee", ex);
-            return Redirect("/?tab=employees&err=" + Uri.EscapeDataString(ex.Message));
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString(ex.Message));
         }
     }
 
@@ -6104,7 +6202,7 @@ public class portalController : Controller
             string targetName = hRow["targetKind"].ToString() == "workItemType"
                 ? $"[代表類型] {hRow["typeCode"]} - {hRow["typeName"]}"
                 : $"[工項] {hRow["itemCode"]} - {hRow["itemTitle"]}";
-            sb.Append($@"<tr class='sp-context-row' data-row-kind='readonlyRecord' data-row-title='點數異動：{h(targetName)}' title='💡 按滑鼠右鍵選擇此筆紀錄並開啟操作選單'>
+            sb.Append($@"<tr class='sp-context-row' data-row-kind='pointHistory' data-history-pk='{hRow["historyPk"]}' data-row-title='點數異動：{h(targetName)}' title='💡 單擊選取此列後按 Delete 鍵可刪除；按滑鼠右鍵開啟操作選單'>
                 <td>{Convert.ToDateTime(hRow["changedAt"]):yyyy-MM-dd HH:mm:ss}</td>
                 <td>{h(hRow["targetKindText"])}</td>
                 <td><strong>{h(targetName)}</strong></td>
@@ -7066,6 +7164,7 @@ public class portalController : Controller
                             <span>🔄 儲存時同步更新套用此基本工項之未結案一般工項（未微調 SP 者自動同步標準點數）</span>
                         </label>
                         <div style='display:flex;gap:8px;flex-wrap:wrap;'>
+                            <button type='button' class='btn btn-outline' id='btnTypeDeleteCurrent' style='padding:7px 12px;font-size:12.5px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;{(initTypePk > 0 ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeDelete()"">🗑️ 刪除此基本工項 (Delete)</button>
                             <button type='button' class='btn btn-outline' id='btnTypeRevoteNextRound' style='padding:7px 12px;font-size:12.5px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;{(initTypePk > 0 ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeRevote('nextRound')"">🔄 重啟新一輪盲投</button>
                             <button type='button' class='btn btn-outline' id='btnTypeRevoteRestartAll' style='padding:7px 12px;font-size:12.5px;color:#b45309;border-color:#fcd34d;background:#fffbeb;{(initTypePk > 0 ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeRevote('restartAll')"">🃏 重新盲投設定 (全部重新開始)</button>
                             <button type='submit' class='btn btn-primary' id='typeSubmitBtn' style='padding:8px 18px;font-size:13.5px;'>💾 {(initTypePk > 0 ? $"儲存「{h(initTypeName)}」基本工項與套用類型" : "新增並儲存基本工項")}</button>
@@ -7085,7 +7184,7 @@ public class portalController : Controller
             <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                 <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
                     <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
-                        💡 <strong>操作提示：</strong><strong>單擊 (Click)</strong> 任一基本工項列可立即載入上方表單編輯其<strong>基本工項屬性與套用的工項類型</strong>；<strong>雙擊 (Double-Click)</strong> 直接彈出單筆編輯 Modal；<strong>按滑鼠右鍵</strong>可針對該基本工項發起多人盲投！
+                        💡 <strong>操作提示：</strong><strong>單擊 (Click)</strong> 任一基本工項列可立即載入上方表單編輯其<strong>基本工項屬性與套用的工項類型</strong>；選取列後按鍵盤 <strong>Delete</strong> 鍵（確認後）可立即刪除該筆紀錄；<strong>雙擊 (Double-Click)</strong> 直接彈出單筆編輯 Modal；<strong>按滑鼠右鍵</strong>可針對該基本工項發起多人盲投！
                     </div>
                     <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick='resetWorkItemTypeFilter()'>🔄 清除全部篩選條件</button>
                 </div>
@@ -8275,7 +8374,7 @@ public class portalController : Controller
 
                 string searchBlob = $"{lRow["logPk"]} {timeStr} {srcName} {objName} {execRes} {errCode} {errLine} {errMsg} {opAcc}".ToLowerInvariant();
 
-                sb.Append($@"<tr class='syslog-row sp-context-row {trLevelClass}' data-row-kind='readonlyRecord' data-row-title='系統 Log #{h(lRow["logPk"])} ({h(objName)})' data-level='{lvl}' data-source='{h(srcName)}' data-search='{h(searchBlob)}' title='💡 按滑鼠右鍵選擇此筆 Log 紀錄並開啟操作選單'>
+                sb.Append($@"<tr class='syslog-row sp-context-row {trLevelClass}' data-row-kind='systemLog' data-log-pk='{lRow["logPk"]}' data-row-title='系統 Log #{h(lRow["logPk"])} ({h(objName)})' data-level='{lvl}' data-source='{h(srcName)}' data-search='{h(searchBlob)}' title='💡 單擊選取此列後按 Delete 鍵可刪除；按滑鼠右鍵開啟操作選單'>
                     <td style='white-space:nowrap;'><code>#{h(lRow["logPk"])}</code></td>
                     <td style='white-space:nowrap;font-size:12.5px;'>{h(timeStr)}</td>
                     <td style='white-space:nowrap;'>{levelBadge}</td>
@@ -9524,7 +9623,7 @@ public class portalController : Controller
             const lockText = lockedArr.length > 0
                 ? '<span style=""color:#1e40af;font-weight:700;"">🔒 已鎖定：' + lockedArr.join('、') + '</span>'
                 : '📌 圖釘鎖定欄位';
-            statusSpan.innerHTML = `<span>${sortText}</span><span>｜</span><span>${lockText}</span><span>｜</span><span>🖱️ 滑鼠右鍵選擇紀錄並開啟操作選單（編輯彈出 Modal 視窗）</span>`;
+            statusSpan.innerHTML = `<span>${sortText}</span><span>｜</span><span>${lockText}</span><span>｜</span><span>🖱️ 點選列按 Delete 刪除｜滑鼠右鍵開啟操作選單（雙擊彈出 Modal 編輯）</span>`;
         }
 
         function updateSingleTableStickyOffsets(state) {
@@ -9653,10 +9752,165 @@ public class portalController : Controller
             if (spContextMenuEl) {
                 spContextMenuEl.classList.remove('visible', 'open');
             }
-            if (spActiveContextRow) {
-                spActiveContextRow.classList.remove('sp-context-active-row');
-                spActiveContextRow = null;
+        }
+
+        function getCurrentActiveTabName() {
+            const activePane = document.querySelector('.tab-pane.active');
+            if (activePane && activePane.id && activePane.id.indexOf('pane-') === 0) {
+                return activePane.id.substring(5);
             }
+            return '';
+        }
+
+        function setActiveTableRow(tr) {
+            document.querySelectorAll('.sp-context-active-row').forEach(el => {
+                if (el !== tr) {
+                    el.classList.remove('sp-context-active-row');
+                }
+            });
+            spActiveContextRow = tr || null;
+            if (tr) {
+                tr.classList.add('sp-context-active-row');
+            }
+        }
+
+        function getActiveSelectedTableRow() {
+            const isModalOpen = spRecordEditModalOverlayEl && spRecordEditModalOverlayEl.classList.contains('visible');
+            if (isModalOpen) {
+                if (spActiveContextRow && spRecordEditModalOverlayEl.contains(spActiveContextRow)) {
+                    return spActiveContextRow;
+                }
+                const modalRow = spRecordEditModalOverlayEl.querySelector('table tbody tr.sp-context-active-row, table tbody tr.modal-wik-feature-row[style*=""#dbeafe""]');
+                if (modalRow) {
+                    spActiveContextRow = modalRow;
+                    return modalRow;
+                }
+                return null;
+            }
+            const activePane = document.querySelector('.tab-pane.active');
+            if (spActiveContextRow && document.body.contains(spActiveContextRow)) {
+                if (!activePane || activePane.contains(spActiveContextRow)) {
+                    return spActiveContextRow;
+                }
+            }
+            if (activePane) {
+                const paneRow = activePane.querySelector('table tbody tr.sp-context-active-row, .sp-context-active-row');
+                if (paneRow) {
+                    spActiveContextRow = paneRow;
+                    return paneRow;
+                }
+            }
+            const anyRow = document.querySelector('table tbody tr.sp-context-active-row, .sp-context-active-row');
+            if (anyRow) {
+                spActiveContextRow = anyRow;
+                return anyRow;
+            }
+            return null;
+        }
+
+        function triggerDeleteSelectedRow(tr) {
+            if (!tr) return false;
+            const rowKind = tr.getAttribute('data-row-kind') || (tr.classList.contains('modal-wik-feature-row') ? 'workitemKind' : 'generic');
+            const activeTab = getCurrentActiveTabName();
+
+            if (!isCurrentUserAdmin) {
+                alert('⚠️ 僅系統管理者 (admin) 具備刪除紀錄權限！');
+                return true;
+            }
+
+            if (rowKind === 'workitemType') {
+                const tPk = tr.getAttribute('data-type-pk') || '';
+                const tCode = tr.getAttribute('data-type-code') || '';
+                const tName = tr.getAttribute('data-type-name') || '';
+                if (!tPk && !tCode) return false;
+                submitDynamicPostAction('/workitem/type/delete', {
+                    workItemTypePk: tPk,
+                    typeCode: tCode,
+                    returnTab: activeTab || 'types'
+                }, '確定要刪除基本工項／代表類型「' + tCode + (tName ? ' - ' + tName : '') + '」嗎？');
+                return true;
+            } else if (rowKind === 'workitem') {
+                const wiPk = tr.getAttribute('data-wi-pk') || '';
+                const wiCode = tr.getAttribute('data-wi-code') || '';
+                const wiTitle = tr.getAttribute('data-wi-title') || '';
+                if (!wiPk && !wiCode) return false;
+                submitDynamicPostAction('/workitem/delete', {
+                    workItemPk: wiPk,
+                    itemCode: wiCode,
+                    returnTab: activeTab || 'workitems'
+                }, '確定要刪除工項「' + wiCode + (wiTitle ? ' - ' + wiTitle : '') + '」嗎？');
+                return true;
+            } else if (rowKind === 'workitemKind') {
+                const kPk = tr.getAttribute('data-kind-pk') || '';
+                const kCode = tr.getAttribute('data-kind-code') || '';
+                const kName = tr.getAttribute('data-kind-name') || '';
+                const tabSuffix = tr.getAttribute('data-tab-suffix') || activeTab || 'kinds';
+                if (!kPk && !kCode) return false;
+                confirmDeleteWorkItemKind(kPk, kCode, kName, tabSuffix);
+                return true;
+            } else if (rowKind === 'employee') {
+                const empPk = tr.getAttribute('data-emp-pk') || '';
+                const empCode = tr.getAttribute('data-emp-code') || '';
+                const empName = tr.getAttribute('data-emp-name') || '';
+                const empAcc = tr.getAttribute('data-emp-acc') || '';
+                const isSelf = tr.getAttribute('data-emp-self') === '1';
+                if (!empPk) return false;
+                if (isSelf) {
+                    alert('⚠️ 不可刪除目前登入中的本人帳號！');
+                    return true;
+                }
+                submitDynamicPostAction('/employee/delete', {
+                    employeePk: empPk,
+                    returnTab: activeTab || 'employees'
+                }, '確定要永久刪除員工帳號【' + empCode + ' - ' + empName + (empAcc ? ' (' + empAcc + ')' : '') + '】嗎？');
+                return true;
+            } else if (rowKind === 'department') {
+                const deptPk = tr.getAttribute('data-dept-pk') || '';
+                const deptCode = tr.getAttribute('data-dept-code') || '';
+                const deptName = tr.getAttribute('data-dept-name') || '';
+                if (!deptPk && !deptCode) return false;
+                submitDynamicPostAction('/employee/department/delete', {
+                    departmentPk: deptPk,
+                    departmentCode: deptCode,
+                    returnTab: activeTab || 'employees'
+                }, '確定要刪除部門「' + deptCode + (deptName ? ' - ' + deptName : '') + '」嗎？\n（若該部門底下仍有員工，系統將自動安全移轉至備援部門）');
+                return true;
+            } else if (rowKind === 'session') {
+                const sPk = tr.getAttribute('data-session-pk') || '';
+                const sCode = tr.getAttribute('data-session-code') || '';
+                const sTitle = tr.getAttribute('data-session-title') || '';
+                const sReturnTab = tr.getAttribute('data-return-tab') || activeTab || 'roundSetup';
+                if (!sPk) return false;
+                triggerDeleteVotingSession(sPk, sCode, sTitle, sReturnTab);
+                return true;
+            } else if (rowKind === 'votingRoundVote' || rowKind === 'votingRound') {
+                const sPk = tr.getAttribute('data-session-pk') || '';
+                const sCode = tr.getAttribute('data-session-code') || '';
+                const sTitle = tr.getAttribute('data-session-title') || '';
+                const rNum = Number(tr.getAttribute('data-round-number') || '1');
+                if (!sPk || rNum <= 0) return false;
+                triggerDeleteVotingRound(sPk, rNum, [sCode, sTitle].filter(Boolean).join(' - ') + '（第 ' + rNum + ' 回合）', true, activeTab || 'history');
+                return true;
+            } else if (rowKind === 'pointHistory') {
+                const hPk = tr.getAttribute('data-history-pk') || '';
+                const rTitle = tr.getAttribute('data-row-title') || ('點數異動 #' + hPk);
+                if (!hPk) return false;
+                submitDynamicPostAction('/history/delete', {
+                    historyPk: hPk,
+                    returnTab: activeTab || 'history'
+                }, '確定要刪除此筆點數異動稽核紀錄「' + rTitle + '」嗎？');
+                return true;
+            } else if (rowKind === 'systemLog') {
+                const lPk = tr.getAttribute('data-log-pk') || '';
+                const rTitle = tr.getAttribute('data-row-title') || ('系統 Log #' + lPk);
+                if (!lPk) return false;
+                submitDynamicPostAction('/admin/log/delete', {
+                    logPk: lPk,
+                    returnTab: activeTab || 'logs'
+                }, '確定要刪除此筆系統 Log 紀錄「' + rTitle + '」嗎？');
+                return true;
+            }
+            return false;
         }
 
         function ensureRecordEditModalOverlay() {
@@ -10196,7 +10450,10 @@ public class portalController : Controller
                         </label>
                     </div>
                     <div class=""sp-modal-footer"">
-                        <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
+                        <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
+                            <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
+                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""submitDynamicPostAction('/workitem/type/delete', { workItemTypePk: '${escapeModalHtml(pk)}', typeCode: '${escapeModalHtml(code)}', returnTab: getCurrentActiveTabName() || 'types' }, '確定要刪除基本工項／代表類型「${escapeModalHtml(code)} - ${escapeModalHtml(name)}」嗎？');"">🗑️ 刪除此基本工項</button>` : ''}
+                        </div>
                         <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
                             ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""closeRecordEditModal(); triggerRevoteFromTarget('workItemType', '${escapeModalHtml(pk)}', 0, '${escapeModalHtml(code)} - ${escapeModalHtml(name)}', false, 'voting');"">🔄 重啟新一輪</button>` : ''}
                             ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#b45309;border-color:#fcd34d;background:#fffbeb;"" onclick=""openSessionSetupEditModal(0, 'workItemType', '${escapeModalHtml(pk)}', true, 'restartAll');"">🆕 全部重新開始(重設投票人與所有選項)</button>` : ''}
@@ -10976,14 +11233,14 @@ public class portalController : Controller
                     }
                     closeRowContextMenu();
                 }
-                if (target && target.closest && !target.closest('input, textarea, select, button, a, #spRecordEditModal')) {
+                if (target && target.closest && !target.closest('input, textarea, select, button, a')) {
                     const tr = target.closest('table tbody tr, .sp-context-card, .session-item-card, .lobby-session-card');
                     if (tr) {
-                        if (spActiveContextRow && spActiveContextRow !== tr) {
-                            spActiveContextRow.classList.remove('sp-context-active-row');
+                        setActiveTableRow(tr);
+                        const activeEl = document.activeElement;
+                        if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT' || activeEl.tagName === 'BUTTON')) {
+                            activeEl.blur();
                         }
-                        spActiveContextRow = tr;
-                        tr.classList.add('sp-context-active-row');
                     }
                 }
             });
@@ -10996,11 +11253,7 @@ public class portalController : Controller
                 if (target.closest('input, textarea, select, button, a, #spRecordEditModal, #spRowContextMenu')) return;
                 const tr = target.closest('table tbody tr, .sp-context-card, .session-item-card, .lobby-session-card');
                 if (!tr) return;
-                if (spActiveContextRow && spActiveContextRow !== tr) {
-                    spActiveContextRow.classList.remove('sp-context-active-row');
-                }
-                spActiveContextRow = tr;
-                tr.classList.add('sp-context-active-row');
+                setActiveTableRow(tr);
                 triggerDefaultRowEditOrView(tr);
             });
 
@@ -11012,12 +11265,25 @@ public class portalController : Controller
                 }
                 const activeEl = document.activeElement;
                 const isEditingInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT' || activeEl.isContentEditable);
+                if (isEditingInput) {
+                    return;
+                }
                 const isModalOpen = spRecordEditModalOverlayEl && spRecordEditModalOverlayEl.classList.contains('visible');
-                if (!isEditingInput && !isModalOpen && spActiveContextRow && document.body.contains(spActiveContextRow)) {
-                    if (evt.key === 'Enter' || evt.key === 'F2') {
+                const currentRow = getActiveSelectedTableRow();
+                if (!currentRow || !document.body.contains(currentRow)) {
+                    return;
+                }
+                if (evt.key === 'Delete' || evt.key === 'Del' || evt.keyCode === 46) {
+                    if (!isModalOpen || (spRecordEditModalOverlayEl && spRecordEditModalOverlayEl.contains(currentRow))) {
                         evt.preventDefault();
-                        triggerDefaultRowEditOrView(spActiveContextRow);
+                        closeRowContextMenu();
+                        triggerDeleteSelectedRow(currentRow);
                     }
+                    return;
+                }
+                if (!isModalOpen && (evt.key === 'Enter' || evt.key === 'F2')) {
+                    evt.preventDefault();
+                    triggerDefaultRowEditOrView(currentRow);
                 }
             });
 
@@ -11137,10 +11403,11 @@ public class portalController : Controller
 
                     spContextMenuEl.appendChild(createCtxDivider());
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', '刪除此工項紀錄 (' + wiCode + ')', '永久刪除', 'danger', function () {
+                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', '刪除此工項紀錄 (' + wiCode + ')', 'Delete / 刪除', 'danger', function () {
                         submitDynamicPostAction('/workitem/delete', {
                             workItemPk: wiPk,
-                            itemCode: wiCode
+                            itemCode: wiCode,
+                            returnTab: getCurrentActiveTabName() || 'workitems'
                         }, '確定要刪除工項「' + wiCode + ' - ' + wiTitle + '」嗎？');
                     }));
 
@@ -11246,10 +11513,11 @@ public class portalController : Controller
 
                     spContextMenuEl.appendChild(createCtxDivider());
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', '刪除此工項代表類型 (' + tCode + ')', '永久刪除', 'danger', function () {
+                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', '刪除此工項代表類型 (' + tCode + ')', 'Delete / 刪除', 'danger', function () {
                         submitDynamicPostAction('/workitem/type/delete', {
                             workItemTypePk: tPk,
-                            typeCode: tCode
+                            typeCode: tCode,
+                            returnTab: getCurrentActiveTabName() || 'types'
                         }, '確定要刪除工項代表類型「' + tCode + ' - ' + tName + '」嗎？');
                     }));
 
@@ -11306,9 +11574,10 @@ public class portalController : Controller
                         }));
                     }
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', '永久刪除此員工帳號 (' + empCode + ')', isSelf ? '本人不可刪除' : '永久刪除', 'danger', function () {
+                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', '永久刪除此員工帳號 (' + empCode + ')', isSelf ? '本人不可刪除' : 'Delete / 刪除', 'danger', function () {
                         submitDynamicPostAction('/employee/delete', {
-                            employeePk: empPk
+                            employeePk: empPk,
+                            returnTab: getCurrentActiveTabName() || 'employees'
                         }, '確定要永久刪除員工帳號【' + empCode + ' - ' + empName + ' (' + empAcc + ')】嗎？');
                     }, isSelf));
 
@@ -11338,6 +11607,16 @@ public class portalController : Controller
                             filterEmployeeTable();
                         }
                         showToastNotice('👥 已篩選「' + deptName + '」部門員工');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxDivider());
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', '刪除此部門 (' + deptCode + ')', 'Delete / 刪除', 'danger', function () {
+                        submitDynamicPostAction('/employee/department/delete', {
+                            departmentPk: deptPk,
+                            departmentCode: deptCode,
+                            returnTab: getCurrentActiveTabName() || 'employees'
+                        }, '確定要刪除部門「' + deptCode + ' - ' + deptName + '」嗎？\n（若該部門底下仍有員工，系統將自動安全移轉至備援部門）');
                     }));
 
                     spContextMenuEl.appendChild(createCtxDivider());
@@ -11449,6 +11728,38 @@ public class portalController : Controller
                         triggerDeleteVotingSession(sPk, sCode, sTitle, 'history');
                     }));
 
+                    spContextMenuEl.appendChild(createCtxDivider());
+                }
+            } else if (rowKind === 'pointHistory') {
+                const hPk = tr.getAttribute('data-history-pk') || '';
+                const rTitle = tr.getAttribute('data-row-title') || ('點數異動 #' + hPk);
+                headerTitle = `🕒 點數異動稽核操作：${rTitle}`;
+                headerDiv.innerHTML = `<span>${headerTitle}</span>`;
+                spContextMenuEl.appendChild(headerDiv);
+
+                if (isCurrentUserAdmin && hPk) {
+                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', `刪除此筆點數異動稽核紀錄 (#${hPk})`, 'Delete / 刪除', 'danger', function () {
+                        submitDynamicPostAction('/history/delete', {
+                            historyPk: hPk,
+                            returnTab: getCurrentActiveTabName() || 'history'
+                        }, '確定要刪除此筆點數異動稽核紀錄「' + rTitle + '」嗎？');
+                    }));
+                    spContextMenuEl.appendChild(createCtxDivider());
+                }
+            } else if (rowKind === 'systemLog') {
+                const lPk = tr.getAttribute('data-log-pk') || '';
+                const rTitle = tr.getAttribute('data-row-title') || ('系統 Log #' + lPk);
+                headerTitle = `📜 系統 Log 紀錄操作：${rTitle}`;
+                headerDiv.innerHTML = `<span>${headerTitle}</span>`;
+                spContextMenuEl.appendChild(headerDiv);
+
+                if (isCurrentUserAdmin && lPk) {
+                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', `刪除此筆系統 Log 紀錄 (#${lPk})`, 'Delete / 刪除', 'danger', function () {
+                        submitDynamicPostAction('/admin/log/delete', {
+                            logPk: lPk,
+                            returnTab: getCurrentActiveTabName() || 'logs'
+                        }, '確定要刪除此筆系統 Log 紀錄「' + rTitle + '」嗎？');
+                    }));
                     spContextMenuEl.appendChild(createCtxDivider());
                 }
             } else {
@@ -12311,7 +12622,7 @@ public class portalController : Controller
                 const isSelected = (kCode === currentVal);
 
                 rowsHtml += `
-                    <tr class=""modal-wik-feature-row"" data-kind-code=""${escapeModalHtml(kCode)}"" style=""${isSelected ? 'background:#dbeafe;font-weight:700;' : ''}cursor:pointer;"" onclick=""selectModalTypeKindFromTable('${escapeModalHtml(kCode)}')"">
+                    <tr class=""modal-wik-feature-row ${isSelected ? 'sp-context-active-row' : ''}"" data-row-kind=""workitemKind"" data-kind-pk=""${escapeModalHtml(kPk)}"" data-kind-code=""${escapeModalHtml(kCode)}"" data-kind-name=""${escapeModalHtml(kName)}"" data-tab-suffix=""${escapeModalHtml(sfx)}"" style=""${isSelected ? 'background:#dbeafe;font-weight:700;' : ''}cursor:pointer;"" onclick=""selectModalTypeKindFromTable('${escapeModalHtml(kCode)}')"">
                         <td style=""white-space:nowrap;""><strong style=""display:inline-flex;align-items:center;gap:5px;"">${renderIconHtmlJs(kIcon, kName)} ${escapeModalHtml(kName)}</strong><br/><code style=""font-size:11px;"">${escapeModalHtml(kCode)}</code></td>
                         <td style=""white-space:nowrap;""><span class=""badge"" style=""background:#dbeafe;color:#1d4ed8;font-weight:800;"">${escapeModalHtml(kMinPt)} ~ ${escapeModalHtml(kMaxPt)} pt</span></td>
                         <td style=""font-size:12px;line-height:1.4;"">${escapeModalHtml(kFeature)}</td>
@@ -12442,6 +12753,7 @@ public class portalController : Controller
             if (document.getElementById('typeSubmitBtn')) {
                 document.getElementById('typeSubmitBtn').textContent = '➕ 新增並儲存基本工項';
             }
+            if (document.getElementById('btnTypeDeleteCurrent')) document.getElementById('btnTypeDeleteCurrent').style.display = 'none';
             if (document.getElementById('btnTypeRevoteNextRound')) document.getElementById('btnTypeRevoteNextRound').style.display = 'none';
             if (document.getElementById('btnTypeRevoteRestartAll')) document.getElementById('btnTypeRevoteRestartAll').style.display = 'none';
             document.querySelectorAll('.quick-type-pill-btn').forEach(btn => {
@@ -12454,6 +12766,7 @@ public class portalController : Controller
             document.querySelectorAll('#workItemTypeDataTable tbody tr.type-row').forEach(tr => {
                 tr.classList.remove('sp-context-active-row');
             });
+            spActiveContextRow = null;
             document.getElementById('typeName')?.focus();
         }
 
@@ -12485,6 +12798,7 @@ public class portalController : Controller
             if (document.getElementById('typeSubmitBtn')) {
                 document.getElementById('typeSubmitBtn').textContent = '💾 儲存「' + (name || code) + '」基本工項屬性與套用工項類型';
             }
+            if (document.getElementById('btnTypeDeleteCurrent')) document.getElementById('btnTypeDeleteCurrent').style.display = pk ? '' : 'none';
             if (document.getElementById('btnTypeRevoteNextRound')) document.getElementById('btnTypeRevoteNextRound').style.display = '';
             if (document.getElementById('btnTypeRevoteRestartAll')) document.getElementById('btnTypeRevoteRestartAll').style.display = '';
 
@@ -12496,14 +12810,37 @@ public class portalController : Controller
                 btn.style.fontWeight = isMatch ? '800' : '700';
                 btn.style.boxShadow = isMatch ? '0 2px 6px rgba(29,78,216,0.25)' : 'none';
             });
+            let matchedRow = null;
             document.querySelectorAll('#workItemTypeDataTable tbody tr.type-row').forEach(tr => {
-                tr.classList.toggle('sp-context-active-row', String(tr.getAttribute('data-type-pk')) === String(pk));
+                const isMatch = String(tr.getAttribute('data-type-pk')) === String(pk);
+                tr.classList.toggle('sp-context-active-row', isMatch);
+                if (isMatch) {
+                    matchedRow = tr;
+                }
             });
+            if (matchedRow) {
+                spActiveContextRow = matchedRow;
+            }
 
             if (scrollToForm) {
                 document.getElementById('typeAttributeEditorCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 showToastNotice('✏️ 已載入基本工項「' + (name || code) + '」至上方編輯表單');
             }
+        }
+
+        function triggerCurrentFormTypeDelete() {
+            const pk = document.getElementById('typePk')?.value || '';
+            const code = document.getElementById('typeCode')?.value || '';
+            const name = document.getElementById('typeName')?.value || '';
+            if (!pk && !code) {
+                alert('請先從下方表格選擇要刪除的基本工項！');
+                return;
+            }
+            submitDynamicPostAction('/workitem/type/delete', {
+                workItemTypePk: pk,
+                typeCode: code,
+                returnTab: getCurrentActiveTabName() || 'types'
+            }, '確定要刪除基本工項／代表類型「' + code + (name ? ' - ' + name : '') + '」嗎？');
         }
 
         function selectTypeByPkForInlineEdit(typePk, scrollToForm) {
@@ -14484,7 +14821,7 @@ public class portalController : Controller
             string displayCard = vRow["displayCardValue"]?.ToString() ?? "";
             string displayComment = h(vRow["voteComment"]);
             sb.Append($@"
-                        <tr>
+                        <tr data-row-kind='votingRoundVote' data-round-number='{vRow["roundNumber"]}' title='💡 單擊選取此列後按 Delete 鍵可刪除該盲投回合；按滑鼠右鍵開啟操作選單'>
                             <td>第 {vRow["roundNumber"]} 回合</td>
                             <td><strong>{h(vRow["employeeName"])}</strong> <span style='color:#64748b;font-size:12px;'>({h(vRow["departmentName"])} / {h(vRow["jobTitle"])})</span></td>
                             <td><span class='badge {(rStatus == "voting" ? "badge-voting" : "badge-revealed")}'>{h(displayCard)}</span></td>
@@ -14934,7 +15271,6 @@ public class portalController : Controller
 
             function closeCtx() {
                 ctxEl.classList.remove('visible', 'open');
-                if (activeRow) { activeRow.classList.remove('sp-context-active-row'); activeRow = null; }
             }
             function closeModal() {
                 modalOverlay.classList.remove('open');
@@ -14958,8 +15294,38 @@ public class portalController : Controller
                 const t = (e.target && e.target.nodeType === 1) ? e.target : (e.target ? e.target.parentElement : null);
                 if (t && t.closest && t.closest('#spRowContextMenu')) return;
                 closeCtx();
+                if (t && t.closest && !t.closest('input, textarea, select, button, a')) {
+                    const tr = t.closest('table tbody tr');
+                    if (tr) {
+                        if (activeRow && activeRow !== tr) activeRow.classList.remove('sp-context-active-row');
+                        activeRow = tr;
+                        tr.classList.add('sp-context-active-row');
+                        const activeEl = document.activeElement;
+                        if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT' || activeEl.tagName === 'BUTTON')) {
+                            activeEl.blur();
+                        }
+                    }
+                }
             });
-            document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeCtx(); closeModal(); } });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') { closeCtx(); closeModal(); return; }
+                const activeEl = document.activeElement;
+                const isEditingInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT' || activeEl.isContentEditable);
+                if (isEditingInput) return;
+                if (e.key === 'Delete' || e.key === 'Del' || e.keyCode === 46) {
+                    const selRow = (activeRow && document.body.contains(activeRow) && activeRow.tagName === 'TR')
+                        ? activeRow
+                        : document.querySelector('table tbody tr.sp-context-active-row');
+                    if (selRow && isStandaloneAdmin) {
+                        const rNum = parseInt(selRow.getAttribute('data-round-number') || '0', 10);
+                        if (rNum > 0) {
+                            e.preventDefault();
+                            closeCtx();
+                            deleteStandaloneRound(currentVotingSessionPk, rNum, standaloneSessionCode + ' - ' + standaloneSessionTitle + '（第 ' + rNum + ' 回合）');
+                        }
+                    }
+                }
+            });
 
             document.addEventListener('contextmenu', function (evt) {
                 const rawTarget = evt.target;

@@ -593,6 +593,19 @@
     1. 頂部主選單統一編號為：`1. 🃏 多人估算 (1-1 ~ 1-3)`、`2. ⚙️ 設定回合`、`3. 📋 工項管理 (3-1 一般工項、3-2 基本工項、3-3 工項類型與基本規範、3-4 ~ 3-6 匯出)`、`4. 📊 統計報表 (4-1 ~ 4-3)`、`5. 🔑 修改帳密`、`6. 👥 組織與員工 (6-1 ~ 6-3)`、`7. 🛡️ 系統 Log (7-1 ~ 7-2)`、`8. 📖 線上說明 (8-1 ~ 8-8)`。
     2. 線上說明中心 (`#pane-help` 與 `/help`) 同步更新所有章節標題、選單編號、三層工項架構圖解、熱門搜尋關鍵字標籤與常見問題 FAQ (`Q0-3`)。
 
+### 2.30 表格 (Table) 選取資料列按鍵盤 `Delete` 鍵確認並刪除紀錄機制
+* **操作行為規範**：
+    1. **選取資料列 (`table tbody tr`)**：在全站任何表格（包含 `3-1. 一般工項與員工指派 #workItemDataTable`、`3-2. 基本工項管理 #workItemTypeDataTable`、`3-3. 工項類型與基本規範 #wikDataTable_*`、`1-2. 設定盲投回合 #roundSetupSessionTable`、`1-3. 估算過程查詢` 之盲投回合/出牌明細與 `tbPointHistory` 點數異動稽核歷程表、`4-1. 員工與部門統計`、`6-1. 員工與組織管理 #empDataTable`、`7-1. 系統 Log 查詢 #sysLogDataTable`、Modal 內之類型規範表，以及獨立盲投視窗 `/voting/session` 之回合統計表）中，以滑鼠左鍵單擊或右鍵選取某筆資料列 (`row`) 時，該列會維持高亮選取狀態 (`.sp-context-active-row`)，並自動解除表單輸入框焦點 (`blur`)，確保鍵盤事件直接作用於選取列。
+    2. **按下鍵盤 `Delete` 鍵觸發確認並刪除**：當表格內已選取某筆資料列（且游標不在 `<input>`、`<textarea>`、`<select>` 輸入狀態）時，按下鍵盤 `Delete` (`Del` / `keyCode 46`) 鍵，系統立即針對該筆紀錄彈出 `window.confirm(...)` 確認對話框；若使用者按下「確定」(`confirm === true`)，立即送出刪除請求並從資料庫刪除該筆紀錄（刪除後自動停留在原操作分頁 `returnTab`）：
+        * 基本工項 (`workitemType`) ➔ 呼叫 `/workitem/type/delete` (`storyPoint.spDeleteWorkItemType`)。
+        * 一般工項 (`workitem`) ➔ 呼叫 `/workitem/delete` (`storyPoint.spDeleteWorkItem`)。
+        * 工項類型 (`workitemKind`) ➔ 呼叫 `/workitem/kind/delete` (`storyPoint.spDeleteWorkItemKind`，自動移轉備援類型並至少保留 1 筆)。
+        * 員工帳號 (`employee`) ➔ 呼叫 `/employee/delete` (`storyPoint.spDeleteEmployee`，保護目前登入本人不可自刪)。
+        * 組織部門 (`department`) ➔ 呼叫 `/employee/department/delete` (`storyPoint.spDeleteDepartment`，自動將所屬員工移轉至備援部門)。
+        * 盲投議程 (`session`) 與盲投回合 (`votingRound` / `votingRoundVote`) ➔ 呼叫 `/voting/delete` (`storyPoint.spDeleteVotingSession`) 或 `/voting/round/delete` (`storyPoint.spDeleteVotingRound`)。
+        * 點數異動稽核歷程 (`pointHistory`) 與系統 Log (`systemLog`) ➔ 呼叫 `/history/delete` (`storyPoint.spDeletePointHistory`) 或 `/admin/log/delete` (`storyPoint.spDeleteSystemLog`)。
+    3. **PowerShell 多 Tab GUI (`ps/common.ps1` `enableGridHeaderSortAndLock`) 同步支援**：在 `DataGridView` 選取任一資料列按下鍵盤 `Delete` 鍵時，同步觸發 `$onDeleteRow` 詢問確認並執行刪除。
+
 ---
 
 ## 3. 系統架構與技術開發規範

@@ -2007,7 +2007,12 @@ begin
         if @targetKind = 'workItemType'
         begin
             set @workItemPk = null;
-            declare @autoTypeName nvarchar(128) = ltrim(rtrim(replace(replace(replace(isnull(@sessionTitle, N''), N'【代表類型估算】', N''), N'【基本工項估算】', N''), N'標準點數訂定', N'')));
+            declare @autoTypeName nvarchar(128) = ltrim(rtrim(isnull(@sessionTitle, N'')));
+            if left(@autoTypeName, 1) = N'【' and charindex(N'】', @autoTypeName) > 1
+            begin
+                set @autoTypeName = ltrim(rtrim(substring(@autoTypeName, charindex(N'】', @autoTypeName) + 1, len(@autoTypeName))));
+            end
+            set @autoTypeName = ltrim(rtrim(replace(replace(replace(replace(replace(@autoTypeName, N'【代表類型估算】', N''), N'【基本工項估算】', N''), N'標準點數訂定', N''), N'點數盲投', N''), N'標準點數估算', N'')));
             declare @resolvedKind varchar(64) = nullif(ltrim(rtrim(isnull(@defaultWorkItemKind, ''))), '');
 
             if @resolvedKind is not null and not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = @resolvedKind)
@@ -2039,9 +2044,16 @@ begin
                       and (
                           wit.typeName = @autoTypeName
                           or wit.typeCode = @autoTypeName
-                          or charindex(wit.typeName, @sessionTitle) > 0
                       )
                     order by case when @resolvedKind is not null and wit.defaultWorkItemKind = @resolvedKind then 0 else 1 end asc, wit.pk asc;
+                end
+
+                if @workItemTypePk is not null and @resolvedKind is not null
+                begin
+                    update storyPoint.tbWorkItemType
+                    set defaultWorkItemKind = @resolvedKind,
+                        updatedAt = sysdatetime()
+                    where pk = @workItemTypePk;
                 end
 
                 if @workItemTypePk is null and @autoTypeName <> N'' and not exists (select 1 from storyPoint.tbWorkItemKind where kindName = @autoTypeName or kindCode = @autoTypeName)
@@ -2067,7 +2079,7 @@ begin
                         left(@autoTypeName, 128),
                         isnull(@effectiveNewKindName, N'專案'),
                         @effectiveNewKind,
-                        isnull(nullif(ltrim(rtrim(@roundGoalNote)), N''), concat(N'由盲投回合設定建立之基本工項：', left(@autoTypeName, 128))),
+                        isnull(nullif(ltrim(rtrim(@roundGoalNote)), N''), concat(N'由盲投回合設定建立之基本工項（參照類型：', isnull(@effectiveNewKindName, N'專案'), N'）：', left(@autoTypeName, 128))),
                         null,
                         @cardDeckPk,
                         'voting',
@@ -2098,77 +2110,137 @@ begin
         else
         begin
             set @targetKind = 'workItem';
+            declare @refBasicTypePk int = @workItemTypePk;
             set @workItemTypePk = null;
 
-            if isnull(@workItemPk, 0) <= 0 or not exists (select 1 from storyPoint.tbWorkItem where pk = @workItemPk)
+            if isnull(@refBasicTypePk, 0) <= 0 or not exists (select 1 from storyPoint.tbWorkItemType where pk = @refBasicTypePk)
+            begin
+                set @refBasicTypePk = null;
+                if isnull(@workItemPk, 0) > 0 and exists (select 1 from storyPoint.tbWorkItem where pk = @workItemPk)
+                begin
+                    select @refBasicTypePk = workItemTypePk
+                    from storyPoint.tbWorkItem
+                    where pk = @workItemPk;
+                end
+            end
+
+            if isnull(@refBasicTypePk, 0) <= 0 or not exists (select 1 from storyPoint.tbWorkItemType where pk = @refBasicTypePk)
+            begin
+                select top 1 @refBasicTypePk = wit.pk
+                from storyPoint.tbWorkItemType as wit
+                where wit.isActive = 1
+                order by
+                    case when wit.typeName = N'資料庫健檢' then 0 else 1 end asc,
+                    wit.pk asc;
+            end
+
+            if @refBasicTypePk is null
+            begin
+                insert into storyPoint.tbWorkItemType (
+                    typeCode, typeName, categoryName, defaultWorkItemKind, description,
+                    standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
+                )
+                values (
+                    'TYPE_20261023034516',
+                    N'資料庫健檢',
+                    N'資料庫健檢與維運',
+                    'project',
+                    N'透過 script 收集狀態，分析健康狀態，提供健檢報告並完成報告',
+                    8.00,
+                    @cardDeckPk,
+                    'finalized',
+                    1,
+                    sysdatetime(),
+                    sysdatetime()
+                );
+                set @refBasicTypePk = scope_identity();
+            end
+
+            declare @refBasicTypeName nvarchar(128) = N'資料庫健檢';
+            declare @refBasicTypeKind varchar(64) = 'project';
+            declare @refBasicStdPoint decimal(8,2) = 0.00;
+
+            select
+                @refBasicTypeName = wit.typeName,
+                @refBasicTypeKind = isnull(nullif(ltrim(rtrim(wit.defaultWorkItemKind)), ''), 'project'),
+                @refBasicStdPoint = isnull(wit.standardStoryPoint, 0.00)
+            from storyPoint.tbWorkItemType as wit
+            where wit.pk = @refBasicTypePk;
+
+            if isnull(@workItemPk, 0) > 0 and exists (select 1 from storyPoint.tbWorkItem where pk = @workItemPk)
+            begin
+                update storyPoint.tbWorkItem
+                set workItemTypePk = isnull(@refBasicTypePk, workItemTypePk),
+                    workItemKind = isnull(@refBasicTypeKind, workItemKind),
+                    defaultTypePoint = case when @refBasicTypePk is not null then @refBasicStdPoint else defaultTypePoint end,
+                    estimationStatus = 'voting',
+                    updatedAt = sysdatetime()
+                where pk = @workItemPk;
+            end
+            else
             begin
                 set @workItemPk = null;
-                declare @autoItemTitle nvarchar(256) = ltrim(rtrim(replace(isnull(@sessionTitle, N''), N'【特定工項估算】', N'')));
+                declare @autoItemTitle nvarchar(256) = ltrim(rtrim(isnull(@sessionTitle, N'')));
+                if left(@autoItemTitle, 1) = N'【' and charindex(N'】', @autoItemTitle) > 1
+                begin
+                    set @autoItemTitle = ltrim(rtrim(substring(@autoItemTitle, charindex(N'】', @autoItemTitle) + 1, len(@autoItemTitle))));
+                end
+                set @autoItemTitle = ltrim(rtrim(replace(replace(replace(@autoItemTitle, N'【特定工項估算】', N''), N'微調盲投', N''), N'點數盲投', N'')));
                 if @autoItemTitle = N''
                 begin
-                    set @autoItemTitle = N'未命名實際工項';
+                    set @autoItemTitle = N'未命名一般工項';
                 end
 
                 select top 1 @workItemPk = pk
                 from storyPoint.tbWorkItem
                 where itemTitle = @autoItemTitle
+                   or itemCode = @autoItemTitle
                 order by isActive desc, pk desc;
 
-                if @workItemPk is null
+                if @workItemPk is not null
                 begin
-                    declare @fallbackTypePk int = null;
-                    select top 1 @fallbackTypePk = wit.pk
-                    from storyPoint.tbWorkItemType as wit
-                    left join storyPoint.tbWorkItemKind as wik
-                        on wik.kindCode = wit.typeCode
-                    where wit.isActive = 1
-                    order by isnull(wik.sortOrder, 999) asc, wit.pk asc;
-
-                    if @fallbackTypePk is null
-                    begin
-                        insert into storyPoint.tbWorkItemType (
-                            typeCode, typeName, categoryName, defaultWorkItemKind, description,
-                            standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
-                        )
-                        values (
-                            'project',
-                            N'專案',
-                            N'專案',
-                            'project',
-                            N'階段性目標導向、跨模組需求開發與系統建置、明確里程碑與範圍界定',
-                            8.00,
-                            @cardDeckPk,
-                            'finalized',
-                            1,
-                            sysdatetime(),
-                            sysdatetime()
-                        );
-                        set @fallbackTypePk = scope_identity();
-                    end
-
+                    update storyPoint.tbWorkItem
+                    set workItemTypePk = @refBasicTypePk,
+                        workItemKind = @refBasicTypeKind,
+                        defaultTypePoint = @refBasicStdPoint,
+                        estimationStatus = 'voting',
+                        updatedAt = sysdatetime()
+                    where pk = @workItemPk;
+                end
+                else
+                begin
                     declare @autoItemCode varchar(64) = 'WI-' + format(sysdatetime(), 'yyyyMMdd-HHmmss');
                     if exists (select 1 from storyPoint.tbWorkItem where itemCode = @autoItemCode)
                     begin
                         set @autoItemCode = @autoItemCode + '-' + right(cast(abs(checksum(newid())) as varchar(16)), 3);
                     end
 
+                    declare @nowLocalDate datetime2(0) = cast(dateadd(hour, 8, sysutcdatetime()) as datetime2(0));
+                    declare @endLocalDate datetime2(0) = dateadd(month, 1, @nowLocalDate);
+
                     insert into storyPoint.tbWorkItem (
-                        itemCode, itemTitle, itemDescription, workItemTypePk, sprintName,
-                        priorityLevel, defaultTypePoint, storyPoint, isManualAdjusted,
-                        estimationStatus, executionStatus, createdByEmployeePk, isActive, createdAt, updatedAt
+                        itemCode, itemTitle, itemDescription, workItemTypePk, workItemKind, sprintName,
+                        priorityLevel, defaultTypePoint, storyPoint, originalStoryPoint, isManualAdjusted,
+                        estimationStatus, executionStatus, startDate, endDate, dueDate,
+                        createdByEmployeePk, isActive, createdAt, updatedAt
                     )
                     values (
                         @autoItemCode,
                         left(@autoItemTitle, 256),
-                        isnull(nullif(ltrim(rtrim(@roundGoalNote)), N''), N'由盲投回合設定自動建立之實際工項'),
-                        @fallbackTypePk,
+                        isnull(nullif(ltrim(rtrim(@roundGoalNote)), N''), concat(N'由盲投回合設定建立之一般工項（參照基本工項：', @refBasicTypeName, N'）')),
+                        @refBasicTypePk,
+                        @refBasicTypeKind,
                         N'待排程 Sprint',
                         'medium',
-                        0.00,
-                        0.00,
+                        @refBasicStdPoint,
+                        @refBasicStdPoint,
+                        @refBasicStdPoint,
                         0,
                         'voting',
                         'todo',
+                        @nowLocalDate,
+                        @endLocalDate,
+                        cast(@endLocalDate as date),
                         @hostEmployeePk,
                         1,
                         sysdatetime(),
@@ -3657,6 +3729,9 @@ begin
             v.workItemPk,
             v.itemCode,
             v.itemTitle,
+            v.referencedWorkItemTypePk,
+            v.referencedWorkItemTypeCode,
+            v.referencedWorkItemTypeName,
             v.targetDisplayName,
             v.cardDeckPk,
             v.deckCode,
@@ -4003,45 +4078,23 @@ begin
         order by e.totalAllocatedStoryPoint desc, e.departmentPk asc, e.hierarchySortKey asc, e.employeePk asc;
 
         -- Result Set 3: 基本工項清單 (3-2 投出 SP 的基本工項，例如「資料庫健檢」、「資料庫效能調校」等及其屬性與所屬工項類型)
-        -- 確保基本工項 (tbWorkItemType) 不混入工項類型 (project/maintenance/consultingHour/training/productDevelopment)，並確保「資料庫健檢」基本工項存在
-        if not exists (select 1 from storyPoint.tbWorkItemType where typeCode = 'TYPE-DB-HC' or typeName = N'資料庫健檢')
-        begin
-            declare @fiboDeckForSeed int = null;
-            select top 1 @fiboDeckForSeed = pk from storyPoint.tbCardDeck where isActive = 1 order by isDefault desc, pk asc;
-            insert into storyPoint.tbWorkItemType (
-                typeCode, typeName, categoryName, defaultWorkItemKind, description,
-                standardStoryPoint, defaultCardDeckPk, estimationStatus, isActive, createdAt, updatedAt
-            )
-            values (
-                'TYPE-DB-HC',
-                N'資料庫健檢',
-                N'資料庫與維運',
-                'maintenance',
-                N'資料庫健康巡檢、索引碎片檢查、空間與備份檢核、Wait Stats 分析及健檢報告產出（無起訖時間之基本工項，供集保健檢等一般工項套用標準點數）',
-                3.00,
-                @fiboDeckForSeed,
-                'finalized',
-                1,
-                sysdatetime(),
-                sysdatetime()
-            );
-        end
-
-        declare @cleanDbHcPk int = null;
-        select top 1 @cleanDbHcPk = pk from storyPoint.tbWorkItemType where typeCode = 'TYPE-DB-HC' or typeName = N'資料庫健檢' order by pk asc;
-
-        if @cleanDbHcPk is not null and exists (
+        -- 確保基本工項 (tbWorkItemType) 不混入工項類型代碼 (project/maintenance/consultingHour/training/productDevelopment)
+        if exists (
             select 1 from storyPoint.tbWorkItemType
             where typeCode in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
-              and pk <> @cleanDbHcPk
         )
         begin
+            declare @cleanDbHcPk int = null;
+            select top 1 @cleanDbHcPk = pk
+            from storyPoint.tbWorkItemType
+            where typeCode not in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
+            order by pk asc;
+
             update storyPoint.tbWorkItem
             set workItemTypePk = @cleanDbHcPk
             where workItemTypePk in (
                 select pk from storyPoint.tbWorkItemType
                 where typeCode in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
-                  and pk <> @cleanDbHcPk
             );
 
             update storyPoint.tbVotingSession
@@ -4049,7 +4102,6 @@ begin
             where workItemTypePk in (
                 select pk from storyPoint.tbWorkItemType
                 where typeCode in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
-                  and pk <> @cleanDbHcPk
             );
 
             update storyPoint.tbPointHistory
@@ -4057,12 +4109,10 @@ begin
             where workItemTypePk in (
                 select pk from storyPoint.tbWorkItemType
                 where typeCode in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
-                  and pk <> @cleanDbHcPk
             );
 
             delete from storyPoint.tbWorkItemType
-            where typeCode in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment')
-              and pk <> @cleanDbHcPk;
+            where typeCode in ('project', 'maintenance', 'consultingHour', 'training', 'productDevelopment');
         end
 
         select
@@ -6581,6 +6631,237 @@ begin
             @objectName = 'storyPoint.spDeleteWorkItemIcon',
             @durationMillisecond = @durationMs,
             @executionResult = N'刪除自訂代表圖示失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @operatorAccount;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
+-- 28. 刪除部門預存程序 (storyPoint.spDeleteDepartment)
+-- ============================================================================
+/*
+用途說明: 刪除指定之部門 (tbDepartment)，若該部門底下尚有員工或子部門，自動將員工安全移轉至備援部門後刪除該部門。
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-27
+參數說明:
+    @departmentPk    int          : 欲刪除之部門主鍵
+    @departmentCode  varchar(64)  : 欲刪除之部門代碼
+    @operatorAccount varchar(128) : 操作者帳號
+修改歷程:
+    2026-10-27 初版建立，支援部門刪除與關聯員工安全移轉
+*/
+create or alter procedure storyPoint.spDeleteDepartment
+    @departmentPk int = null,
+    @departmentCode varchar(64) = null,
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+    declare @targetPk int = isnull(@departmentPk, 0);
+    declare @targetCode varchar(64) = null;
+    declare @targetName nvarchar(128) = null;
+    declare @fallbackDeptPk int = null;
+
+    begin try
+        if @targetPk <= 0 and isnull(ltrim(rtrim(@departmentCode)), '') <> ''
+        begin
+            select top 1 @targetPk = pk
+            from storyPoint.tbDepartment
+            where departmentCode = ltrim(rtrim(@departmentCode));
+        end
+
+        select
+            @targetCode = departmentCode,
+            @targetName = departmentName
+        from storyPoint.tbDepartment
+        where pk = @targetPk;
+
+        if @targetCode is null
+        begin
+            ;throw 50063, N'找不到欲刪除的部門紀錄。', 1;
+        end
+
+        if (select count(1) from storyPoint.tbDepartment) <= 1
+        begin
+            ;throw 50064, N'系統至少須保留 1 個部門，無法刪除最後一個部門。', 1;
+        end
+
+        select top 1 @fallbackDeptPk = pk
+        from storyPoint.tbDepartment
+        where pk <> @targetPk
+          and isActive = 1
+        order by case when departmentCode = 'HR' then 0 else 1 end asc, pk asc;
+
+        if @fallbackDeptPk is null
+        begin
+            select top 1 @fallbackDeptPk = pk
+            from storyPoint.tbDepartment
+            where pk <> @targetPk
+            order by pk asc;
+        end
+
+        update storyPoint.tbDepartment
+        set parentDepartmentPk = null,
+            updatedAt = sysdatetime()
+        where parentDepartmentPk = @targetPk;
+
+        update storyPoint.tbEmployee
+        set departmentPk = @fallbackDeptPk,
+            updatedAt = sysdatetime()
+        where departmentPk = @targetPk;
+
+        delete from storyPoint.tbDepartment
+        where pk = @targetPk;
+
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @delDeptMsg nvarchar(256) = concat(N'部門【', @targetCode, N' - ', @targetName, N'】已刪除');
+        exec storyPoint.spWriteLog
+            @logLevel = 3,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeleteDepartment',
+            @durationMillisecond = @durationMs,
+            @executionResult = @delDeptMsg,
+            @operatorAccount = @operatorAccount;
+
+        select
+            @targetPk as deletedDepartmentPk,
+            @targetCode as deletedDepartmentCode,
+            @targetName as deletedDepartmentName,
+            @fallbackDeptPk as fallbackDepartmentPk;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeleteDepartment',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'刪除部門失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @operatorAccount;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
+-- 29. 刪除單筆點數異動稽核歷程預存程序 (storyPoint.spDeletePointHistory)
+-- ============================================================================
+/*
+用途說明: 刪除指定之單筆 Story Point 點數異動稽核歷程紀錄 (tbPointHistory)。
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-27
+參數說明:
+    @pointHistoryPk  int          : 欲刪除之點數異動歷程主鍵
+    @operatorAccount varchar(128) : 操作者帳號
+修改歷程:
+    2026-10-27 初版建立
+*/
+create or alter procedure storyPoint.spDeletePointHistory
+    @pointHistoryPk int,
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+
+    begin try
+        if isnull(@pointHistoryPk, 0) <= 0 or not exists (select 1 from storyPoint.tbPointHistory where pk = @pointHistoryPk)
+        begin
+            ;throw 50065, N'找不到欲刪除的點數異動歷程紀錄。', 1;
+        end
+
+        delete from storyPoint.tbPointHistory
+        where pk = @pointHistoryPk;
+
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @delHistMsg nvarchar(256) = concat(N'點數異動歷程紀錄 #', cast(@pointHistoryPk as varchar(32)), N' 已刪除');
+        exec storyPoint.spWriteLog
+            @logLevel = 3,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeletePointHistory',
+            @durationMillisecond = @durationMs,
+            @executionResult = @delHistMsg,
+            @operatorAccount = @operatorAccount;
+
+        select @pointHistoryPk as deletedPointHistoryPk;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeletePointHistory',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'刪除點數異動歷程失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @operatorAccount;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
+-- 30. 刪除單筆系統 Log 紀錄預存程序 (storyPoint.spDeleteSystemLog)
+-- ============================================================================
+/*
+用途說明: 刪除指定之單筆系統與錯誤 Log 紀錄 (tbLog)。
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-27
+參數說明:
+    @logPk           int          : 欲刪除之系統 Log 主鍵
+    @operatorAccount varchar(128) : 操作者帳號
+修改歷程:
+    2026-10-27 初版建立
+*/
+create or alter procedure storyPoint.spDeleteSystemLog
+    @logPk int,
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+
+    begin try
+        if isnull(@logPk, 0) <= 0 or not exists (select 1 from storyPoint.tbLog where pk = @logPk)
+        begin
+            ;throw 50066, N'找不到欲刪除的系統 Log 紀錄。', 1;
+        end
+
+        delete from storyPoint.tbLog
+        where pk = @logPk;
+
+        select @logPk as deletedLogPk;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeleteSystemLog',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'刪除系統 Log 紀錄失敗',
             @errorCode = @errCode,
             @errorLine = @errLine,
             @errorMessage = @errMsg,

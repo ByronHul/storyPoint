@@ -518,16 +518,19 @@ select
     vs.sessionCode,
     vs.sessionTitle,
     vs.targetKind,
-    case when vs.targetKind = 'workItemType' then N'工項代表類型估算' else N'個別工項估算' end as targetKindText,
+    case when vs.targetKind = 'workItemType' then N'基本工項估算' else N'一般工項估算' end as targetKindText,
     vs.workItemTypePk,
-    wit.typeCode,
-    wit.typeName,
+    isnull(wit.typeCode, refWit.typeCode) as typeCode,
+    isnull(wit.typeName, refWit.typeName) as typeName,
     vs.workItemPk,
     wi.itemCode,
     wi.itemTitle,
+    wi.workItemTypePk as referencedWorkItemTypePk,
+    refWit.typeCode as referencedWorkItemTypeCode,
+    refWit.typeName as referencedWorkItemTypeName,
     case
-        when vs.targetKind = 'workItemType' then concat(N'[代表類型] ', isnull(wit.typeCode, ''), N' - ', isnull(wit.typeName, ''))
-        else concat(N'[實際工項] ', isnull(wi.itemCode, ''), N' - ', isnull(wi.itemTitle, ''))
+        when vs.targetKind = 'workItemType' then concat(N'[基本工項] ', isnull(wit.typeCode, ''), N' - ', isnull(wit.typeName, ''), case when wit.defaultWorkItemKind is not null then concat(N' (參照類型: ', isnull(wik.kindName, wit.defaultWorkItemKind), N')') else N'' end)
+        else concat(N'[一般工項] ', isnull(wi.itemCode, ''), N' - ', isnull(wi.itemTitle, ''), case when refWit.typeName is not null then concat(N' (參照基本工項: ', refWit.typeName, N')') else N'' end)
     end as targetDisplayName,
     vs.cardDeckPk,
     cd.deckCode,
@@ -589,8 +592,12 @@ inner join storyPoint.tbEmployee as hostEmp
     on vs.hostEmployeePk = hostEmp.pk
 left join storyPoint.tbWorkItemType as wit
     on vs.workItemTypePk = wit.pk
+left join storyPoint.tbWorkItemKind as wik
+    on wik.kindCode = wit.defaultWorkItemKind
 left join storyPoint.tbWorkItem as wi
     on vs.workItemPk = wi.pk
+left join storyPoint.tbWorkItemType as refWit
+    on wi.workItemTypePk = refWit.pk
 left join storyPoint.tbVotingRound as curRound
     on curRound.votingSessionPk = vs.pk
    and curRound.roundNumber = vs.currentRoundNumber
