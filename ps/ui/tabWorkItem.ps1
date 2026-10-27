@@ -281,6 +281,18 @@ process {
                 }
             }
         }
+    } -onRestartAllRow {
+        param($rowItem)
+        if ($null -ne $rowItem -and $rowItem.table.columns.contains('workItemPk')) {
+            $ans = [system.windows.forms.messagebox]::show("確定要針對工項「$($rowItem.itemCode) - $($rowItem.itemTitle)」全部重新開始（清除過往回合並重設回第 1 回合）嗎？", '確認全部重新開始', [system.windows.forms.messageboxbuttons]::yesno, [system.windows.forms.messageboxicon]::question)
+            if ($ans -eq [system.windows.forms.dialogresult]::yes) {
+                $null = & $votingScript -actionType 'restartAllSession' -targetKind 'workItem' -workItemPk ([int]$rowItem.workItemPk) -roundDiscussionNote '由工項管理頁籤發起全部重新開始'
+                & $loadItemData
+                if ($null -ne $statusLabel) {
+                    $statusLabel.text = "🆕 已針對工項【$($rowItem.itemCode) - $($rowItem.itemTitle)】全部重新開始（重設回第 1 回合）"
+                }
+            }
+        }
     }
 
     $txtFilterWi.add_textchanged({

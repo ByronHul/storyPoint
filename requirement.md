@@ -170,7 +170,10 @@
     2. 員工帳號僅保留既有之 **`admin`** 與 **`raya`（許立慧，員工編號 `250201`）** 及其既有密碼雜湊設定；舊示範部門全數移除，僅保留 **`HR`** 部門。
 * **參照 `phishing` 專案資料庫 (`phishingDefenseDb`) 匯入集英信誠 (`mentorTrust`) 部門與員工資料**：
     1. **同步新增集英信誠部門 (`storyPoint.tbDepartment`)**：除保留 `HR` 外，依 `phishing.tbRecipient` 中 `companyCode = 'mentorTrust'` 之部門結構新增 **`DB/INFra` (`DB_INFRA`)**、**`管理` (`MGMT`)**、**`BI` (`BI`)**、**`開發` (`DEV`)** 共 5 個有效部門。
-    2. **同步新增集英信誠員工 (`storyPoint.tbEmployee`)**：將 `phishing.tbRecipient` 內屬於集英信誠 (`mentorTrust`) 之全體同仁（含員工編號、姓名、信箱、所屬部門、職稱與登入帳號）完整匯入 `storyPoint.tbEmployee`（總計 32 位啟用帳號：含保留於 `HR` 部門之 `admin` 與 `raya`，以及同步自集英信誠之 30 位同仁）。
+    2. **同步新增集英信誠員工 (`storyPoint.tbEmployee`) 與帳戶預設密碼規範**：將 `phishing.tbRecipient` 內屬於集英信誠 (`mentorTrust`) 之全體同仁（含員工編號、姓名、信箱、所屬部門、職稱與登入帳號）完整匯入 `storyPoint.tbEmployee`（總計 32 位啟用帳號：含保留於 `HR` 部門之 `admin` 與 `raya`，以及同步自集英信誠之 30 位同仁）。
+    3. **所有帳戶預設密碼設定為 `P@ssw0rd`（`admin`、`byron` / `byron.hu` 與 `raya` 的密碼不修改）**：
+        * 系統中所有員工帳戶（除 `admin`、`byron` / `byron.hu`、`raya` 外）之預設登入密碼統一設定為 **`P@ssw0rd`**（對應 SHA-256 雜湊值 `b03ddf3ca2e714a6548e7495e2a03f5e824eaac9837cd7f159c67b90fb4b7342`），包含資料庫現有一般參與者帳戶、種子腳本 (`sql/seedData.sql`)、`storyPoint.spUpsertEmployee` 新增預設值、Web 批次匯入預設密碼與 PowerShell (`ps/manageEmployee.ps1` / `ps/ui/tabEmployee.ps1`) 預設密碼。
+        * **`admin`**、**`byron` (`byron.hu`)** 與 **`raya`** 三個帳戶之既有密碼雜湊嚴格保護、絕不修改。
 
 ### 2.12 全員完成投票即刻自動翻牌與全體畫面即時同步規範
 * **全員投完票自動翻牌 (Automatic Card Reveal on All Voted)**：
@@ -397,27 +400,56 @@
     2. 每個說明主題皆搭配對應之**繁體中文實機操作畫面截圖**（涵蓋：① 員工登入驗證與安全登出、② 自助修改個人帳密、③ 多人盲投大廳待參與/參與中分類、④ 獨立盲投 Session 綠色牌桌與自動翻牌/定案控制台、⑤ 設定盲投回合與牌面預覽、⑥ 估算過程與異動稽核查詢、⑦ 工項管理與起訖時間/到期自動扣點寄信、⑧ 表格滑鼠右鍵選單與雙擊單筆編輯 Modal、⑨ 工項代表類型與工項類型 CRUD、⑩ 員工/部門點數統計與表頭排序鎖定/三格式匯出、⑪ 組織部門主管樹狀階層與 CSV/Excel 批次匯入、⑫ 系統防崩潰 Log 查詢中心與測試）。
     3. 每幅操作畫面下方皆附帶**編號標註說明 (`①` `②` `③` `④`)** 與**畫面元件示意列**，點擊圖片或「`🔍 放大畫面`」按鈕即可開啟**全螢幕高解析度 Lightbox 放大檢視視窗 (`#spHelpScreenLightbox`)**（支援切換上一張/下一張操作畫面），並提供「`⚡ 立即切換至此功能畫面` / `🪟 直接彈出 Modal`」一鍵操作按鈕。
 
-### 2.21 重新投票機制 (`🔄 重新投票` / `🔁 重設本回合出牌重新投票`)
-* **核心原則**：針對任何「已定案 (`finalized`)」、「已翻牌揭曉 (`revealed`)」或「盲投進行中 (`voting`)」之**工項代表類型 (`workItemType`)**、**特定工項 (`workItem`)** 與**盲投議程 (`votingSession`)**，系統全面提供「**`🔄 重新投票`**」與「**`🔁 清空本回合出牌重新投票`**」選項，讓團隊可隨時針對既有代表類型或工項重啟多人盲投估算。
-* **Web 介面全方位「🔄 重新投票」操作入口**：
-    1. **表格滑鼠右鍵操作選單 (`#spRowContextMenu`)**：
-        * **工項代表類型 (`2-2. 工項代表類型` `rowKind === 'workitemType'`)**：右鍵選單提供「**`🔄 重新投票此代表類型標準點數（重啟新一輪多人盲投議程）`**」與「**`🃏 針對此代表類型發起「多人盲投估算」（彈出 Modal 視窗）`**」。
-        * **實際工項 (`2-1. 工項與員工指派` `rowKind === 'workitem'`)**：右鍵選單提供「**`🔄 重新投票此工項點數（重啟新一輪多人盲投議程）`**」與「**`🃏 針對此工項發起「多人盲投估算」（彈出 Modal 視窗）`**」。
-        * **盲投議程 (`1-2. 設定盲投回合` 與 `1-3. 估算過程查詢` `rowKind === 'session'`)**：右鍵選單提供「**`🔄 重新投票此盲投議程（開啟新一輪盲投並重設已定案狀態）`**」與「**`🔁 清空本回合已出牌紀錄並重新投票（保持同一回合號）`**」。
-    2. **單筆編輯 Modal 視窗內建重新投票按鈕**：
-        * `openWorkItemTypeEditModal`（工項代表類型單筆編輯 Modal）：底部提供「**`🔄 重新投票此代表類型`**」按鈕。
-        * `openWorkItemEditModal`（工項單筆編輯 Modal）：底部提供「**`🔄 重新投票此工項`**」按鈕。
-        * `openSessionSetupEditModal`（盲投回合設定 Modal）：支援載入既有或已定案議程進行重新投票設定，並內建「**`🔄 重新投票：清空本回合已投選票並重設為盲投進行中（若原為已定案則重啟盲投）`**」勾選開關。
-    3. **即時盲投大廳 (`1-1. 即時盲投大廳` `#pane-voting`)、設定盲投回合 (`1-2` `#pane-roundSetup`)、估算過程查詢 (`1-3` `#pane-history`) 與獨立盲投網頁 (`/voting/session`)**：
-        * 左側投票議程清單（含「📁 已拍板定案議程」）與右側大廳議程卡片皆提供「**`🔄 重新投票`**」按鈕。
-        * `1-2. 設定盲投回合` 之「選擇操作模式 (`#setupSessionSelector`)」包含「已定案 (`🏆 已定案 — 可重新投票`)」議程，選取已定案議程時自動勾選重新投票重設選項。
-        * `1-3. 估算過程查詢` 之議程標題列提供「**`🔄 重新投票此議程 (開啟新一輪盲投)`**」按鈕。
-        * 獨立盲投 Session 網頁 (`/voting/session`) 主持人控制台提供「**`🔄 2. 開啟下一回合重新盲投 (Next Round)`**」與「**`🔁 3. 重新投票 (清空本回合已出牌 / 重啟盲投)`**」按鈕。
-* **T-SQL 預存程序 (`storyPoint.spControlVotingSession`、`storyPoint.spCreateVotingSession`、`storyPoint.spGetStoryPointDashboard`)**：
-    1. `storyPoint.spControlVotingSession` 新增 `@controlAction in ('revote', 'resetRound')` 並支援傳入 `@targetKindParam`、`@workItemTypePkParam`、`@workItemPkParam`：若該代表類型或工項尚無盲投議程，自動建立新盲投議程與第 1 回合；若已有議程（含已定案 `finalized`），自動將 `sessionStatus` 重設為 `'voting'`、清除 `finalStoryPoint = null` 與 `finalizedAt = null`，開啟新一輪盲投回合（或於 `resetRound` 清空當前回合選票），將對應 `tbWorkItemType`（重設 `standardStoryPoint = null, estimationStatus = 'voting'`）或 `tbWorkItem`（重設 `estimationStatus = 'voting'`）狀態恢復為投票估算中，並寫入 `storyPoint.tbPointHistory`（`changeSource = 'revoteReset'`）與 `storyPoint.tbLog`。
+### 2.21 重新投票機制（支援「🔄 重啟新一輪盲投」與「🆕 全部重新開始（重設回第 1 回合並重新設定投票人等所有相關選項）」）
+* **核心原則**：針對任何「已定案 (`finalized`)」、「已翻牌揭曉 (`revealed`)」或「盲投進行中 (`voting`)」之**工項代表類型 (`workItemType`)**、**特定工項 (`workItem`)** 與**盲投議程 (`votingSession`)**，系統除了支援**重啟新一輪盲投 (`nextRound` / `revote`)** 與**清空當前回合重投 (`resetCurrent` / `resetRound`)** 外，更完整支援「**`🆕 全部重新開始（重設回第 1 回合並重新設定所有相關選項）`** (`restartAllRounds` / `restartAll`)」，讓團隊可隨時清除過往回合紀錄、回到第 1 回合，並重新設定所有相關選項（包含：**投票人名單 `participantPks` / `participantPkCsv`**、**參與權限模式 `restrictToParticipant`**、**撲克牌組 `cardDeckPk`**、**允許出牌點數下限與上限 `minStoryPoint` / `maxStoryPoint`**、**允許 `?` 需求不明牌 / `☕` 休息牌**、**共識演算法 `consensusRule`（費氏無條件進位、最接近費氏、算術平均、中位數、眾數、嚴格全員一致）**、**最大點數分歧閾值 `maxAllowedSpread`**、**單回合倒數計時秒數 `roundTimeLimitSecond`**、**出牌理由填寫規定 `voteCommentPolicy`**、**全體投完自動翻牌 `autoRevealWhenAllVoted`**、**議程標題 `sessionTitle`** 與**DoD 估算基準備註 `roundGoalNote`**）。
+* **五種重新投票與重設執行模式 (`revoteMode`)**：
+    1. **`🆕 全部重新開始 (`restartAll`)`**：清除此議程過往所有回合與出牌紀錄，重設回 **第 1 回合 (`Round 1`)** 重新盲投，將已定案之代表類型或工項重設為「盲投進行中」，並套用重新設定之**投票人名單**與**所有盲投回合選項**。
+    2. **`🔄 重啟新一輪盲投 (`nextRound`)`**：保留過往回合歷史紀錄，直接開啟下一輪新回合 (`Round N+1`) 並套用最新設定的投票人名單與所有選項。
+    3. **`🔁 重設當前回合 (`resetCurrent`)`**：保持目前回合號不變，僅清空本回合已投出的撲克牌選票，並套用最新設定的投票人名單與所有選項。
+    4. **`💾 僅更新設定與投票人 (`keepVotes`)`**：保留目前所有回合與已出牌紀錄，僅更新投票人名單與盲投選項設定。
+    5. **`➕ 另建全新盲投議程 Session (`createNewSession`)`**：保留舊議程不動，針對該工項或代表類型另外建立一場全新編號 (`VOTE-*`) 的盲投議程。
+* **Web 介面全方位「🔄 重啟新一輪」與「🆕 全部重新開始（重設投票人與所有選項）」操作入口**：
+    1. **表格滑鼠右鍵操作選單 (`#spRowContextMenu`，加寬選單並強制右側徽章 `white-space: nowrap` 單行不斷字)**：
+        * **工項 (`rowKind === 'workitem'`)**：
+            * `🔄 重新投票：重啟新一輪盲投（保留歷史回合）`
+            * `🆕 重新投票：全部重新開始（重設投票人與所有選項）` ➔ 彈出 `openSessionSetupEditModal` 並預選 `restartAll`（全部重新開始），可直接重新勾選投票人、部門快速圈選、自動勾選該工項負責員工，以及調整所有牌組與規則選項。
+            * `⚙️ 進入「設定盲投回合」完整重設此工項所有投票選項` ➔ 切換至 `#pane-roundSetup` 並自動載入該工項對應議程與 `restartAll` 模式。
+        * **工項代表類型 (`rowKind === 'workitemType'`)**：
+            * `🔄 重新投票：重啟新一輪盲投（保留歷史回合）`
+            * `🆕 重新投票：全部重新開始（重設投票人與所有選項）` ➔ 彈出 `openSessionSetupEditModal` 並預選 `restartAll`。
+            * `⚙️ 進入「設定盲投回合」完整重設此代表類型所有選項`。
+        * **盲投議程 (`rowKind === 'session'`)**：
+            * `🔄 重新投票：重啟新一輪盲投（開啟下一回合）`
+            * `🆕 重新投票：全部重新開始（重設投票人與所有選項）` ➔ 彈出 `openSessionSetupEditModal(sessionPk, { revoteMode: 'restartAll' })`。
+            * `⚡ 快速全部重新開始（直接清空歷史重設回第 1 回合）`
+            * `🔁 清空本回合已出牌紀錄並重新投票（保持同回合）`
+            * `✏️ 單筆編輯此盲投議程與投票人設定（彈出 Modal）`
+    2. **單筆編輯與盲投回合設定 Modal 視窗 (`openSessionSetupEditModal`、`openWorkItemEditModal`、`openWorkItemTypeEditModal`)**：
+        * `openSessionSetupEditModal` 完整整合：
+            * **🔄 重新投票 / 議程重設模式 (`revoteMode`)** 選擇器（`🆕 全部重新開始`、`🔄 重啟新一輪`、`🔁 重設當前回合`、`💾 僅更新設定與投票人`、`➕ 另建全新 Session`）。
+            * **👥 重新設定參與盲投之投票人名單 (`participantPks`) 與權限模式 (`restrictToParticipant`)**：提供全體在職員工核取方塊清單、依部門批次全選/取消、全選/全不選、**📌 僅勾選此工項負責員工 (`modalSelectWorkItemAssignees`)**，以及即時統計已勾選投票人數徽章 (`#modalVoterCountBadge`)。
+            * **🃏 撲克牌組、點數上下限、`?`/`☕` 特殊牌與即時有效撲克牌預覽列 (`#modalDeckPreviewBar`)**。
+            * **⚖️ 全部 6 種共識決演算法、最大分歧閾值、單回合限時秒數、出牌理由規定與全體投完自動翻牌開關**。
+        * `openWorkItemEditModal` 與 `openWorkItemTypeEditModal` 底部皆同時提供「**`🔄 重啟新一輪投票`**」與「**`🆕 全部重新開始 (重設投票人與選項)`**」按鈕。
+    3. **即時盲投大廳 (`1-1` `#pane-voting`)、設定盲投回合 (`1-2` `#pane-roundSetup`)、估算過程查詢 (`1-3` `#pane-history`) 與獨立盲投網頁 (`/voting/session`)**：
+        * 左側議程清單與大廳卡片同時提供「`🔄 重啟新一輪`」與「`🆕 全部重新開始 (重設選項)`」按鈕。
+        * `1-2. 設定盲投回合` 內建「**🔄 重新投票與重設執行模式 (`#setupRevoteModeSelect`)**」，支援直接於主表單針對任何既有或已定案議程執行「🆕 全部重新開始（重設回第 1 回合並重新設定投票人等所有選項）」。
+        * `1-3. 估算過程查詢` 議程卡片提供「`🔄 重啟新一輪`」、「`🆕 全部重新開始 (重設投票人與所有選項)`」與「`⚡ 快速全部重設回第 1 輪`」按鈕。
+        * 獨立盲投 Session 網頁 (`/voting/session`) 主持人控制台除提供「`🔄 2. 開啟下一回合`」、「`🔁 3. 清空本輪重投`」、「`🆕 4. 全部重新開始 (重設回第 1 回合)`」按鈕外，更內嵌可展開之「**`🆕 重新投票並重新設定所有相關選項（投票人名單、權限模式、牌組、點數上下限、共識規則、計時...）`**」完整重設表單，主持人免離開盲投牌桌即可直接重設投票人與所有選項並從第 1 回合重新開始。
+* **T-SQL 預存程序 (`storyPoint.spCreateVotingSession`、`storyPoint.spControlVotingSession`、`storyPoint.spGetStoryPointDashboard`)**：
+    1. `storyPoint.spCreateVotingSession` 新增 `@restartAllRounds bit = 0` 與 `@openNextRound bit = 0` 參數：當 `@restartAllRounds = 1` 時，自動清除該議程既有之 `storyPoint.tbVoteRecord` 與 `storyPoint.tbVotingRound`，重建全新的第 1 回合 (`roundNumber = 1`)，將 `storyPoint.tbVotingSession` 重設為 `currentRoundNumber = 1, sessionStatus = 'voting', finalStoryPoint = null, finalizedAt = null`，同步更新所有回合設定參數與 `storyPoint.tbVotingSessionParticipant` 投票人名單，並將對應 `tbWorkItemType` 或 `tbWorkItem` 狀態重設回 `'voting'` 及寫入 `storyPoint.tbPointHistory` (`changeSource = 'revoteRestartAll'`)。
+    2. `storyPoint.spControlVotingSession` 新增 `@controlAction = 'restartAll'`，支援一鍵將指定議程、代表類型或工項清除歷史回合並重設回第 1 回合重新盲投。
 * **PowerShell Console (`ps/manageVotingSession.ps1`) 與 GUI (`ps/common.ps1`、`ps/ui/tabWorkItemType.ps1`、`ps/ui/tabWorkItem.ps1`、`ps/ui/tabVoting.ps1`) 同步支援**：
-    1. `ps/manageVotingSession.ps1` 新增 `-actionType 'revoteSession'` 與 `'resetRound'`。
-    2. `ps/common.ps1` 之 `enableGridHeaderSortAndLock` 右鍵選單新增 `🔄 重新投票此筆紀錄（重啟新一輪多人盲投）` (`-onRevoteRow`)，並於代表類型、工項與盲投議程頁籤提供重新投票按鈕與右鍵操作。
+    1. `ps/manageVotingSession.ps1` 新增 `-actionType 'restartAllSession'` 及 `-restartAllRounds`、`-openNextRound` 參數。
+    2. `ps/common.ps1` 之 `enableGridHeaderSortAndLock` 右鍵選單同時提供 `🔄 重新投票此筆紀錄（重啟新一輪多人盲投）` (`-onRevoteRow`) 與 `🆕 重新投票：全部重新開始（重設回第 1 回合）` (`-onRestartAllRow`)，且於盲投議程、代表類型與工項頁籤均提供對應按鈕與右鍵操作。
+
+### 2.22 網站與桌面管理介面專屬圖示 (`favicon.ico` / `favorit.ico` / `favicon.svg` / `favicon.png`)
+* **圖示視覺設計**：
+    1. 採用「Story Point 估算 / Planning Poker 撲克牌」專屬主題設計：深藍至寶藍圓角漸層底座（`#0f172a` ➔ `#2563eb`）、後方金色盲投撲克牌與前方亮白主撲克牌（印有醒目藍色 `SP` 字樣與紅色菱形點數徽章）。
+    2. 封裝為標準 32-bit ARGB 多解析度（`16x16`、`32x32`、`48x48`、`64x64`）圖示檔案，同時部署於 `web/storyPointPortal/wwwroot/favicon.ico`、`web/storyPointPortal/wwwroot/favorit.ico`、`web/storyPointPortal/wwwroot/favicon.svg` 與 `web/storyPointPortal/wwwroot/favicon.png`。
+* **全系統頁面與桌面 GUI 套用**：
+    1. Web 系統所有頁面（員工登入頁 `/login`、主系統各頁籤 `/`、獨立盲投 Session 網頁 `/voting/session`、重複進入攔截頁、獨立線上說明專頁 `/help`、匯出之互動式 HTML 報表及全域防當機保護頁面）之 `<head>` 皆嵌入 `<link rel="icon">` 與 `<link rel="shortcut icon">` 指向 `/favicon.ico`、`/favorit.ico` 與 `/favicon.svg`。
+    2. PowerShell 多 Tab GUI (`ps/ui/uiMain.ps1`) 之主視窗、員工登入驗證視窗與個人帳密修改視窗同步套用 `favicon.ico` 作為視窗與工作列圖示。
 
 ---
 

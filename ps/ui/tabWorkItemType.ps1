@@ -78,11 +78,18 @@ process {
     $btnRefresh.size = new-object system.drawing.size(190, 30)
 
     $btnRevote = new-object system.windows.forms.button
-    $btnRevote.text = '🔄 重新投票所選代表類型'
+    $btnRevote.text = '🔄 重新投票(開新輪)'
     $btnRevote.location = new-object system.drawing.point(378, 50)
-    $btnRevote.size = new-object system.drawing.size(195, 30)
+    $btnRevote.size = new-object system.drawing.size(165, 30)
     $btnRevote.backcolor = [system.drawing.color]::fromargb(239, 246, 255)
     $btnRevote.forecolor = [system.drawing.color]::fromargb(29, 78, 216)
+
+    $btnRestartAll = new-object system.windows.forms.button
+    $btnRestartAll.text = '🆕 全部重新開始(第1輪)'
+    $btnRestartAll.location = new-object system.drawing.point(552, 50)
+    $btnRestartAll.size = new-object system.drawing.size(180, 30)
+    $btnRestartAll.backcolor = [system.drawing.color]::fromargb(238, 242, 255)
+    $btnRestartAll.forecolor = [system.drawing.color]::fromargb(67, 56, 202)
 
     $gridType = new-object system.windows.forms.datagridview
     $gridType.location = new-object system.drawing.point(12, 92)
@@ -132,6 +139,18 @@ process {
                 }
             }
         }
+    } -onRestartAllRow {
+        param($rowItem)
+        if ($null -ne $rowItem -and $rowItem.table.columns.contains('workItemTypePk')) {
+            $ans = [system.windows.forms.messagebox]::show("確定要針對代表類型「$($rowItem.typeCode) - $($rowItem.typeName)」全部重新開始（清除過往回合並重設回第 1 回合）嗎？", '確認全部重新開始', [system.windows.forms.messageboxbuttons]::yesno, [system.windows.forms.messageboxicon]::question)
+            if ($ans -eq [system.windows.forms.dialogresult]::yes) {
+                $null = & $votingScript -actionType 'restartAllSession' -targetKind 'workItemType' -workItemTypePk ([int]$rowItem.workItemTypePk) -roundDiscussionNote '由代表類型管理頁籤發起全部重新開始'
+                & $loadTypeData
+                if ($null -ne $statusLabel) {
+                    $statusLabel.text = "🆕 已針對代表類型【$($rowItem.typeCode) - $($rowItem.typeName)】全部重新開始（重設回第 1 回合）"
+                }
+            }
+        }
     }
 
     $btnRefresh.add_click($loadTypeData)
@@ -148,6 +167,19 @@ process {
             }
         }
     })
+    $btnRestartAll.add_click({
+        if ($gridType.selectedrows.count -gt 0 -or $null -ne $gridType.currentrow) {
+            $selRow = if ($gridType.selectedrows.count -gt 0) { $gridType.selectedrows[0] } else { $gridType.currentrow }
+            if ($null -ne $selRow -and $null -ne $selRow.databounditem) {
+                $rItem = $selRow.databounditem.row
+                $null = & $votingScript -actionType 'restartAllSession' -targetKind 'workItemType' -workItemTypePk ([int]$rItem.workItemTypePk) -roundDiscussionNote '由代表類型管理頁籤發起全部重新開始'
+                & $loadTypeData
+                if ($null -ne $statusLabel) {
+                    $statusLabel.text = "🆕 已針對代表類型【$($rItem.typeCode) - $($rItem.typeName)】全部重新開始（重設回第 1 回合）"
+                }
+            }
+        }
+    })
     $btnSave.add_click({
         $ptVal = if (-not [string]::isnullorempty($txtPoint.text)) { [decimal]$txtPoint.text } else { $null }
         $null = & $workItemScript -actionType 'upsertWorkItemType' `
@@ -158,7 +190,7 @@ process {
 
     $tabPage.controls.addrange(@(
         $lblCode, $txtCode, $lblName, $txtName, $lblPoint, $txtPoint, $chkSync,
-        $btnSave, $btnRefresh, $btnRevote, $gridType
+        $btnSave, $btnRefresh, $btnRevote, $btnRestartAll, $gridType
     ))
 
     return $tabPage

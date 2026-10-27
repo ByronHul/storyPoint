@@ -633,7 +633,9 @@ function enableGridHeaderSortAndLock {
         [parameter(mandatory = $false)]
         [scriptblock]$onDeleteRow = $null,
         [parameter(mandatory = $false)]
-        [scriptblock]$onRevoteRow = $null
+        [scriptblock]$onRevoteRow = $null,
+        [parameter(mandatory = $false)]
+        [scriptblock]$onRestartAllRow = $null
     )
     process {
         if ($null -eq $grid) {
@@ -683,6 +685,7 @@ function enableGridHeaderSortAndLock {
         $ctxMenu = new-object system.windows.forms.contextmenustrip
         $miEdit = $ctxMenu.items.add($(if ($null -ne $onEditRow) { '✏️ 單筆編輯此筆紀錄（彈出 Modal 視窗）' } else { '🪟 檢視此筆紀錄完整明細（彈出 Modal 視窗）' }))
         $miRevote = $ctxMenu.items.add('🔄 重新投票此筆紀錄（重啟新一輪多人盲投）')
+        $miRestartAll = $ctxMenu.items.add('🆕 重新投票：全部重新開始（重設回第 1 回合）')
         $miDelete = $ctxMenu.items.add('🗑️ 刪除此筆紀錄')
         $null = $ctxMenu.items.add((new-object system.windows.forms.toolstripseparator))
         $miFilterCell = $ctxMenu.items.add('🔍 以此儲存格值篩選本表格')
@@ -692,6 +695,7 @@ function enableGridHeaderSortAndLock {
 
         $miEdit.visible = $true
         $miRevote.visible = ($null -ne $onRevoteRow)
+        $miRestartAll.visible = ($null -ne $onRestartAllRow)
         $miDelete.visible = ($null -ne $onDeleteRow)
 
         $ctxState = @{
@@ -779,6 +783,12 @@ function enableGridHeaderSortAndLock {
                 $miRevote.add_click({
                     if ($null -ne $onRevoteRow -and $null -ne $ctxState.currentRowItem) {
                         & $onRevoteRow $ctxState.currentRowItem
+                    }
+                }.GetNewClosure())
+
+                $miRestartAll.add_click({
+                    if ($null -ne $onRestartAllRow -and $null -ne $ctxState.currentRowItem) {
+                        & $onRestartAllRow $ctxState.currentRowItem
                     }
                 }.GetNewClosure())
 

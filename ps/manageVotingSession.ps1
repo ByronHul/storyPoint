@@ -14,10 +14,11 @@
     - 'createSession'   : 建立新投票議程
     - 'castVote'        : 員工出牌投票
     - 'revealRound'     : 管理者翻牌揭曉本回合點數
-    - 'nextRound'       : 管理者開啟下一回合重新投票
-    - 'revoteSession'   : 重新投票（開啟新一輪重新盲投，或針對工項/代表類型自動重啟/發起盲投議程並重設已定案狀態）
-    - 'resetRound'      : 清空本回合已出牌紀錄並重新投票（保持同一回合號）
-    - 'finalizeSession' : 管理者拍板定案最終 Story Point
+    - 'nextRound'         : 管理者開啟下一回合重新投票
+    - 'revoteSession'     : 重新投票（開啟新一輪重新盲投，或針對工項/代表類型自動重啟/發起盲投議程並重設已定案狀態）
+    - 'restartAllSession' : 全部重新開始（清除過往所有回合與出牌紀錄，重設回第 1 回合重新盲投）
+    - 'resetRound'        : 清空本回合已出牌紀錄並重新投票（保持同一回合號）
+    - 'finalizeSession'   : 管理者拍板定案最終 Story Point
 .NOTES
     檔案名稱: manageVotingSession.ps1
     建立者  : Antigravity Senior Full-Stack Engineer
@@ -26,7 +27,7 @@
 [cmdletbinding()]
 param(
     [parameter(mandatory = $false)]
-    [validateset('listSession', 'getProcess', 'createSession', 'saveRoundSetting', 'castVote', 'revealRound', 'nextRound', 'revoteSession', 'resetRound', 'finalizeSession')]
+    [validateset('listSession', 'getProcess', 'createSession', 'saveRoundSetting', 'castVote', 'revealRound', 'nextRound', 'revoteSession', 'restartAllSession', 'resetRound', 'finalizeSession')]
     [string]$actionType = 'listSession',
 
     [parameter(mandatory = $false)]
@@ -115,6 +116,12 @@ param(
     [bool]$resetCurrentRoundVotes = $false,
 
     [parameter(mandatory = $false)]
+    [bool]$restartAllRounds = $false,
+
+    [parameter(mandatory = $false)]
+    [bool]$openNextRound = $false,
+
+    [parameter(mandatory = $false)]
     [bool]$isViewerAdmin = $true,
 
     [parameter(mandatory = $false)]
@@ -174,6 +181,8 @@ switch ($actionType) {
             restrictToParticipant = $restrictToParticipant
             roundGoalNote = $roundGoalNote
             resetCurrentRoundVotes = $resetCurrentRoundVotes
+            restartAllRounds = $restartAllRounds
+            openNextRound = $openNextRound
             operatorAccount = $operatorAccount
         }
         return ,$ds.tables[0]
@@ -216,6 +225,20 @@ switch ($actionType) {
         $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spControlVotingSession' -parameters @{
             votingSessionPk = $(if ($votingSessionPk -gt 0) { $votingSessionPk } else { $null })
             controlAction = 'revote'
+            targetKindParam = $targetKind
+            workItemTypePkParam = $(if ($workItemTypePk -gt 0) { $workItemTypePk } else { $null })
+            workItemPkParam = $(if ($workItemPk -gt 0) { $workItemPk } else { $null })
+            roundDiscussionNote = $roundDiscussionNote
+            operatorEmployeePk = $employeePk
+            operatorAccount = $operatorAccount
+        }
+        return ,$ds.tables[0]
+    }
+
+    'restartAllSession' {
+        $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spControlVotingSession' -parameters @{
+            votingSessionPk = $(if ($votingSessionPk -gt 0) { $votingSessionPk } else { $null })
+            controlAction = 'restartAll'
             targetKindParam = $targetKind
             workItemTypePkParam = $(if ($workItemTypePk -gt 0) { $workItemTypePk } else { $null })
             workItemPkParam = $(if ($workItemPk -gt 0) { $workItemPk } else { $null })

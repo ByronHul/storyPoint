@@ -57,6 +57,17 @@ process {
                 $statusLabel.text = "🔄 已針對投票議程 (#$sPk) 發起重新投票"
             }
         }
+    } -onRestartAllRow {
+        param($rowItem)
+        if ($null -ne $rowItem -and $rowItem.table.columns.contains('votingSessionPk')) {
+            $sPk = [int]$rowItem.votingSessionPk
+            $txtSessionPk.text = [string]$sPk
+            $null = & $votingScript -actionType 'restartAllSession' -votingSessionPk $sPk -employeePk ([int]$txtEmpPk.text) -roundDiscussionNote $txtComment.text
+            & $loadVotingData
+            if ($null -ne $statusLabel) {
+                $statusLabel.text = "🆕 已針對投票議程 (#$sPk) 全部重新開始（重設回第 1 回合）"
+            }
+        }
     }
 
     $lblCast = new-object system.windows.forms.label
@@ -135,6 +146,13 @@ process {
     $btnResetRound.location = new-object system.drawing.point(530, 8)
     $btnResetRound.size = new-object system.drawing.size(180, 28)
 
+    $btnRestartAll = new-object system.windows.forms.button
+    $btnRestartAll.text = '🆕 全部重新開始(重設回第1輪)'
+    $btnRestartAll.location = new-object system.drawing.point(720, 8)
+    $btnRestartAll.size = new-object system.drawing.size(210, 28)
+    $btnRestartAll.backcolor = [system.drawing.color]::fromargb(239, 246, 255)
+    $btnRestartAll.forecolor = [system.drawing.color]::fromargb(29, 78, 216)
+
     $lblHistory = new-object system.windows.forms.label
     $lblHistory.text = '訂出 Story Point 的各回合出牌與討論過程明細：'
     $lblHistory.location = new-object system.drawing.point(12, 285)
@@ -176,9 +194,16 @@ process {
         $null = & $votingScript -actionType 'resetRound' -votingSessionPk ([int]$txtSessionPk.text) -employeePk ([int]$txtEmpPk.text) -roundDiscussionNote $txtComment.text
         & $loadVotingData
     })
+    $btnRestartAll.add_click({
+        $null = & $votingScript -actionType 'restartAllSession' -votingSessionPk ([int]$txtSessionPk.text) -employeePk ([int]$txtEmpPk.text) -roundDiscussionNote $txtComment.text
+        & $loadVotingData
+        if ($null -ne $statusLabel) {
+            $statusLabel.text = "🆕 已將投票議程 (#$($txtSessionPk.text)) 全部重新開始並重設回第 1 回合"
+        }
+    })
 
     $tabPage.controls.addrange(@(
-        $lblSession, $btnRefresh, $btnResetRound, $gridSession,
+        $lblSession, $btnRefresh, $btnResetRound, $btnRestartAll, $gridSession,
         $lblCast, $txtSessionPk, $lblEmp, $txtEmpPk, $lblCard, $cmbCard, $lblComment, $txtComment,
         $btnVote, $btnReveal, $btnNextRound,
         $lblHistory, $gridProcess

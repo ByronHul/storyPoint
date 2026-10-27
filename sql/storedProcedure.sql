@@ -462,7 +462,7 @@ begin
                 @employeeCode,
                 @employeeName,
                 @loginAccount,
-                isnull(nullif(ltrim(rtrim(@passwordHash)), ''), '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918'),
+                isnull(nullif(ltrim(rtrim(@passwordHash)), ''), 'b03ddf3ca2e714a6548e7495e2a03f5e824eaac9837cd7f159c67b90fb4b7342'),
                 @emailAddress,
                 @jobTitle,
                 @departmentPk,
@@ -1904,11 +1904,14 @@ go
     @restrictToParticipant  bit            : 是否僅限勾選之授權參與人員出牌
     @roundGoalNote          nvarchar(1024) : 本回合估算範圍與驗收重點提示說明
     @resetCurrentRoundVotes bit            : 更新既有議程設定時是否一併清空並重設當前盲投回合已投出之選票
+    @restartAllRounds       bit            : 重新投票時是否「全部重新開始」（清空此議程歷次所有回合與出牌紀錄，重設回第 1 回合並套用新設定與新投票人）
+    @openNextRound          bit            : 重新投票時是否「重啟新一輪盲投」（保留歷次回合紀錄，開啟下一回合 N+1 並套用新設定與新投票人）
     @operatorAccount        varchar(128)   : 操作者帳號
 修改歷程:
     2026-10-23 初版建立
     2026-10-23 擴充支援盲投回合完整設定選項與既有議程設定更新
     2026-10-23 強化外鍵完整性防呆與零工項代表類型/零實際工項時自動建立估算標的機制
+    2026-10-27 新增 @restartAllRounds (全部重新開始) 與 @openNextRound (重啟新一輪) 支援重新投票時完整重設投票人與所有相關選項
 */
 create or alter procedure storyPoint.spCreateVotingSession
     @votingSessionPk int = null,
@@ -1932,6 +1935,8 @@ create or alter procedure storyPoint.spCreateVotingSession
     @restrictToParticipant bit = 1,
     @roundGoalNote nvarchar(1024) = null,
     @resetCurrentRoundVotes bit = 0,
+    @restartAllRounds bit = 0,
+    @openNextRound bit = 0,
     @operatorAccount varchar(128) = 'system'
 as
 begin
@@ -2125,6 +2130,27 @@ begin
             where pk = @workItemPk;
         end
 
+        -- 若執行重新投票（全部重新開始 / 重啟新一輪 / 重設當前回合）但未顯式傳入 @sessionPk，自動反查該標的之最新既有議程
+        if isnull(@sessionPk, 0) <= 0 and (isnull(@restartAllRounds, 0) = 1 or isnull(@openNextRound, 0) = 1 or isnull(@resetCurrentRoundVotes, 0) = 1)
+        begin
+            if @targetKind = 'workItemType' and isnull(@workItemTypePk, 0) > 0
+            begin
+                select top 1 @sessionPk = vs.pk
+                from storyPoint.tbVotingSession as vs
+                where vs.targetKind = 'workItemType'
+                  and vs.workItemTypePk = @workItemTypePk
+                order by vs.pk desc;
+            end
+            else if @targetKind = 'workItem' and isnull(@workItemPk, 0) > 0
+            begin
+                select top 1 @sessionPk = vs.pk
+                from storyPoint.tbVotingSession as vs
+                where vs.targetKind = 'workItem'
+                  and vs.workItemPk = @workItemPk
+                order by vs.pk desc;
+            end
+        end
+
         if @sessionPk > 0 and exists (select 1 from storyPoint.tbVotingSession where pk = @sessionPk)
         begin
             update storyPoint.tbVotingSession
@@ -2147,7 +2173,132 @@ begin
                 updatedAt = sysdatetime()
             where pk = @sessionPk;
 
-            if isnull(@resetCurrentRoundVotes, 0) = 1
+            if isnull(@restartAllRounds, 0) = 1
+            begin
+                -- 全部重新開始：清除此議程歷次所有回合與出牌紀錄，重設回第 1 回合全新開始
+                delete from storyPoint.tbVoteRecord
+                where votingSessionPk = @sessionPk;
+
+                delete from storyPoint.tbVotingRound
+                where votingSessionPk = @sessionPk;
+
+                insert into storyPoint.tbVotingRound (
+                    votingSessionPk, roundNumber, roundStatus, voteCount, startedAt
+                )
+                values (
+                    @sessionPk, 1, 'voting', 0, sysdatetime()
+                );
+
+                update storyPoint.tbVotingSession
+                set currentRoundNumber = 1,
+                    sessionStatus = 'voting',
+                    finalStoryPoint = null,
+                    finalDecisionNote = null,
+                    finalizedAt = null,
+                    startedAt = sysdatetime(),
+                    updatedAt = sysdatetime()
+                where pk = @sessionPk;
+
+                if @targetKind = 'workItemType' and @workItemTypePk is not null
+                begin
+                    declare @oldTypePtRestart decimal(8,2) = null;
+                    select @oldTypePtRestart = standardStoryPoint
+                    from storyPoint.tbWorkItemType
+                    where pk = @workItemTypePk;
+
+                    update storyPoint.tbWorkItemType
+                    set standardStoryPoint = null,
+                        estimationStatus = 'voting',
+                        lastVotingSessionPk = @sessionPk,
+                        updatedAt = sysdatetime()
+                    where pk = @workItemTypePk;
+
+                    insert into storyPoint.tbPointHistory (
+                        targetKind, workItemTypePk, workItemPk, votingSessionPk,
+                        oldStoryPoint, newStoryPoint, changeSource, changeReason,
+                        changedByEmployeePk, changedAt
+                    )
+                    values (
+                        'workItemType', @workItemTypePk, null, @sessionPk,
+                        @oldTypePtRestart, 0.00, 'revoteRestartAll',
+                        isnull(nullif(ltrim(rtrim(@roundGoalNote)), N''), N'重新投票（全部重新開始並重設投票人與所有相關選項）'),
+                        @hostEmployeePk, sysdatetime()
+                    );
+                end
+                else if @targetKind = 'workItem' and @workItemPk is not null
+                begin
+                    declare @oldWiPtRestart decimal(8,2) = null;
+                    select @oldWiPtRestart = storyPoint
+                    from storyPoint.tbWorkItem
+                    where pk = @workItemPk;
+
+                    update storyPoint.tbWorkItem
+                    set estimationStatus = 'voting',
+                        updatedAt = sysdatetime()
+                    where pk = @workItemPk;
+
+                    insert into storyPoint.tbPointHistory (
+                        targetKind, workItemTypePk, workItemPk, votingSessionPk,
+                        oldStoryPoint, newStoryPoint, changeSource, changeReason,
+                        changedByEmployeePk, changedAt
+                    )
+                    values (
+                        'workItem', null, @workItemPk, @sessionPk,
+                        @oldWiPtRestart, isnull(@oldWiPtRestart, 0.00), 'revoteRestartAll',
+                        isnull(nullif(ltrim(rtrim(@roundGoalNote)), N''), N'重新投票（全部重新開始並重設投票人與所有相關選項）'),
+                        @hostEmployeePk, sysdatetime()
+                    );
+                end
+            end
+            else if isnull(@openNextRound, 0) = 1
+            begin
+                -- 重啟新一輪盲投：保留歷次回合紀錄，開啟下一回合 (N+1) 並套用新設定與新投票人
+                declare @maxRoundNum int = 1;
+                select @maxRoundNum = isnull(max(roundNumber), 1)
+                from storyPoint.tbVotingRound
+                where votingSessionPk = @sessionPk;
+
+                update storyPoint.tbVotingRound
+                set roundStatus = 'revealed',
+                    revealedAt = isnull(revealedAt, sysdatetime())
+                where votingSessionPk = @sessionPk
+                  and roundNumber = @maxRoundNum
+                  and roundStatus = 'voting';
+
+                declare @newNextRoundNum int = @maxRoundNum + 1;
+                insert into storyPoint.tbVotingRound (
+                    votingSessionPk, roundNumber, roundStatus, voteCount, startedAt
+                )
+                values (
+                    @sessionPk, @newNextRoundNum, 'voting', 0, sysdatetime()
+                );
+
+                update storyPoint.tbVotingSession
+                set currentRoundNumber = @newNextRoundNum,
+                    sessionStatus = 'voting',
+                    finalStoryPoint = null,
+                    finalizedAt = null,
+                    updatedAt = sysdatetime()
+                where pk = @sessionPk;
+
+                if @targetKind = 'workItemType' and @workItemTypePk is not null
+                begin
+                    update storyPoint.tbWorkItemType
+                    set standardStoryPoint = null,
+                        estimationStatus = 'voting',
+                        lastVotingSessionPk = @sessionPk,
+                        updatedAt = sysdatetime()
+                    where pk = @workItemTypePk;
+                end
+                else if @targetKind = 'workItem' and @workItemPk is not null
+                begin
+                    update storyPoint.tbWorkItem
+                    set estimationStatus = 'voting',
+                        updatedAt = sysdatetime()
+                    where pk = @workItemPk;
+                end
+            end
+            else if isnull(@resetCurrentRoundVotes, 0) = 1
             begin
                 declare @resetRoundNum int = 1;
                 declare @resetRoundPk int = 0;
@@ -2257,6 +2408,7 @@ begin
         begin
             update storyPoint.tbWorkItemType
             set lastVotingSessionPk = @sessionPk,
+                standardStoryPoint = case when isnull(@restartAllRounds, 0) = 1 or isnull(@openNextRound, 0) = 1 or isnull(@resetCurrentRoundVotes, 0) = 1 then null else standardStoryPoint end,
                 estimationStatus = 'voting',
                 updatedAt = sysdatetime()
             where pk = @workItemTypePk;
@@ -2940,6 +3092,82 @@ begin
             set sessionStatus = 'revealed',
                 updatedAt = sysdatetime()
             where pk = @votingSessionPk;
+        end
+        else if @cleanAction = 'restartAll'
+        begin
+            -- 全部重新開始：清空此議程歷次所有回合與出牌紀錄，重設回第 1 回合全新開始
+            delete from storyPoint.tbVoteRecord
+            where votingSessionPk = @votingSessionPk;
+
+            delete from storyPoint.tbVotingRound
+            where votingSessionPk = @votingSessionPk;
+
+            insert into storyPoint.tbVotingRound (
+                votingSessionPk, roundNumber, roundStatus, voteCount, roundDiscussionNote, startedAt
+            )
+            values (
+                @votingSessionPk, 1, 'voting', 0, @cleanDiscussionNote, sysdatetime()
+            );
+
+            update storyPoint.tbVotingSession
+            set currentRoundNumber = 1,
+                sessionStatus = 'voting',
+                finalStoryPoint = null,
+                finalDecisionNote = null,
+                finalizedAt = null,
+                roundGoalNote = isnull(@cleanDiscussionNote, roundGoalNote),
+                startedAt = sysdatetime(),
+                updatedAt = sysdatetime()
+            where pk = @votingSessionPk;
+
+            if @targetKind = 'workItemType' and @workItemTypePk is not null
+            begin
+                select @oldPoint = standardStoryPoint
+                from storyPoint.tbWorkItemType
+                where pk = @workItemTypePk;
+
+                update storyPoint.tbWorkItemType
+                set standardStoryPoint = null,
+                    estimationStatus = 'voting',
+                    lastVotingSessionPk = @votingSessionPk,
+                    updatedAt = sysdatetime()
+                where pk = @workItemTypePk;
+
+                insert into storyPoint.tbPointHistory (
+                    targetKind, workItemTypePk, workItemPk, votingSessionPk,
+                    oldStoryPoint, newStoryPoint, changeSource, changeReason,
+                    changedByEmployeePk, changedAt
+                )
+                values (
+                    'workItemType', @workItemTypePk, null, @votingSessionPk,
+                    @oldPoint, 0.00, 'revoteRestartAll',
+                    isnull(@cleanDiscussionNote, N'重新投票（全部重新開始，重設回第 1 回合）'),
+                    @operatorEmployeePk, sysdatetime()
+                );
+            end
+            else if @targetKind = 'workItem' and @workItemPk is not null
+            begin
+                select @oldPoint = storyPoint
+                from storyPoint.tbWorkItem
+                where pk = @workItemPk;
+
+                update storyPoint.tbWorkItem
+                set estimationStatus = 'voting',
+                    updatedAt = sysdatetime()
+                where pk = @workItemPk;
+
+                insert into storyPoint.tbPointHistory (
+                    targetKind, workItemTypePk, workItemPk, votingSessionPk,
+                    oldStoryPoint, newStoryPoint, changeSource, changeReason,
+                    changedByEmployeePk, changedAt
+                )
+                values (
+                    'workItem', null, @workItemPk, @votingSessionPk,
+                    @oldPoint, isnull(@oldPoint, 0.00), 'revoteRestartAll',
+                    isnull(@cleanDiscussionNote, N'重新投票（全部重新開始，重設回第 1 回合）'),
+                    @operatorEmployeePk, sysdatetime()
+                );
+            end
         end
         else if @cleanAction in ('nextRound', 'revote', 'resetRound')
         begin
@@ -3743,6 +3971,39 @@ begin
                     else 'blue'
                 end
             ) as defaultWorkItemKindColor,
+            isnull(
+                nullif(ltrim(rtrim(wik.mainFeatureSummary)), N''),
+                case
+                    when wit.defaultWorkItemKind = 'project' then N'階段性目標導向、跨模組需求開發與系統建置、明確里程碑與範圍界定'
+                    when wit.defaultWorkItemKind = 'maintenance' then N'常態性系統穩定度維持、例行健康巡檢、問題排查 (Troubleshooting) 與效能調校'
+                    when wit.defaultWorkItemKind = 'consultingHour' then N'專業技術知識輸出、客戶架構診斷、技術顧問諮詢與專家駐點支援服務'
+                    when wit.defaultWorkItemKind = 'training' then N'內部技術傳承、外部客戶課程講授、實機 Lab 教材編撰與新人培訓賦能'
+                    when wit.defaultWorkItemKind = 'productDevelopment' then N'自有產品核心研發、技術架構創新、標準化模組封裝與產品版本迭代 (Roadmap)'
+                    else N'專屬工作性質、標準化執行流程與跨團隊協作特徵'
+                end
+            ) as defaultWorkItemKindMainFeature,
+            isnull(
+                nullif(ltrim(rtrim(wik.estimationTrait)), N''),
+                case
+                    when wit.defaultWorkItemKind = 'project' then N'依功能複雜度、跨系統整合難度與未知風險綜合盲投估算 (常見 3 ~ 21 pt)'
+                    when wit.defaultWorkItemKind = 'maintenance' then N'依處理頻率、SLA 緊急程度、環境複雜度與影響範圍估算 (常見 0.5 ~ 5 pt)'
+                    when wit.defaultWorkItemKind = 'consultingHour' then N'依投入顧問人天/時數、專業技術深度與交付報告規模估算 (常見 1 ~ 8 pt)'
+                    when wit.defaultWorkItemKind = 'training' then N'依課程授課時數、新教材研發比例、Lab 環境準備與授課難度估算 (常見 1 ~ 8 pt)'
+                    when wit.defaultWorkItemKind = 'productDevelopment' then N'依技術創新度、通用架構擴充性、自動化測試覆蓋率與產品化標準估算 (常見 3 ~ 21 pt)'
+                    else N'依技術複雜度、工作投入規模與風險不確定性綜合估算 (常見 1 ~ 13 pt)'
+                end
+            ) as defaultWorkItemKindEstimationTrait,
+            isnull(
+                nullif(ltrim(rtrim(wik.timeAndDeliverableTrait)), N''),
+                case
+                    when wit.defaultWorkItemKind = 'project' then N'中長期 Sprint 或專案起訖週期｜交付上線系統與驗收文件｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                    when wit.defaultWorkItemKind = 'maintenance' then N'短週期或月/季例行維運期間｜交付問題修復紀錄與巡檢報告｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                    when wit.defaultWorkItemKind = 'consultingHour' then N'單次駐點或顧問合約起訖期間｜交付架構建議書、健檢報告與時數簽認單｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                    when wit.defaultWorkItemKind = 'training' then N'單日課程或培訓梯次起訖期間｜交付課程簡報、實作講義與完訓紀錄｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                    when wit.defaultWorkItemKind = 'productDevelopment' then N'雙週 Sprint 或產品版本起訖週期｜交付標準產品模組、API 與發行套件｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                    else N'具備明確起訖時間設定｜交付驗收成果｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                end
+            ) as defaultWorkItemKindDeliverableTrait,
             wit.description,
             wit.standardStoryPoint,
             wit.defaultCardDeckPk,
@@ -3966,7 +4227,8 @@ begin
             ph.changeSource,
             case
                 when ph.changeSource = 'votingFinalized' then N'多人投票拍板定案'
-                when ph.changeSource = 'revoteReset' then N'發起重新投票重設'
+                when ph.changeSource = 'revoteReset' then N'發起重新投票(重啟新一輪)'
+                when ph.changeSource = 'revoteRestartAll' then N'重新投票(全部重新開始重設)'
                 when ph.changeSource = 'autoFromType' then N'代表類型自動帶入'
                 when ph.changeSource = 'manualAdjust' then N'管理者手動微調'
                 when ph.changeSource = 'typeSync' then N'隨代表類型同步更新'
@@ -4033,7 +4295,7 @@ begin
         where @isViewerAdmin = 1
         order by lg.pk desc;
 
-        -- Result Set 9: 工項類型設定清單 (支援增刪修：專案 / 維運 / 顧問時數 / 自訂類型)
+        -- Result Set 9: 預設工項類型與主要特徵設定清單 (支援增刪修查：專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品 / 自訂類型)
         select
             wik.pk as workItemKindPk,
             wik.kindCode,
@@ -4041,13 +4303,52 @@ begin
             wik.badgeIcon,
             wik.badgeColor,
             wik.sortOrder,
-            wik.description,
+            isnull(
+                nullif(ltrim(rtrim(wik.mainFeatureSummary)), N''),
+                case
+                    when wik.kindCode = 'project' then N'階段性目標導向、跨模組需求開發與系統建置、明確里程碑與範圍界定'
+                    when wik.kindCode = 'maintenance' then N'常態性系統穩定度維持、例行健康巡檢、問題排查 (Troubleshooting) 與效能調校'
+                    when wik.kindCode = 'consultingHour' then N'專業技術知識輸出、客戶架構診斷、技術顧問諮詢與專家駐點支援服務'
+                    when wik.kindCode = 'training' then N'內部技術傳承、外部客戶課程講授、實機 Lab 教材編撰與新人培訓賦能'
+                    when wik.kindCode = 'productDevelopment' then N'自有產品核心研發、技術架構創新、標準化模組封裝與產品版本迭代 (Roadmap)'
+                    else concat(wik.kindName, N'專屬工作性質、標準化執行流程與跨團隊協作特徵')
+                end
+            ) as mainFeatureSummary,
+            isnull(
+                nullif(ltrim(rtrim(wik.estimationTrait)), N''),
+                case
+                    when wik.kindCode = 'project' then N'依功能複雜度、跨系統整合難度與未知風險綜合盲投估算 (常見 3 ~ 21 pt)'
+                    when wik.kindCode = 'maintenance' then N'依處理頻率、SLA 緊急程度、環境複雜度與影響範圍估算 (常見 0.5 ~ 5 pt)'
+                    when wik.kindCode = 'consultingHour' then N'依投入顧問人天/時數、專業技術深度與交付報告規模估算 (常見 1 ~ 8 pt)'
+                    when wik.kindCode = 'training' then N'依課程授課時數、新教材研發比例、Lab 環境準備與授課難度估算 (常見 1 ~ 8 pt)'
+                    when wik.kindCode = 'productDevelopment' then N'依技術創新度、通用架構擴充性、自動化測試覆蓋率與產品化標準估算 (常見 3 ~ 21 pt)'
+                    else N'依技術複雜度、工作投入規模與風險不確定性綜合估算 (常見 1 ~ 13 pt)'
+                end
+            ) as estimationTrait,
+            isnull(
+                nullif(ltrim(rtrim(wik.timeAndDeliverableTrait)), N''),
+                case
+                    when wik.kindCode = 'project' then N'中長期 Sprint 或專案起訖週期｜交付上線系統與驗收文件｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                    when wik.kindCode = 'maintenance' then N'短週期或月/季例行維運期間｜交付問題修復紀錄與巡檢報告｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                    when wik.kindCode = 'consultingHour' then N'單次駐點或顧問合約起訖期間｜交付架構建議書、健檢報告與時數簽認單｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                    when wik.kindCode = 'training' then N'單日課程或培訓梯次起訖期間｜交付課程簡報、實作講義與完訓紀錄｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                    when wik.kindCode = 'productDevelopment' then N'雙週 Sprint 或產品版本起訖週期｜交付標準產品模組、API 與發行套件｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                    else N'具備明確起訖時間設定｜交付驗收成果｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                end
+            ) as timeAndDeliverableTrait,
+            isnull(wik.description, N'') as description,
             (
                 select count(1)
                 from storyPoint.tbWorkItem as wi
                 where wi.workItemKind = wik.kindCode
                   and wi.isActive = 1
             ) as linkedWorkItemCount,
+            (
+                select isnull(sum(wi.storyPoint), 0.00)
+                from storyPoint.tbWorkItem as wi
+                where wi.workItemKind = wik.kindCode
+                  and wi.isActive = 1
+            ) as totalWorkItemStoryPoint,
             (
                 select count(1)
                 from storyPoint.tbWorkItemType as wit
@@ -4669,22 +4970,26 @@ go
 -- 17. 新增或修改工項類型預存程序 (storyPoint.spUpsertWorkItemKind)
 -- ============================================================================
 /*
-用途說明: 新增或更新工項類型 (tbWorkItemKind，如：專案 project、維運 maintenance、顧問時數 consultingHour 或自訂工項類型)。
+用途說明: 新增或更新預設工項類型與主要特徵 (tbWorkItemKind，如：專案 project、維運 maintenance、顧問時數 consultingHour、教育訓練 training、開發產品 productDevelopment 或自訂工項類型)。
           若修改既有類型之代碼 (kindCode)，自動同步更新關聯之工項代表類型 (tbWorkItemType.defaultWorkItemKind) 與實際工項 (tbWorkItem.workItemKind)。
 建立者  : Antigravity Senior Full-Stack Engineer
 建立日期: 2026-10-23
 參數說明:
-    @workItemKindPk  int           : 工項類型主鍵 (0 或 null 代表依 kindCode 新增或更新)
-    @kindCode        varchar(64)   : 工項類型代碼 (如 project, maintenance, consultingHour, supportCase)
-    @kindName        nvarchar(128) : 工項類型顯示名稱 (如 專案, 維運, 顧問時數)
-    @badgeIcon       nvarchar(32)  : 徽章圖示 (如 🏗️, 🛠️, ⏳, 📌)
-    @badgeColor      varchar(32)   : 徽章顏色 ('blue', 'amber', 'purple', 'green', 'red')
-    @sortOrder       int           : 顯示排序
-    @description     nvarchar(512) : 類型說明與適用情境
-    @isActive        bit           : 是否啟用
-    @operatorAccount varchar(128)  : 操作者帳號
+    @workItemKindPk          int           : 工項類型主鍵 (0 或 null 代表依 kindCode 新增或更新)
+    @kindCode                varchar(64)   : 工項類型代碼 (如 project, maintenance, consultingHour, training, productDevelopment, supportCase)
+    @kindName                nvarchar(128) : 工項類型顯示名稱 (如 專案, 維運, 顧問時數, 教育訓練, 開發產品)
+    @badgeIcon               nvarchar(32)  : 徽章圖示 (如 🏗️, 🛠️, ⏳, 🎓, 🚀, 📌)
+    @badgeColor              varchar(32)  : 徽章顏色 ('blue', 'amber', 'purple', 'green', 'red', 'rose', 'teal', 'slate')
+    @sortOrder               int           : 顯示排序
+    @mainFeatureSummary      nvarchar(512) : 主要特徵摘要 (核心工作性質與定位)
+    @estimationTrait         nvarchar(256) : 點數估算與計量特徵 (Story Point 評估基準與常見點數範圍)
+    @timeAndDeliverableTrait nvarchar(256) : 時程週期與交付/到期特徵 (起訖週期、驗收產出與迄時自動扣點通知機制)
+    @description             nvarchar(512) : 類型說明與適用情境
+    @isActive                bit           : 是否啟用
+    @operatorAccount         varchar(128)  : 操作者帳號
 修改歷程:
     2026-10-23 初版建立，支援工項類型增、修
+    2026-10-27 擴充預設工項類型主要特徵欄位 (@mainFeatureSummary, @estimationTrait, @timeAndDeliverableTrait)
 */
 create or alter procedure storyPoint.spUpsertWorkItemKind
     @workItemKindPk int = null,
@@ -4693,6 +4998,9 @@ create or alter procedure storyPoint.spUpsertWorkItemKind
     @badgeIcon nvarchar(32) = N'📌',
     @badgeColor varchar(32) = 'blue',
     @sortOrder int = 100,
+    @mainFeatureSummary nvarchar(512) = null,
+    @estimationTrait nvarchar(256) = null,
+    @timeAndDeliverableTrait nvarchar(256) = null,
     @description nvarchar(512) = null,
     @isActive bit = 1,
     @operatorAccount varchar(128) = 'system'
@@ -4709,9 +5017,12 @@ begin
         else ltrim(rtrim(@badgeIcon))
     end;
     declare @cleanColor varchar(32) = case
-        when @badgeColor in ('blue', 'amber', 'purple', 'green', 'red') then @badgeColor
+        when @badgeColor in ('blue', 'amber', 'purple', 'green', 'red', 'rose', 'teal', 'slate') then @badgeColor
         else 'blue'
     end;
+    declare @cleanMainFeature nvarchar(512) = nullif(ltrim(rtrim(isnull(@mainFeatureSummary, N''))), N'');
+    declare @cleanEstimationTrait nvarchar(256) = nullif(ltrim(rtrim(isnull(@estimationTrait, N''))), N'');
+    declare @cleanDeliverableTrait nvarchar(256) = nullif(ltrim(rtrim(isnull(@timeAndDeliverableTrait, N''))), N'');
     declare @oldCode varchar(64) = null;
 
     begin try
@@ -4744,7 +5055,10 @@ begin
                 badgeIcon = @cleanIcon,
                 badgeColor = @cleanColor,
                 sortOrder = isnull(@sortOrder, 100),
-                description = @description,
+                mainFeatureSummary = isnull(@cleanMainFeature, isnull(mainFeatureSummary, concat(@cleanName, N'專屬工作性質、標準化執行流程與跨團隊協作特徵'))),
+                estimationTrait = isnull(@cleanEstimationTrait, isnull(estimationTrait, N'依技術複雜度、工作投入規模與風險不確定性綜合估算 (常見 1 ~ 13 pt)')),
+                timeAndDeliverableTrait = isnull(@cleanDeliverableTrait, isnull(timeAndDeliverableTrait, N'具備明確起訖時間設定｜交付驗收成果｜達迄時自動轉已完成、扣點並通知部門主管與 HR')),
+                description = isnull(@description, description),
                 isActive = isnull(@isActive, 1),
                 updatedAt = sysdatetime()
             where pk = @targetPk;
@@ -4766,6 +5080,7 @@ begin
         begin
             insert into storyPoint.tbWorkItemKind (
                 kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+                mainFeatureSummary, estimationTrait, timeAndDeliverableTrait,
                 description, isActive, createdAt, updatedAt
             )
             values (
@@ -4774,7 +5089,10 @@ begin
                 @cleanIcon,
                 @cleanColor,
                 isnull(@sortOrder, 100),
-                @description,
+                isnull(@cleanMainFeature, concat(@cleanName, N'專屬工作性質、標準化執行流程與跨團隊協作特徵')),
+                isnull(@cleanEstimationTrait, N'依技術複雜度、工作投入規模與風險不確定性綜合估算 (常見 1 ~ 13 pt)'),
+                isnull(@cleanDeliverableTrait, N'具備明確起訖時間設定｜交付驗收成果｜達迄時自動轉已完成、扣點並通知部門主管與 HR'),
+                isnull(@description, concat(@cleanName, N'工項，具備明確起訖時間設定，達迄時自動轉為已完成並扣除 Story Point 及寄發通知信。')),
                 isnull(@isActive, 1),
                 sysdatetime(),
                 sysdatetime()
@@ -4788,7 +5106,7 @@ begin
             @sourceName = 'tsql',
             @objectName = 'storyPoint.spUpsertWorkItemKind',
             @durationMillisecond = @durationMs,
-            @executionResult = N'工項類型儲存成功',
+            @executionResult = N'預設工項類型與主要特徵儲存成功',
             @operatorAccount = @operatorAccount;
 
         select
@@ -4798,6 +5116,9 @@ begin
             wik.badgeIcon,
             wik.badgeColor,
             wik.sortOrder,
+            wik.mainFeatureSummary,
+            wik.estimationTrait,
+            wik.timeAndDeliverableTrait,
             wik.description,
             wik.isActive,
             wik.updatedAt
@@ -5118,6 +5439,378 @@ begin
             @objectName = 'storyPoint.spDeleteWorkItem',
             @durationMillisecond = @durationMs,
             @executionResult = N'刪除實際工項失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @operatorAccount;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
+-- 21. 刪除盲投議程與回合設定預存程序 (storyPoint.spDeleteVotingSession)
+-- ============================================================================
+/*
+用途說明: 刪除指定之多人盲投議程／回合設定 (tbVotingSession)，一併清除其下所有出牌紀錄 (tbVoteRecord)、
+          各回合統計紀錄 (tbVotingRound)、參與人員名單 (tbVotingSessionParticipant)，並安全解除
+          點數異動歷程 (tbPointHistory) 與工項代表類型／實際工項之外鍵關聯。
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-27
+參數說明:
+    @votingSessionPk int          : 欲刪除之盲投議程主鍵 (若傳 0 或 null 可依 @sessionCode 定位)
+    @sessionCode     varchar(64)  : 欲刪除之盲投議程代碼
+    @operatorAccount varchar(128) : 操作者帳號
+修改歷程:
+    2026-10-27 初版建立，支援完整刪除盲投議程與回合設定
+*/
+create or alter procedure storyPoint.spDeleteVotingSession
+    @votingSessionPk int = null,
+    @sessionCode varchar(64) = null,
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+    declare @targetPk int = isnull(@votingSessionPk, 0);
+    declare @targetCode varchar(64) = null;
+    declare @targetTitle nvarchar(256) = null;
+    declare @targetKind varchar(32) = null;
+    declare @workItemTypePk int = null;
+    declare @workItemPk int = null;
+    declare @fallbackSessionPk int = null;
+
+    begin try
+        if @targetPk <= 0 and isnull(ltrim(rtrim(@sessionCode)), '') <> ''
+        begin
+            select top 1 @targetPk = pk
+            from storyPoint.tbVotingSession
+            where sessionCode = ltrim(rtrim(@sessionCode));
+        end
+
+        select
+            @targetCode = sessionCode,
+            @targetTitle = sessionTitle,
+            @targetKind = targetKind,
+            @workItemTypePk = workItemTypePk,
+            @workItemPk = workItemPk
+        from storyPoint.tbVotingSession
+        where pk = @targetPk;
+
+        if @targetCode is null
+        begin
+            ;throw 50036, N'找不到欲刪除的盲投回合／議程紀錄。', 1;
+        end
+
+        delete from storyPoint.tbVoteRecord
+        where votingSessionPk = @targetPk;
+
+        delete from storyPoint.tbVotingRound
+        where votingSessionPk = @targetPk;
+
+        delete from storyPoint.tbVotingSessionParticipant
+        where votingSessionPk = @targetPk;
+
+        update storyPoint.tbPointHistory
+        set votingSessionPk = null
+        where votingSessionPk = @targetPk;
+
+        if @workItemTypePk is not null
+        begin
+            select top 1 @fallbackSessionPk = pk
+            from storyPoint.tbVotingSession
+            where workItemTypePk = @workItemTypePk
+              and pk <> @targetPk
+            order by pk desc;
+
+            update storyPoint.tbWorkItemType
+            set lastVotingSessionPk = case
+                    when lastVotingSessionPk = @targetPk then @fallbackSessionPk
+                    else lastVotingSessionPk
+                end,
+                estimationStatus = case
+                    when estimationStatus = 'voting' and not exists (
+                        select 1
+                        from storyPoint.tbVotingSession
+                        where workItemTypePk = @workItemTypePk
+                          and pk <> @targetPk
+                          and sessionStatus in ('voting', 'revealed')
+                    ) then case when standardStoryPoint is not null then 'finalized' else 'pending' end
+                    else estimationStatus
+                end,
+                updatedAt = sysdatetime()
+            where pk = @workItemTypePk;
+        end
+
+        if @workItemPk is not null
+        begin
+            update storyPoint.tbWorkItem
+            set estimationStatus = case
+                    when estimationStatus = 'voting' and not exists (
+                        select 1
+                        from storyPoint.tbVotingSession
+                        where workItemPk = @workItemPk
+                          and pk <> @targetPk
+                          and sessionStatus in ('voting', 'revealed')
+                    ) then 'finalized'
+                    else estimationStatus
+                end,
+                updatedAt = sysdatetime()
+            where pk = @workItemPk;
+        end
+
+        delete from storyPoint.tbVotingSession
+        where pk = @targetPk;
+
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @delSessMsg nvarchar(256) = concat(N'盲投回合／議程【', @targetCode, N' - ', @targetTitle, N'】已刪除');
+        exec storyPoint.spWriteLog
+            @logLevel = 3,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeleteVotingSession',
+            @durationMillisecond = @durationMs,
+            @executionResult = @delSessMsg,
+            @operatorAccount = @operatorAccount;
+
+        select
+            @targetPk as deletedVotingSessionPk,
+            @targetCode as deletedSessionCode,
+            @targetTitle as deletedSessionTitle,
+            @targetKind as targetKind,
+            @workItemTypePk as workItemTypePk,
+            @workItemPk as workItemPk;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeleteVotingSession',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'刪除盲投回合／議程失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @operatorAccount;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
+-- 22. 刪除單一盲投回合預存程序 (storyPoint.spDeleteVotingRound)
+-- ============================================================================
+/*
+用途說明: 刪除指定盲投議程中之特定回合 (tbVotingRound) 及其出牌紀錄 (tbVoteRecord)；
+          若該議程具有多回合，刪除後自動將後續回合編號重新連號並更新議程之 currentRoundNumber；
+          若該議程僅剩單一回合且 @deleteSessionIfLastRound = 1，則自動一併刪除該筆盲投議程。
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-27
+參數說明:
+    @votingSessionPk          int          : 盲投議程主鍵
+    @roundNumber              int          : 欲刪除之回合編號 (若未傳入則預設刪除該議程之最新回合)
+    @votingRoundPk            int          : 欲刪除之回合主鍵 (可選)
+    @deleteSessionIfLastRound bit          : 若為該議程最後一個回合，是否一併刪除整場議程 (預設 1)
+    @operatorAccount          varchar(128) : 操作者帳號
+修改歷程:
+    2026-10-27 初版建立，支援刪除單一盲投回合及自動連號重整
+*/
+create or alter procedure storyPoint.spDeleteVotingRound
+    @votingSessionPk int = null,
+    @roundNumber int = null,
+    @votingRoundPk int = null,
+    @deleteSessionIfLastRound bit = 1,
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+    declare @targetSessionPk int = isnull(@votingSessionPk, 0);
+    declare @targetRoundPk int = isnull(@votingRoundPk, 0);
+    declare @targetRoundNum int = isnull(@roundNumber, 0);
+    declare @targetCode varchar(64) = null;
+    declare @targetTitle nvarchar(256) = null;
+    declare @totalRoundCount int = 0;
+    declare @newMaxRound int = 1;
+    declare @newRoundStatus varchar(32) = 'voting';
+    declare @isSessionDeleted bit = 0;
+
+    begin try
+        if @targetRoundPk > 0
+        begin
+            select
+                @targetSessionPk = votingSessionPk,
+                @targetRoundNum = roundNumber
+            from storyPoint.tbVotingRound
+            where pk = @targetRoundPk;
+        end
+        else if @targetSessionPk > 0
+        begin
+            if @targetRoundNum <= 0
+            begin
+                select @targetRoundNum = isnull(currentRoundNumber, 1)
+                from storyPoint.tbVotingSession
+                where pk = @targetSessionPk;
+            end
+
+            select top 1 @targetRoundPk = pk
+            from storyPoint.tbVotingRound
+            where votingSessionPk = @targetSessionPk
+              and roundNumber = @targetRoundNum;
+        end
+
+        select
+            @targetCode = sessionCode,
+            @targetTitle = sessionTitle
+        from storyPoint.tbVotingSession
+        where pk = @targetSessionPk;
+
+        if @targetCode is null
+        begin
+            ;throw 50037, N'找不到欲刪除的盲投回合所屬議程紀錄。', 1;
+        end
+
+        select @totalRoundCount = count(1)
+        from storyPoint.tbVotingRound
+        where votingSessionPk = @targetSessionPk;
+
+        if @totalRoundCount <= 1 and @deleteSessionIfLastRound = 1
+        begin
+            exec storyPoint.spDeleteVotingSession
+                @votingSessionPk = @targetSessionPk,
+                @operatorAccount = @operatorAccount;
+
+            set @isSessionDeleted = 1;
+            select
+                @isSessionDeleted as isSessionDeleted,
+                @targetSessionPk as deletedVotingSessionPk,
+                @targetCode as deletedSessionCode,
+                @targetTitle as deletedSessionTitle,
+                isnull(nullif(@targetRoundNum, 0), 1) as deletedRoundNumber,
+                0 as remainingRoundCount,
+                0 as newCurrentRoundNumber;
+            return;
+        end
+
+        if @targetRoundPk <= 0
+        begin
+            ;throw 50038, N'找不到指定的盲投回合紀錄。', 1;
+        end
+
+        if @totalRoundCount <= 1
+        begin
+            delete from storyPoint.tbVoteRecord
+            where votingRoundPk = @targetRoundPk;
+
+            update storyPoint.tbVotingRound
+            set roundStatus = 'voting',
+                voteCount = 0,
+                averagePoint = null,
+                minPoint = null,
+                maxPoint = null,
+                revealedAt = null,
+                roundDiscussionNote = null,
+                startedAt = sysdatetime()
+            where pk = @targetRoundPk;
+
+            update storyPoint.tbVotingSession
+            set currentRoundNumber = 1,
+                sessionStatus = 'voting',
+                finalStoryPoint = null,
+                finalDecisionNote = null,
+                finalizedAt = null,
+                updatedAt = sysdatetime()
+            where pk = @targetSessionPk;
+
+            set @newMaxRound = 1;
+        end
+        else
+        begin
+            delete from storyPoint.tbVoteRecord
+            where votingRoundPk = @targetRoundPk;
+
+            delete from storyPoint.tbVotingRound
+            where pk = @targetRoundPk;
+
+            -- 使用負數過渡更新後續回合編號，避免觸發 uqTbVotingRoundSessionRound 唯一鍵衝突
+            update storyPoint.tbVotingRound
+            set roundNumber = -(roundNumber - 1)
+            where votingSessionPk = @targetSessionPk
+              and roundNumber > @targetRoundNum;
+
+            update storyPoint.tbVotingRound
+            set roundNumber = -roundNumber
+            where votingSessionPk = @targetSessionPk
+              and roundNumber < 0;
+
+            update vr
+            set vr.roundNumber = r.roundNumber
+            from storyPoint.tbVoteRecord as vr
+            inner join storyPoint.tbVotingRound as r
+                on vr.votingRoundPk = r.pk
+            where vr.votingSessionPk = @targetSessionPk;
+
+            select
+                @newMaxRound = isnull(max(roundNumber), 1)
+            from storyPoint.tbVotingRound
+            where votingSessionPk = @targetSessionPk;
+
+            select top 1
+                @newRoundStatus = isnull(roundStatus, 'voting')
+            from storyPoint.tbVotingRound
+            where votingSessionPk = @targetSessionPk
+              and roundNumber = @newMaxRound;
+
+            update storyPoint.tbVotingSession
+            set currentRoundNumber = @newMaxRound,
+                sessionStatus = case
+                    when sessionStatus = 'finalized' then 'finalized'
+                    else @newRoundStatus
+                end,
+                updatedAt = sysdatetime()
+            where pk = @targetSessionPk;
+        end
+
+        declare @remCount int = 0;
+        select @remCount = count(1)
+        from storyPoint.tbVotingRound
+        where votingSessionPk = @targetSessionPk;
+
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @delRoundMsg nvarchar(256) = concat(N'盲投議程【', @targetCode, N' - ', @targetTitle, N'】之第 ', @targetRoundNum, N' 回合已刪除（目前回合數：', @remCount, N'）');
+        exec storyPoint.spWriteLog
+            @logLevel = 3,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeleteVotingRound',
+            @durationMillisecond = @durationMs,
+            @executionResult = @delRoundMsg,
+            @operatorAccount = @operatorAccount;
+
+        select
+            @isSessionDeleted as isSessionDeleted,
+            @targetSessionPk as deletedVotingSessionPk,
+            @targetCode as deletedSessionCode,
+            @targetTitle as deletedSessionTitle,
+            @targetRoundNum as deletedRoundNumber,
+            @remCount as remainingRoundCount,
+            @newMaxRound as newCurrentRoundNumber;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeleteVotingRound',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'刪除單一盲投回合失敗',
             @errorCode = @errCode,
             @errorLine = @errLine,
             @errorMessage = @errMsg,

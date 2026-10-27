@@ -104,6 +104,46 @@ public class portalController : Controller
         return WebUtility.HtmlEncode(val?.ToString() ?? string.Empty);
     }
 
+    private const string InlineFaviconSvgDataUri = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%230f172a'/%3E%3Cstop offset='55%25' stop-color='%231e3a8a'/%3E%3Cstop offset='100%25' stop-color='%232563eb'/%3E%3C/linearGradient%3E%3ClinearGradient id='gd' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23fbbf24'/%3E%3Cstop offset='100%25' stop-color='%23d97706'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='2' y='2' width='60' height='60' rx='14' fill='url(%23bg)' stroke='%2360a5fa' stroke-width='2'/%3E%3Cg transform='translate(30,34) rotate(-14)'%3E%3Crect x='-15' y='-20' width='30' height='40' rx='5' fill='url(%23gd)'/%3E%3C/g%3E%3Cg transform='translate(34,32) rotate(6)'%3E%3Crect x='-17' y='-22' width='34' height='44' rx='5.5' fill='%23ffffff' stroke='%231e40af' stroke-width='1.8'/%3E%3Ctext x='0' y='-1' text-anchor='middle' dominant-baseline='middle' font-family='Segoe UI,Arial,sans-serif' font-weight='900' font-size='15.5' fill='%231d4ed8'%3ESP%3C/text%3E%3Cpolygon points='0,7 6,13 0,19 -6,13' fill='%23dc2626'/%3E%3C/g%3E%3C/svg%3E";
+
+    private const string TopbarBrandLogoImgHtml = @"<img src=""/favicon.svg?v=2026102703"" onerror=""this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 64 64\'%3E%3Crect x=\'2\' y=\'2\' width=\'60\' height=\'60\' rx=\'14\' fill=\'%231e3a8a\' stroke=\'%2360a5fa\' stroke-width=\'2\'/%3E%3Cg transform=\'translate(30,34) rotate(-14)\'%3E%3Crect x=\'-15\' y=\'-20\' width=\'30\' height=\'40\' rx=\'5\' fill=\'%23f59e0b\'/%3E%3C/g%3E%3Cg transform=\'translate(34,32) rotate(6)\'%3E%3Crect x=\'-17\' y=\'-22\' width=\'34\' height=\'44\' rx=\'5.5\' fill=\'%23ffffff\' stroke=\'%231e40af\' stroke-width=\'1.8\'/%3E%3Ctext x=\'0\' y=\'-1\' text-anchor=\'middle\' dominant-baseline=\'middle\' font-family=\'Segoe UI,Arial,sans-serif\' font-weight=\'900\' font-size=\'15.5\' fill=\'%231d4ed8\'%3ESP%3C/text%3E%3Cpolygon points=\'0,7 6,13 0,19 -6,13\' fill=\'%23dc2626\'/%3E%3C/g%3E%3C/svg%3E';"" alt=""SP Icon"" style=""width:30px;height:30px;vertical-align:middle;border-radius:7px;box-shadow:0 2px 8px rgba(0,0,0,0.35);flex-shrink:0;"" />";
+
+    [HttpGet("favicon.ico")]
+    [HttpGet("favorit.ico")]
+    [AllowAnonymous]
+    public IActionResult getFaviconIco()
+    {
+        Response.Headers["Cache-Control"] = "public, max-age=86400";
+        string icoPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "favicon.ico");
+        if (!System.IO.File.Exists(icoPath))
+        {
+            icoPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "favicon.ico");
+        }
+        if (System.IO.File.Exists(icoPath))
+        {
+            return PhysicalFile(icoPath, "image/x-icon");
+        }
+        return Redirect("/favicon.svg");
+    }
+
+    [HttpGet("favicon.svg")]
+    [AllowAnonymous]
+    public IActionResult getFaviconSvg()
+    {
+        Response.Headers["Cache-Control"] = "public, max-age=86400";
+        string svgPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "favicon.svg");
+        if (!System.IO.File.Exists(svgPath))
+        {
+            svgPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "favicon.svg");
+        }
+        if (System.IO.File.Exists(svgPath))
+        {
+            return PhysicalFile(svgPath, "image/svg+xml");
+        }
+        const string fallbackSvg = @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 64 64""><rect x=""2"" y=""2"" width=""60"" height=""60"" rx=""14"" fill=""#1e3a8a"" stroke=""#60a5fa"" stroke-width=""2""/><g transform=""translate(30,34) rotate(-14)""><rect x=""-15"" y=""-20"" width=""30"" height=""40"" rx=""5"" fill=""#f59e0b""/></g><g transform=""translate(34,32) rotate(6)""><rect x=""-17"" y=""-22"" width=""34"" height=""44"" rx=""5.5"" fill=""#ffffff"" stroke=""#1e40af"" stroke-width=""1.8""/><text x=""0"" y=""-1"" text-anchor=""middle"" dominant-baseline=""middle"" font-family=""Segoe UI,Arial,sans-serif"" font-weight=""900"" font-size=""15.5"" fill=""#1d4ed8"">SP</text><polygon points=""0,7 6,13 0,19 -6,13"" fill=""#dc2626""/></g></svg>";
+        return Content(fallbackSvg, "image/svg+xml; charset=utf-8");
+    }
+
     /// <summary>
     /// 統一攔截控制器例外錯誤並雙軌寫入系統 Log (storyPoint.tbLog + 本機 CSV 檔案)，絕不讓網站當掉
     /// </summary>
@@ -159,6 +199,10 @@ public class portalController : Controller
 <head>
     <meta charset=""utf-8"" />
     <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
+    <link rel=""icon"" type=""image/svg+xml"" href=""{InlineFaviconSvgDataUri}"" />
+    <link rel=""icon"" type=""image/x-icon"" href=""/favicon.ico?v=2026102703"" />
+    <link rel=""shortcut icon"" type=""image/x-icon"" href=""/favorit.ico?v=2026102703"" />
+    <link rel=""apple-touch-icon"" href=""/favicon.png?v=2026102703"" />
     <title>員工帳號登入 - Azure 多人參與 Story Point 估算與工項管理系統</title>
     <style>
         * {{ box-sizing:border-box; }}
@@ -186,7 +230,7 @@ public class portalController : Controller
 <body>
     <div class=""login-card"">
         <div class=""brand"">
-            <div class=""brand-icon"">🔐</div>
+            <div class=""brand-icon"" style=""padding:0;overflow:hidden;"">{TopbarBrandLogoImgHtml.Replace("width:30px;height:30px;", "width:50px;height:50px;")}</div>
             <div>
                 <h1>員工帳號登入驗證</h1>
                 <div style=""font-size:12.5px;color:#2563eb;font-weight:700;margin-top:2px;"">Azure 多人參與 Story Point 估算與工項權重管理系統</div>
@@ -517,7 +561,7 @@ public class portalController : Controller
             }
 
             var sbErr = new StringBuilder();
-            sbErr.Append($@"<!DOCTYPE html><html lang='zh-Hant'><head><meta charset='utf-8'/><title>系統防當機保護與錯誤 Log 檢視</title>
+            sbErr.Append($@"<!DOCTYPE html><html lang='zh-Hant'><head><meta charset='utf-8'/><link rel='icon' type='image/x-icon' href='/favicon.ico?v=20261027'/><link rel='shortcut icon' type='image/x-icon' href='/favorit.ico?v=20261027'/><link rel='icon' type='image/svg+xml' href='/favicon.svg?v=20261027'/><title>系統防當機保護與錯誤 Log 檢視</title>
             <style>body{{font-family:'Microsoft JhengHei UI',sans-serif;background:#f8fafc;padding:24px;color:#0f172a;}} .card{{background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:20px;margin-bottom:20px;}} table{{width:100%;border-collapse:collapse;font-size:13px;}} th,td{{padding:9px 11px;border-bottom:1px solid #e2e8f0;text-align:left;}} th{{background:#f1f5f9;}} .btn{{display:inline-block;padding:8px 14px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;}}</style></head><body>
             <div class='card' style='border-color:#fca5a5;background:#fef2f2;'>
                 <h2 style='margin-top:0;color:#b91c1c;'>🛡️ 系統防當機保護：已自動攔截頁面例外並寫入系統 Log</h2>
@@ -676,6 +720,9 @@ public class portalController : Controller
         [FromForm] bool restrictToParticipant = true,
         [FromForm] string? roundGoalNote = null,
         [FromForm] bool resetCurrentRoundVotes = false,
+        [FromForm] bool restartAllRounds = false,
+        [FromForm] bool openNextRound = false,
+        [FromForm] string? revoteMode = null,
         [FromForm] string? submitMode = "saveAndGoVoting",
         [FromForm] bool fromStandalone = false,
         [FromForm] string? tabInstanceId = null)
@@ -695,6 +742,27 @@ public class portalController : Controller
             if (participantPks != null && participantPks.Length > 0)
             {
                 resolvedParticipantCsv = string.Join(",", participantPks.Where(id => id > 0).Distinct());
+            }
+
+            string cleanRevoteMode = (revoteMode ?? "").Trim();
+            if (string.Equals(cleanRevoteMode, "restartAll", StringComparison.OrdinalIgnoreCase))
+            {
+                restartAllRounds = true;
+            }
+            else if (string.Equals(cleanRevoteMode, "nextRound", StringComparison.OrdinalIgnoreCase))
+            {
+                openNextRound = true;
+            }
+            else if (string.Equals(cleanRevoteMode, "resetCurrent", StringComparison.OrdinalIgnoreCase))
+            {
+                resetCurrentRoundVotes = true;
+            }
+            else if (string.Equals(cleanRevoteMode, "createNewSession", StringComparison.OrdinalIgnoreCase))
+            {
+                votingSessionPk = null;
+                restartAllRounds = false;
+                openNextRound = false;
+                resetCurrentRoundVotes = false;
             }
 
             bool isUpdatingExisting = votingSessionPk.HasValue && votingSessionPk.Value > 0;
@@ -726,25 +794,36 @@ public class portalController : Controller
                 ["restrictToParticipant"] = restrictToParticipant,
                 ["roundGoalNote"] = roundGoalNote,
                 ["resetCurrentRoundVotes"] = resetCurrentRoundVotes,
+                ["restartAllRounds"] = restartAllRounds,
+                ["openNextRound"] = openNextRound,
                 ["operatorAccount"] = getCurrentLoginAccount()
             });
 
             int newPk = ds.Tables[0].Rows.Count > 0 ? Convert.ToInt32(ds.Tables[0].Rows[0]["votingSessionPk"]) : (votingSessionPk ?? 0);
-            string eventMsg = isUpdatingExisting
-                ? $"管理者 {getCurrentEmployeeName()} 更新了盲投回合設定：{cleanTitle} (範圍 {minStoryPoint ?? 0}~{maxStoryPoint ?? 21} pt)"
-                : $"管理者 {getCurrentEmployeeName()} 發起了新盲投議程：{cleanTitle} (範圍 {minStoryPoint ?? 0}~{maxStoryPoint ?? 21} pt)";
+            string eventMsg = restartAllRounds
+                ? $"🆕 管理者 {getCurrentEmployeeName()} 針對「{cleanTitle}」執行【全部重新開始】（重設回第 1 回合，並重新設定投票人與所有選項，範圍 {minStoryPoint ?? 0}~{maxStoryPoint ?? 21} pt）"
+                : (openNextRound
+                    ? $"🔄 管理者 {getCurrentEmployeeName()} 針對「{cleanTitle}」執行【重啟新一輪盲投】（並更新投票人與相關設定，範圍 {minStoryPoint ?? 0}~{maxStoryPoint ?? 21} pt）"
+                    : (isUpdatingExisting
+                        ? $"管理者 {getCurrentEmployeeName()} 更新了盲投回合設定：{cleanTitle} (範圍 {minStoryPoint ?? 0}~{maxStoryPoint ?? 21} pt)"
+                        : $"管理者 {getCurrentEmployeeName()} 發起了新盲投議程：{cleanTitle} (範圍 {minStoryPoint ?? 0}~{maxStoryPoint ?? 21} pt)"));
 
             await _hubContext.Clients.All.SendAsync("onVotingSessionUpdated", new
             {
                 votingSessionPk = newPk,
-                eventName = isUpdatingExisting ? "roundSettingUpdated" : "sessionCreated",
+                eventName = restartAllRounds ? "restartAll" : (openNextRound ? "revote" : (isUpdatingExisting ? "roundSettingUpdated" : "sessionCreated")),
+                sessionStatus = (restartAllRounds || openNextRound || resetCurrentRoundVotes || !isUpdatingExisting) ? "voting" : null,
                 messageText = eventMsg,
                 timestamp = DateTime.Now.ToString("HH:mm:ss")
             });
 
-            string okText = isUpdatingExisting
-                ? $"已成功儲存議程「{cleanTitle}」的盲投回合設定（允許點數：{minStoryPoint ?? 0:0.##} ~ {maxStoryPoint ?? 21:0.##} pt）！"
-                : $"已成功啟動多人盲投議程「{cleanTitle}」（允許點數：{minStoryPoint ?? 0:0.##} ~ {maxStoryPoint ?? 21:0.##} pt）！議程已列入「📂 待參與」，請從「待參與」點選該議程以進入「🟢 參與中」的獨立網頁。";
+            string okText = restartAllRounds
+                ? $"🆕 已將議程「{cleanTitle}」全部重新開始（清空歷次回合與選票、重設回第 1 回合，並已套用新設定的投票人名單與所有選項：允許點數 {minStoryPoint ?? 0:0.##} ~ {maxStoryPoint ?? 21:0.##} pt）！"
+                : (openNextRound
+                    ? $"🔄 已針對議程「{cleanTitle}」重啟新一輪盲投，並套用重新設定的投票人名單與所有選項（允許點數：{minStoryPoint ?? 0:0.##} ~ {maxStoryPoint ?? 21:0.##} pt）！"
+                    : (isUpdatingExisting
+                        ? $"已成功儲存議程「{cleanTitle}」的盲投回合設定（允許點數：{minStoryPoint ?? 0:0.##} ~ {maxStoryPoint ?? 21:0.##} pt）！"
+                        : $"已成功啟動多人盲投議程「{cleanTitle}」（允許點數：{minStoryPoint ?? 0:0.##} ~ {maxStoryPoint ?? 21:0.##} pt）！議程已列入「📂 待參與」，請從「待參與」點選該議程以進入「🟢 參與中」的獨立網頁。"));
 
             if (fromStandalone)
             {
@@ -953,6 +1032,9 @@ public class portalController : Controller
                 "resetRound" => !string.IsNullOrEmpty(effectiveSessionTitle)
                     ? $"🔁 已清空「{effectiveSessionTitle}」本回合（第 {effectiveRoundNum} 回合）既有出牌紀錄並重啟重新投票！"
                     : "🔁 已清空本回合既有出牌紀錄並重啟重新投票！",
+                "restartAll" => !string.IsNullOrEmpty(effectiveSessionTitle)
+                    ? $"🆕 已針對「{effectiveSessionTitle}」執行【全部重新開始】（清空歷次回合與選票，重設回第 1 回合重新盲投）！"
+                    : "🆕 已執行【全部重新開始】（清空歷次回合與選票，重設回第 1 回合重新盲投）！",
                 "finalize" => !string.IsNullOrEmpty(effectiveDecisionNote)
                     ? $"已拍板定案最終 Story Point 為 {finalStoryPoint:0.##} 點（定案決議說明：「{effectiveDecisionNote}」），並自動更新目標點數與歷程！"
                     : $"已拍板定案最終 Story Point 為 {finalStoryPoint:0.##} 點，並自動更新目標點數與歷程！",
@@ -963,7 +1045,7 @@ public class portalController : Controller
             {
                 votingSessionPk = effectiveSessionPk,
                 eventName = resolvedAction,
-                sessionStatus = (resolvedAction == "revote" || resolvedAction == "resetRound" || resolvedAction == "nextRound") ? "voting" : null,
+                sessionStatus = (resolvedAction == "revote" || resolvedAction == "resetRound" || resolvedAction == "restartAll" || resolvedAction == "nextRound") ? "voting" : null,
                 messageText = actionText,
                 timestamp = DateTime.Now.ToString("HH:mm:ss")
             });
@@ -994,6 +1076,144 @@ public class portalController : Controller
                 return Redirect($"/?tab={Uri.EscapeDataString(returnTab.Trim())}&err=" + Uri.EscapeDataString("控制投票議程時發生異常（已自動記錄至系統 Log）：" + ex.Message));
             }
             return Redirect($"/voting/session?sessionPk={votingSessionPk}&tabInstanceId={Uri.EscapeDataString(tabInstanceId ?? "")}&err=" + Uri.EscapeDataString("控制投票議程時發生異常（已自動記錄至系統 Log）：" + ex.Message));
+        }
+    }
+
+    [HttpPost("voting/delete")]
+    [HttpPost("voting/session/delete")]
+    [Authorize]
+    public async Task<IActionResult> deleteVotingSession(
+        [FromForm] int? votingSessionPk,
+        [FromForm] string? sessionCode = null,
+        [FromForm] string? returnTab = "roundSetup")
+    {
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "roundSetup" : returnTab.Trim();
+        if (!isAdminUser())
+        {
+            return Redirect($"/?tab={Uri.EscapeDataString(targetTab)}&err=" + Uri.EscapeDataString("僅管理者可刪除盲投回合／議程設定。"));
+        }
+
+        try
+        {
+            var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spDeleteVotingSession", new Dictionary<string, object?>
+            {
+                ["votingSessionPk"] = votingSessionPk,
+                ["sessionCode"] = string.IsNullOrWhiteSpace(sessionCode) ? null : sessionCode.Trim(),
+                ["operatorAccount"] = getCurrentLoginAccount()
+            });
+
+            int delPk = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0 && ds.Tables[0].Columns.Contains("deletedVotingSessionPk") && ds.Tables[0].Rows[0]["deletedVotingSessionPk"] != DBNull.Value)
+                ? Convert.ToInt32(ds.Tables[0].Rows[0]["deletedVotingSessionPk"])
+                : (votingSessionPk ?? 0);
+            string delCode = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["deletedSessionCode"]?.ToString() ?? "") : (sessionCode ?? "");
+            string delTitle = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["deletedSessionTitle"]?.ToString() ?? "") : "";
+
+            string msgText = $"🗑️ 已成功刪除盲投回合／議程「{delCode} - {delTitle}」！";
+
+            await _hubContext.Clients.All.SendAsync("onVotingSessionUpdated", new
+            {
+                votingSessionPk = delPk,
+                eventName = "sessionDeleted",
+                messageText = msgText,
+                timestamp = DateTime.Now.ToString("HH:mm:ss")
+            });
+
+            return Redirect($"/?tab={Uri.EscapeDataString(targetTab)}&msg=" + Uri.EscapeDataString(msgText));
+        }
+        catch (Exception ex)
+        {
+            await logPortalExceptionAsync("portalController.deleteVotingSession", ex);
+            return Redirect($"/?tab={Uri.EscapeDataString(targetTab)}&err=" + Uri.EscapeDataString("刪除盲投回合／議程失敗（已記錄至系統 Log）：" + ex.Message));
+        }
+    }
+
+    [HttpPost("voting/round/delete")]
+    [Authorize]
+    public async Task<IActionResult> deleteVotingRound(
+        [FromForm] int? votingSessionPk,
+        [FromForm] int? roundNumber = null,
+        [FromForm] int? votingRoundPk = null,
+        [FromForm] bool deleteSessionIfLastRound = true,
+        [FromForm] string? returnTab = "roundSetup",
+        [FromForm] bool fromStandalone = false,
+        [FromForm] string? tabInstanceId = null)
+    {
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "roundSetup" : returnTab.Trim();
+        if (!isAdminUser())
+        {
+            if (fromStandalone && votingSessionPk.HasValue && votingSessionPk.Value > 0)
+            {
+                return Redirect($"/voting/session?sessionPk={votingSessionPk.Value}&tabInstanceId={Uri.EscapeDataString(tabInstanceId ?? "")}&err=" + Uri.EscapeDataString("僅管理者可刪除盲投回合。"));
+            }
+            return Redirect($"/?tab={Uri.EscapeDataString(targetTab)}&err=" + Uri.EscapeDataString("僅管理者可刪除盲投回合。"));
+        }
+
+        try
+        {
+            var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spDeleteVotingRound", new Dictionary<string, object?>
+            {
+                ["votingSessionPk"] = votingSessionPk,
+                ["roundNumber"] = roundNumber,
+                ["votingRoundPk"] = votingRoundPk,
+                ["deleteSessionIfLastRound"] = deleteSessionIfLastRound,
+                ["operatorAccount"] = getCurrentLoginAccount()
+            });
+
+            bool isSessionDeleted = false;
+            int delSessPk = votingSessionPk ?? 0;
+            string delCode = "";
+            string delTitle = "";
+            int delRoundNum = roundNumber ?? 1;
+            int remCount = 0;
+            int newCurRound = 1;
+
+            if (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0)
+            {
+                var r0 = ds.Tables[0].Rows[0];
+                if (r0.Table.Columns.Contains("isSessionDeleted") && r0["isSessionDeleted"] != DBNull.Value)
+                    isSessionDeleted = Convert.ToBoolean(r0["isSessionDeleted"]);
+                if (r0.Table.Columns.Contains("deletedVotingSessionPk") && r0["deletedVotingSessionPk"] != DBNull.Value)
+                    delSessPk = Convert.ToInt32(r0["deletedVotingSessionPk"]);
+                if (r0.Table.Columns.Contains("deletedSessionCode") && r0["deletedSessionCode"] != DBNull.Value)
+                    delCode = r0["deletedSessionCode"]?.ToString() ?? "";
+                if (r0.Table.Columns.Contains("deletedSessionTitle") && r0["deletedSessionTitle"] != DBNull.Value)
+                    delTitle = r0["deletedSessionTitle"]?.ToString() ?? "";
+                if (r0.Table.Columns.Contains("deletedRoundNumber") && r0["deletedRoundNumber"] != DBNull.Value)
+                    delRoundNum = Convert.ToInt32(r0["deletedRoundNumber"]);
+                if (r0.Table.Columns.Contains("remainingRoundCount") && r0["remainingRoundCount"] != DBNull.Value)
+                    remCount = Convert.ToInt32(r0["remainingRoundCount"]);
+                if (r0.Table.Columns.Contains("newCurrentRoundNumber") && r0["newCurrentRoundNumber"] != DBNull.Value)
+                    newCurRound = Convert.ToInt32(r0["newCurrentRoundNumber"]);
+            }
+
+            string msgText = isSessionDeleted
+                ? $"🗑️ 已刪除盲投回合（第 {delRoundNum} 回合，為該議程最後一個回合），並一併移除議程「{delCode} - {delTitle}」！"
+                : $"🗑️ 已成功刪除「{delCode} - {delTitle}」之第 {delRoundNum} 回合（剩餘 {remCount} 回合，目前為第 {newCurRound} 回合）！";
+
+            await _hubContext.Clients.All.SendAsync("onVotingSessionUpdated", new
+            {
+                votingSessionPk = delSessPk,
+                eventName = isSessionDeleted ? "sessionDeleted" : "roundDeleted",
+                messageText = msgText,
+                timestamp = DateTime.Now.ToString("HH:mm:ss")
+            });
+
+            if (!isSessionDeleted && fromStandalone && delSessPk > 0)
+            {
+                string tokenParam = !string.IsNullOrWhiteSpace(tabInstanceId) ? $"&tabInstanceId={Uri.EscapeDataString(tabInstanceId)}" : "";
+                return Redirect($"/voting/session?sessionPk={delSessPk}{tokenParam}&msg=" + Uri.EscapeDataString(msgText));
+            }
+
+            return Redirect($"/?tab={Uri.EscapeDataString(targetTab)}&msg=" + Uri.EscapeDataString(msgText));
+        }
+        catch (Exception ex)
+        {
+            await logPortalExceptionAsync("portalController.deleteVotingRound", ex);
+            if (fromStandalone && votingSessionPk.HasValue && votingSessionPk.Value > 0)
+            {
+                return Redirect($"/voting/session?sessionPk={votingSessionPk.Value}&tabInstanceId={Uri.EscapeDataString(tabInstanceId ?? "")}&err=" + Uri.EscapeDataString("刪除盲投回合失敗（已記錄至系統 Log）：" + ex.Message));
+            }
+            return Redirect($"/?tab={Uri.EscapeDataString(targetTab)}&err=" + Uri.EscapeDataString("刪除盲投回合失敗（已記錄至系統 Log）：" + ex.Message));
         }
     }
 
@@ -2003,9 +2223,9 @@ public class portalController : Controller
         string[] headers = { "員工編號", "員工姓名", "登入帳號", "登入密碼", "電子郵件", "職稱", "所屬部門", "系統角色", "是否啟用", "是否為部門主管(1/0)", "上層主管(員工編號或帳號或姓名)" };
         var rows = new List<string[]>
         {
-            new[] { "EMP009", "林志豪 (Leo)", "leo.lin", "pass123", "leo.lin@company.com", "部門經理", "開發", "admin", "1", "1", "byron.hu" },
-            new[] { "EMP010", "許雅筑 (Chloe)", "chloe.hsu", "pass123", "chloe.hsu@company.com", "資深工程師", "開發", "participant", "1", "0", "leo.lin" },
-            new[] { "EMP011", "鄭家銘 (Mark)", "mark.cheng", "admin123", "mark.cheng@company.com", "部門經理 / 敏捷教練", "BI", "admin", "1", "1", "byron.hu" }
+            new[] { "EMP009", "林志豪 (Leo)", "leo.lin", "P@ssw0rd", "leo.lin@company.com", "部門經理", "開發", "admin", "1", "1", "byron.hu" },
+            new[] { "EMP010", "許雅筑 (Chloe)", "chloe.hsu", "P@ssw0rd", "chloe.hsu@company.com", "資深工程師", "開發", "participant", "1", "0", "leo.lin" },
+            new[] { "EMP011", "鄭家銘 (Mark)", "mark.cheng", "P@ssw0rd", "mark.cheng@company.com", "部門經理 / 敏捷教練", "BI", "admin", "1", "1", "byron.hu" }
         };
 
         if (string.Equals(format, "excel", StringComparison.OrdinalIgnoreCase) ||
@@ -2027,7 +2247,7 @@ public class portalController : Controller
         [FromForm] string? importFormat,
         [FromForm] string? csvRawText,
         [FromForm] int defaultDepartmentPk = 1,
-        [FromForm] string defaultPassword = "pass123")
+        [FromForm] string defaultPassword = "P@ssw0rd")
     {
         if (!isAdminUser())
         {
@@ -2091,7 +2311,13 @@ public class portalController : Controller
                 string empCode = firstCol;
                 string empName = cols.Length > 1 && !string.IsNullOrWhiteSpace(cols[1]) ? cols[1].Trim().Trim('"') : empCode;
                 string loginAcc = cols.Length > 2 && !string.IsNullOrWhiteSpace(cols[2]) ? cols[2].Trim().Trim('"') : empCode.ToLowerInvariant();
-                string rawPwd = cols.Length > 3 && !string.IsNullOrWhiteSpace(cols[3]) ? cols[3].Trim().Trim('"') : defaultPassword;
+                bool isProtectedAccount = string.Equals(loginAcc, "admin", StringComparison.OrdinalIgnoreCase) ||
+                                          string.Equals(loginAcc, "raya", StringComparison.OrdinalIgnoreCase) ||
+                                          string.Equals(loginAcc, "byron", StringComparison.OrdinalIgnoreCase) ||
+                                          string.Equals(loginAcc, "byron.hu", StringComparison.OrdinalIgnoreCase);
+                string rawPwd = isProtectedAccount
+                    ? ""
+                    : (cols.Length > 3 && !string.IsNullOrWhiteSpace(cols[3]) ? cols[3].Trim().Trim('"') : defaultPassword);
                 string email = cols.Length > 4 && !string.IsNullOrWhiteSpace(cols[4]) ? cols[4].Trim().Trim('"') : $"{loginAcc}@company.com";
                 string jobTitle = cols.Length > 5 && !string.IsNullOrWhiteSpace(cols[5]) ? cols[5].Trim().Trim('"') : "工程師";
                 string deptToken = cols.Length > 6 ? cols[6].Trim().Trim('"') : "";
@@ -3049,6 +3275,9 @@ public class portalController : Controller
 <head>
     <meta charset=""utf-8"" />
     <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
+    <link rel=""icon"" type=""image/x-icon"" href=""/favicon.ico?v=20261027"" />
+    <link rel=""shortcut icon"" type=""image/x-icon"" href=""/favorit.ico?v=20261027"" />
+    <link rel=""icon"" type=""image/svg+xml"" href=""data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='2' y='2' width='60' height='60' rx='14' fill='%231e3a8a' stroke='%2360a5fa' stroke-width='2'/%3E%3Cg transform='translate(30,34) rotate(-14)'%3E%3Crect x='-15' y='-20' width='30' height='40' rx='5' fill='%23f59e0b'/%3E%3C/g%3E%3Cg transform='translate(34,32) rotate(6)'%3E%3Crect x='-17' y='-22' width='34' height='44' rx='5.5' fill='%23ffffff' stroke='%231e40af' stroke-width='1.6'/%3E%3Ctext x='0' y='-1' text-anchor='middle' dominant-baseline='middle' font-family='Segoe UI,Arial,sans-serif' font-weight='900' font-size='15.5' fill='%231d4ed8'%3ESP%3C/text%3E%3Cpolygon points='0,7 6,13 0,19 -6,13' fill='%23dc2626'/%3E%3C/g%3E%3C/svg%3E"" />
     <title>{h(reportTitle)} - 互動式 HTML 分析報表 (排序・篩選・群組彙總)</title>
     <style>
         :root {{ --primary:#2563eb; --bg:#f8fafc; --card:#ffffff; --border:#e2e8f0; --text:#0f172a; --muted:#64748b; }}
@@ -3814,6 +4043,10 @@ public class portalController : Controller
 <head>
     <meta charset=""utf-8"" />
     <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
+    <link rel=""icon"" type=""image/svg+xml"" href=""{InlineFaviconSvgDataUri}"" />
+    <link rel=""icon"" type=""image/x-icon"" href=""/favicon.ico?v=2026102703"" />
+    <link rel=""shortcut icon"" type=""image/x-icon"" href=""/favorit.ico?v=2026102703"" />
+    <link rel=""apple-touch-icon"" href=""/favicon.png?v=2026102703"" />
     <title>Azure 多人參與 Story Point 估算與工項管理系統</title>
     <script src=""https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js""></script>
     <style>
@@ -3933,14 +4166,14 @@ public class portalController : Controller
         table tbody tr {{ cursor:context-menu; transition:background .12s; }}
         table tbody tr:hover td {{ background:#f0f7ff; }}
         table tbody tr.sp-context-active-row td {{ background:#dbeafe !important; box-shadow:inset 0 1px 0 #3b82f6, inset 0 -1px 0 #3b82f6; }}
-        .sp-context-menu {{ position:fixed; z-index:100000; min-width:265px; max-width:360px; background:#ffffff; border:1.5px solid #3b82f6; border-radius:12px; box-shadow:0 18px 38px rgba(15,23,42,0.28), 0 4px 12px rgba(37,99,235,0.14); padding:6px; display:none; user-select:none; animation:spCtxFadeIn .12s ease-out; }}
+        .sp-context-menu {{ position:fixed; z-index:100000; min-width:380px; max-width:500px; background:#ffffff; border:1.5px solid #3b82f6; border-radius:12px; box-shadow:0 18px 38px rgba(15,23,42,0.28), 0 4px 12px rgba(37,99,235,0.14); padding:6px; display:none; user-select:none; animation:spCtxFadeIn .12s ease-out; }}
         .sp-context-menu.visible, .sp-context-menu.open {{ display:block !important; }}
         @keyframes spCtxFadeIn {{ from {{ opacity:0; transform:scale(0.96) translateY(-4px); }} to {{ opacity:1; transform:scale(1) translateY(0); }} }}
         .sp-ctx-header {{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 11px; margin-bottom:4px; background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%); color:#ffffff; border-radius:8px; font-size:12px; font-weight:700; }}
-        .sp-ctx-header-title {{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:265px; }}
+        .sp-ctx-header-title {{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:360px; }}
         .sp-ctx-close {{ background:transparent; border:none; color:#cbd5e1; font-size:13px; cursor:pointer; padding:0 4px; line-height:1; border-radius:4px; }}
         .sp-ctx-close:hover {{ color:#ffffff; background:rgba(255,255,255,0.15); }}
-        .sp-ctx-item {{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:9px; padding:8px 11px; border:none; background:transparent; color:#1e293b; font-size:13px; font-weight:600; font-family:inherit; text-align:left; border-radius:7px; cursor:pointer; transition:background .12s, color .12s; }}
+        .sp-ctx-item {{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 11px; border:none; background:transparent; color:#1e293b; font-size:13px; font-weight:600; font-family:inherit; text-align:left; border-radius:7px; cursor:pointer; transition:background .12s, color .12s; }}
         .sp-ctx-item:hover {{ background:#eff6ff; color:#1d4ed8; }}
         .sp-ctx-item.primary-action {{ color:#1d4ed8; font-weight:700; }}
         .sp-ctx-item.primary-action:hover {{ background:#dbeafe; color:#1e3a8a; }}
@@ -3949,12 +4182,12 @@ public class portalController : Controller
         .sp-ctx-item.danger {{ color:#dc2626; }}
         .sp-ctx-item.danger:hover {{ background:#fef2f2; color:#991b1b; }}
         .sp-ctx-item:disabled, .sp-ctx-item.disabled {{ opacity:0.45; cursor:not-allowed; }}
-        .sp-ctx-icon {{ display:inline-block; width:20px; text-align:center; font-size:14px; margin-right:6px; }}
+        .sp-ctx-icon {{ display:inline-block; width:20px; text-align:center; font-size:14px; margin-right:6px; flex-shrink:0; }}
         .sp-ctx-divider {{ height:1px; background:#e2e8f0; margin:5px 4px; }}
         /* 單筆紀錄編輯 Modal 彈出視窗樣式（不捲動網頁，直接原地彈出 Modal 編輯） */
         .sp-modal-overlay {{ position:fixed; inset:0; z-index:100005; background:rgba(15,23,42,0.58); backdrop-filter:blur(3px); display:none; align-items:center; justify-content:center; padding:18px; overflow-y:auto; }}
         .sp-modal-overlay.visible, .sp-modal-overlay.open {{ display:flex !important; }}
-        .sp-modal-dialog {{ width:100%; max-width:860px; max-height:90vh; background:#ffffff; border-radius:14px; border:2px solid #2563eb; box-shadow:0 24px 60px rgba(15,23,42,0.42); display:flex; flex-direction:column; overflow:hidden; animation:spCtxFadeIn .15s ease-out; }}
+        .sp-modal-dialog {{ width:100%; max-width:960px; max-height:92vh; background:#ffffff; border-radius:14px; border:2px solid #2563eb; box-shadow:0 24px 60px rgba(15,23,42,0.42); display:flex; flex-direction:column; overflow:hidden; animation:spCtxFadeIn .15s ease-out; }}
         .sp-modal-header {{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 20px; background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%); color:#ffffff; }}
         .sp-modal-title {{ font-size:16px; font-weight:800; display:flex; align-items:center; gap:8px; }}
         .sp-modal-close-btn {{ background:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.28); color:#ffffff; border-radius:8px; padding:5px 12px; font-size:13px; font-weight:700; cursor:pointer; transition:all .15s; }}
@@ -4060,7 +4293,8 @@ public class portalController : Controller
 <body>
     <div class=""topbar"">
         <div class=""topbar-title"">
-            <span>🃏 Azure 多人參與 Story Point 估算與工項權重管理系統</span>
+            {TopbarBrandLogoImgHtml}
+            <span>Azure 多人參與 Story Point 估算與工項權重管理系統</span>
             <span style=""font-size:12px;background:#1e293b;padding:4px 10px;border-radius:6px;color:#93c5fd;"">Azure RG: storyPoint | Schema: storyPoint</span>
         </div>
         <div class=""topbar-user"">
@@ -4558,8 +4792,10 @@ public class portalController : Controller
                             {(isFinalized ? "🔍 檢視此定案 Session 獨立頁" : (isAlreadyOpen ? "🟢 參與中 (獨立網頁進行中・禁重複進入)" : "🚀 點選進入「參與中」獨立網頁"))}
                         </a>
                         {(!isFinalized ? $"<button type='button' data-session-leave-btn='{sPk}' onclick='leaveParticipatingSessionFromLobby(event, {sPk})' class='btn btn-outline' style='display:{(isAlreadyOpen ? "inline-block" : "none")};padding:4px 8px;font-size:11.5px;color:#dc2626;border-color:#fca5a5;background:#fff;' title='結束本場議程的獨立網頁參與狀態並移回「待參與」'>🚪 結束參與</button>" : "")}
-                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:11.5px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' onclick=\"triggerRevoteFromTarget('session', 0, {sPk}, '{jsSafeTitle}', false, 'voting')\" title='針對此議程啟動重新投票（開啟新一輪盲投）'>🔄 重新投票</button>" : "")}
-                        {(isAdmin && !isFinalized ? $"<button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:11.5px;' onclick='openRoundSetupForSession({sPk})'>⚙️ 修改回合設定</button>" : "")}
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:11.5px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' onclick=\"triggerRevoteFromTarget('session', 0, {sPk}, '{jsSafeTitle}', false, 'voting')\" title='針對此議程啟動重新投票（沿用原設定開啟新一輪盲投）'>🔄 重啟新一輪</button>" : "")}
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:11.5px;color:#b45309;border-color:#fcd34d;background:#fffbeb;' onclick=\"openSessionSetupEditModal({sPk}, '', 0, true, 'restartAll')\" title='全部重新開始（清空歷次回合回第 1 回合，並重新設定投票人名單與所有相關選項）'>🆕 全部重新開始(重設選項)</button>" : "")}
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:11.5px;' onclick=\"openFullRoundSetupTabForTarget({sPk}, '', 0, 'restartAll')\">⚙️ 完整設定頁</button>" : "")}
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:11.5px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;' onclick=\"triggerDeleteVotingSession({sPk}, '{escapeJsString(sRow["sessionCode"]?.ToString() ?? "")}', '{escapeJsString(sRow["sessionTitle"]?.ToString() ?? "")}', 'voting')\" title='永久刪除此場盲投回合／議程'>🗑️ 刪除回合</button>" : "")}
                     </div>
                 </div>
             </div>");
@@ -4724,8 +4960,8 @@ public class portalController : Controller
                             {(isOpenNow ? "🟢 參與中 (獨立網頁進行中・禁重複進入)" : "🚀 點選進入「參與中」獨立網頁")}
                         </a>
                         <button type=""button"" data-session-leave-btn=""{sPk}"" onclick=""leaveParticipatingSessionFromLobby(event, {sPk})"" class=""btn btn-outline"" style=""display:{(isOpenNow ? "inline-block" : "none")};padding:8px 10px;font-size:12px;color:#dc2626;border-color:#fca5a5;background:#fff;"" title=""結束本場議程的獨立網頁參與狀態並移回「待參與」"">🚪 結束參與</button>
-                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:8px 10px;font-size:12px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' onclick=\"triggerRevoteFromTarget('session', 0, {sPk}, '{jsCardTitle}', false, 'voting')\" title='針對此議程啟動重新投票'>🔄 重新投票</button>" : "")}
-                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:8px 10px;font-size:12px;' onclick='openRoundSetupForSession({sPk})'>⚙️ 設定</button>" : "")}
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:8px 10px;font-size:12px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' onclick=\"triggerRevoteFromTarget('session', 0, {sPk}, '{jsCardTitle}', false, 'voting')\" title='針對此議程重啟新一輪盲投'>🔄 重啟新一輪</button>" : "")}
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:8px 10px;font-size:12px;color:#b45309;border-color:#fcd34d;background:#fffbeb;' onclick=\"openSessionSetupEditModal({sPk}, '', 0, true, 'restartAll')\" title='全部重新開始（重設回第 1 回合，並重新設定投票人名單與所有選項）'>🆕 全部重新開始(重設選項)</button>" : "")}
                     </div>
                 </div>");
         }
@@ -4807,34 +5043,38 @@ public class portalController : Controller
             </div>
 
             <form method='post' action='/voting/create' id='formRoundSetup'>
-                <!-- 模式切換：發起新盲投議程 vs 修改既有進行中議程設定 -->
+                <!-- 模式切換：發起新盲投議程 vs 修改既有進行中議程設定 vs 全部重新開始 -->
                 <div class='setup-section' style='background:#eff6ff;border-color:#bfdbfe;'>
                     <div class='setup-section-title'>
-                        <span>🔄 設定對象模式（可發起全新盲投回合，或載入既有議程調整回合規則與參與名單）</span>
+                        <span>🔄 設定對象與重新投票模式（可發起新議程、重啟新一輪，或將既有議程「全部重新開始」並重新設定投票人與所有選項）</span>
                     </div>
                     <div class='form-row' style='margin-bottom:0;'>
                         <div>
-                            <label data-tip='選擇設定作業模式：可建立並啟動全新的多人盲投議程，或載入既有進行中議程調整回合規則與參與名單' title='選擇設定作業模式：可建立並啟動全新的多人盲投議程，或載入既有進行中議程調整回合規則與參與名單'>設定作業模式 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='選擇設定作業模式：可建立並啟動全新的多人盲投議程，或載入既有／已定案議程重新設定投票人與所有相關選項' title='選擇設定作業模式：可建立並啟動全新的多人盲投議程，或載入既有／已定案議程重新設定投票人與所有相關選項'>1. 選擇目標盲投議程 <span class='sp-tip-icon'>ⓘ</span></label>
                             <select name='votingSessionPk' id='setupSessionSelector' onchange='onSetupSessionSelectChange()'>
                                 <option value=''>➕ 建立並啟動全新的多人盲投議程</option>");
             foreach (DataRow sRow in ongoingSessions)
             {
                 int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
-                sb.Append($"<option value='{sPk}'>✏️ 修改進行中議程：{h(sRow["sessionCode"])} - {h(sRow["sessionTitle"])}</option>");
+                sb.Append($"<option value='{sPk}'>✏️ 進行中議程：{h(sRow["sessionCode"])} - {h(sRow["sessionTitle"])}</option>");
             }
             foreach (DataRow sRow in finalizedSessions)
             {
                 int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
-                sb.Append($"<option value='{sPk}'>🔄 重新投票已定案議程：{h(sRow["sessionCode"])} - {h(sRow["sessionTitle"])}</option>");
+                sb.Append($"<option value='{sPk}'>🔄 已定案議程：{h(sRow["sessionCode"])} - {h(sRow["sessionTitle"])}</option>");
             }
             sb.Append(@"
                             </select>
                         </div>
-                        <div style='display:flex;align-items:end;'>
-                            <label style='display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;background:#fff;border:1px solid #cbd5e1;border-radius:7px;width:100%;margin:0;' data-tip='若為修改既有或已定案議程，勾選此項將同時清空出牌紀錄並重啟盲投回合，讓全體參與者重新投票' title='若為修改既有或已定案議程，勾選此項將同時清空出牌紀錄並重啟盲投回合，讓全體參與者重新投票'>
-                                <input type='checkbox' name='resetCurrentRoundVotes' id='setupResetVotes' value='true' />
-                                <span>🔄 重新投票：修改既有／已定案議程時，一併重啟盲投重新投票 <span class='sp-tip-icon'>ⓘ</span></span>
-                            </label>
+                        <div style='grid-column: span 2;'>
+                            <label data-tip='當選擇既有或已定案議程時，可選擇「🆕 全部重新開始（清空歷次回合與選票回第 1 回合，並重新設定投票人與所有選項）」或「🔄 重啟新一輪盲投」' title='當選擇既有或已定案議程時，可選擇「🆕 全部重新開始（清空歷次回合與選票回第 1 回合，並重新設定投票人與所有選項）」或「🔄 重啟新一輪盲投」'>2. 重新投票 ／ 議程重設模式（支援全部重新開始並重設投票人與所有選項） <span class='sp-tip-icon'>ⓘ</span></label>
+                            <select name='revoteMode' id='setupRevoteMode' style='border-color:#2563eb;font-weight:700;background:#ffffff;'>
+                                <option value='restartAll'>🆕 全部重新開始（清空歷次回合與選票，從第 1 回合全新開始，並重新設定下方投票人名單與所有選項）</option>
+                                <option value='nextRound'>🔄 重啟新一輪盲投（保留歷次回合紀錄，開啟下一輪 N+1 並套用下方重新設定之投票人與選項）</option>
+                                <option value='resetCurrent'>🔁 重設當前回合（僅清空本回合已出牌紀錄，保持目前回合號並更新選項）</option>
+                                <option value='keepVotes'>💾 僅更新設定與投票人（保留目前已投選票不清除）</option>
+                                <option value='createNewSession'>➕ 另建全新盲投議程 Session（保留原議程紀錄不動，額外建立新議程）</option>
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -5153,7 +5393,8 @@ public class portalController : Controller
                     </div>
                     <div style=""font-size:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;"">
                         <span>最終核定 Story Point：<strong style=""color:#16a34a;font-size:18px;"">{finalPt}</strong> ｜ 總回合數：<strong>{sRow["totalRoundCount"]} 回合</strong> ｜ 主持管理者：{h(sRow["hostEmployeeName"])}</span>
-                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' onclick=\"triggerRevoteFromTarget('session', 0, {sPk}, '{jsHistTitle}', false, 'voting')\">🔄 重新投票</button>" : "")}
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' onclick=\"triggerRevoteFromTarget('session', 0, {sPk}, '{jsHistTitle}', false, 'voting')\">🔄 重啟新一輪</button>" : "")}
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;color:#b45309;border-color:#fcd34d;background:#fffbeb;' onclick=\"openSessionSetupEditModal({sPk}, '', 0, true, 'restartAll')\">🆕 全部重新開始(重設投票人與所有選項)</button>" : "")}
                     </div>
                 </div>
                 <div style=""font-size:13px;color:#334155;margin-bottom:10px;"">
@@ -6220,7 +6461,7 @@ public class portalController : Controller
                                 <input type='text' name='loginAccount' id='empAcc' placeholder='例如：leo.lin' oninput='autoMatchExistingEmpByAcc(this.value)' required />
                             </div>
                             <div>
-                                <label data-tip='設定或重設登入密碼：新增時未填預設 pass123；修改既有員工時留空代表不更改密碼' title='設定或重設登入密碼：新增時未填預設 pass123；修改既有員工時留空代表不更改密碼'>登入密碼 <span class='sp-tip-icon'>ⓘ</span></label>
+                                <label data-tip='設定或重設登入密碼：新增時未填預設 P@ssw0rd；修改既有員工時留空代表不更改密碼' title='設定或重設登入密碼：新增時未填預設 P@ssw0rd；修改既有員工時留空代表不更改密碼'>登入密碼 <span class='sp-tip-icon'>ⓘ</span></label>
                                 <div style='position:relative;display:flex;align-items:center;'>
                                     <input type='password' name='plainPassword' id='empPwd' placeholder='修改時留空代表不改密碼' style='padding-right:64px;' />
                                     <button type='button' id='btnToggleEmpPwd' onclick='toggleEmpPasswordVisibility()' style='position:absolute;right:6px;background:#e2e8f0;border:none;border-radius:5px;padding:3px 7px;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer;'>👁️ 顯示</button>
@@ -6380,13 +6621,13 @@ public class portalController : Controller
                         </div>
                         <div>
                             <label data-tip='當匯入資料列未填寫登入密碼時，系統自動為新員工帳號設定此預設登入密碼' title='當匯入資料列未填寫登入密碼時，系統自動為新員工帳號設定此預設登入密碼'>預設登入密碼 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' name='defaultPassword' value='pass123' />
+                            <input type='text' name='defaultPassword' value='P@ssw0rd' />
                         </div>
                     </div>
                     <div class='form-row'>
                         <div style='grid-column: 1 / -1;'>
                             <label data-tip='直接貼上多筆員工 CSV 或 Excel 複製內容，每行一筆，欄位順序：員工編號,員工姓名,登入帳號,登入密碼,電子郵件,職稱,所屬部門名稱或代碼,角色(participant/admin),是否啟用(1/0),是否為部門主管(1/0),上層主管(帳號或編號)' title='直接貼上多筆員工 CSV 或 Excel 複製內容，每行一筆，欄位順序：員工編號,員工姓名,登入帳號,登入密碼,電子郵件,職稱,所屬部門名稱或代碼,角色(participant/admin),是否啟用(1/0),是否為部門主管(1/0),上層主管(帳號或編號)'>直接貼上多筆員工 CSV / Excel 文字內容 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <textarea name='csvRawText' id='batchEmpTextarea' rows='5' placeholder='EMP009,林志豪 (Leo),leo.lin,pass123,leo.lin@company.com,部門經理,開發,admin,1,1,byron.hu&#10;EMP010,許雅筑 (Chloe),chloe.hsu,pass123,chloe.hsu@company.com,資深工程師,開發,participant,1,0,leo.lin' style='font-family:Consolas,monospace;font-size:13px;'></textarea>
+                            <textarea name='csvRawText' id='batchEmpTextarea' rows='5' placeholder='EMP009,林志豪 (Leo),leo.lin,P@ssw0rd,leo.lin@company.com,部門經理,開發,admin,1,1,byron.hu&#10;EMP010,許雅筑 (Chloe),chloe.hsu,P@ssw0rd,chloe.hsu@company.com,資深工程師,開發,participant,1,0,leo.lin' style='font-family:Consolas,monospace;font-size:13px;'></textarea>
                         </div>
                     </div>
                     <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;'>
@@ -7485,9 +7726,11 @@ public class portalController : Controller
         function onSetupSessionSelectChange() {
             const sel = document.getElementById('setupSessionSelector');
             const submitBtn = document.getElementById('setupSubmitBtn');
+            const revoteModeSel = document.getElementById('setupRevoteMode');
             if (!sel) return;
             const sPk = sel.value;
             if (!sPk || !sessionConfigMap[sPk]) {
+                if (revoteModeSel) revoteModeSel.value = 'createNewSession';
                 if (submitBtn) submitBtn.innerHTML = '🚀 儲存回合設定並啟動多人盲投議程';
                 autoFillSetupTitle();
                 return;
@@ -7518,21 +7761,58 @@ public class portalController : Controller
                 const empPk = parseInt(cb.value, 10);
                 cb.checked = (cfg.participants || []).indexOf(empPk) !== -1;
             });
-            const resetCb = document.getElementById('setupResetVotes');
-            if (resetCb && cfg.sessionStatus === 'finalized') {
-                resetCb.checked = true;
+            if (revoteModeSel && revoteModeSel.value === 'createNewSession') {
+                revoteModeSel.value = 'restartAll';
             }
             updateSetupCardPreview();
             updateSetupParticipantCount();
             if (submitBtn) {
-                submitBtn.innerHTML = cfg.sessionStatus === 'finalized'
-                    ? '🔄 重啟此議程重新投票並返回盲投桌面'
-                    : '💾 更新本議程回合設定並返回盲投桌面';
+                submitBtn.innerHTML = '🆕 儲存重新設定之投票人與選項並啟動重新投票';
             }
         }
 
+        function openFullRoundSetupTabForTarget(sessionPk, targetKind, targetPk, defaultRevoteMode) {
+            closeRecordEditModal();
+            switchTab('roundSetup');
+            let sPk = sessionPk ? Number(sessionPk) : 0;
+            if (sPk <= 0 && targetPk && typeof sessionConfigMap !== 'undefined') {
+                const matchKey = Object.keys(sessionConfigMap).find(k => {
+                    const item = sessionConfigMap[k];
+                    if (!item) return false;
+                    if (targetKind === 'workItem') return Number(item.workItemPk) === Number(targetPk);
+                    return Number(item.workItemTypePk) === Number(targetPk);
+                });
+                if (matchKey) sPk = Number(matchKey);
+            }
+            const sel = document.getElementById('setupSessionSelector');
+            const revoteModeSel = document.getElementById('setupRevoteMode');
+            if (sel && sPk > 0 && sessionConfigMap[sPk]) {
+                sel.value = String(sPk);
+                onSetupSessionSelectChange();
+                if (revoteModeSel) {
+                    revoteModeSel.value = defaultRevoteMode || 'restartAll';
+                }
+            } else if (sel) {
+                sel.value = '';
+                if (targetKind === 'workItem' || targetKind === 'workItemType') {
+                    document.getElementById('setupTargetKind').value = targetKind;
+                    toggleSetupTargetKind();
+                    if (targetKind === 'workItemType' && targetPk) {
+                        document.getElementById('setupWorkItemTypePk').value = String(targetPk);
+                    } else if (targetKind === 'workItem' && targetPk) {
+                        document.getElementById('setupWorkItemPk').value = String(targetPk);
+                    }
+                    autoFillSetupTitle();
+                }
+                if (revoteModeSel) {
+                    revoteModeSel.value = defaultRevoteMode || 'restartAll';
+                }
+            }
+            showToastNotice('⚙️ 已載入完整盲投回合設定精靈，您可重新設定投票人名單與所有選項後啟動重新投票！');
+        }
+
         function openRoundSetupForSession(sessionPk) {
-            openSessionSetupEditModal(sessionPk);
+            openSessionSetupEditModal(sessionPk, '', 0, true, 'restartAll');
         }
 
         function initFloatingTooltips() {
@@ -8460,7 +8740,8 @@ public class portalController : Controller
                     <div class=""sp-modal-footer"">
                         <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
                         <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
-                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""closeRecordEditModal(); triggerRevoteFromTarget('workItem', '${escapeModalHtml(pk)}', 0, '${escapeModalHtml(code)} - ${escapeModalHtml(title)}', false, 'voting');"">🔄 重新投票</button>` : ''}
+                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""closeRecordEditModal(); triggerRevoteFromTarget('workItem', '${escapeModalHtml(pk)}', 0, '${escapeModalHtml(code)} - ${escapeModalHtml(title)}', false, 'voting');"">🔄 重啟新一輪</button>` : ''}
+                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#b45309;border-color:#fcd34d;background:#fffbeb;"" onclick=""openSessionSetupEditModal(0, 'workItem', '${escapeModalHtml(pk)}', true, 'restartAll');"">🆕 全部重新開始(重設投票人與所有選項)</button>` : ''}
                             <button type=""submit"" class=""btn btn-primary"">${isCreate ? '➕ 建立工項並完成指派' : '💾 儲存此筆工項與指派修改'}</button>
                         </div>
                     </div>
@@ -8703,7 +8984,8 @@ public class portalController : Controller
                     <div class=""sp-modal-footer"">
                         <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
                         <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
-                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""closeRecordEditModal(); triggerRevoteFromTarget('workItemType', '${escapeModalHtml(pk)}', 0, '${escapeModalHtml(code)} - ${escapeModalHtml(name)}', false, 'voting');"">🔄 重新投票</button>` : ''}
+                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""closeRecordEditModal(); triggerRevoteFromTarget('workItemType', '${escapeModalHtml(pk)}', 0, '${escapeModalHtml(code)} - ${escapeModalHtml(name)}', false, 'voting');"">🔄 重啟新一輪</button>` : ''}
+                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#b45309;border-color:#fcd34d;background:#fffbeb;"" onclick=""openSessionSetupEditModal(0, 'workItemType', '${escapeModalHtml(pk)}', true, 'restartAll');"">🆕 全部重新開始(重設投票人與所有選項)</button>` : ''}
                             <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆代表類型</button>
                         </div>
                     </div>
@@ -8747,9 +9029,9 @@ public class portalController : Controller
                             <input type=""text"" name=""loginAccount"" value=""${escapeModalHtml(acc)}"" placeholder=""例如：leo.lin"" required />
                         </div>
                         <div>
-                            <label>${isCreate ? '登入密碼（未填預設 pass123）' : '重設登入密碼（留空代表不更改密碼）'}</label>
+                            <label>${isCreate ? '登入密碼（未填預設 P@ssw0rd）' : '重設登入密碼（留空代表不更改密碼）'}</label>
                             <div style=""position:relative;display:flex;align-items:center;"">
-                                <input type=""password"" name=""plainPassword"" id=""modalEmpPwd"" placeholder=""${isCreate ? '未填預設 pass123' : '留空代表不更改密碼'}"" style=""padding-right:64px;"" />
+                                <input type=""password"" name=""plainPassword"" id=""modalEmpPwd"" placeholder=""${isCreate ? '未填預設 P@ssw0rd' : '留空代表不更改密碼'}"" style=""padding-right:64px;"" />
                                 <button type=""button"" id=""btnToggleModalEmpPwd"" onclick=""togglePasswordVisibilityById('modalEmpPwd','btnToggleModalEmpPwd')"" style=""position:absolute;right:6px;background:#e2e8f0;border:none;border-radius:5px;padding:3px 7px;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer;"">👁️ 顯示</button>
                             </div>
                         </div>
@@ -8849,18 +9131,99 @@ public class portalController : Controller
             );
         }
 
-        function applyModalSessionPreset(minPt, maxPt, spread, sec, rule) {
+        function applyModalSessionPreset(minPt, maxPt, spread, sec, rule, commentPol, allowQ, allowC) {
             if (document.getElementById('modalSetupMinPt')) document.getElementById('modalSetupMinPt').value = minPt;
             if (document.getElementById('modalSetupMaxPt')) document.getElementById('modalSetupMaxPt').value = maxPt;
             if (document.getElementById('modalSetupSpread')) document.getElementById('modalSetupSpread').value = spread;
-            if (document.getElementById('modalSetupTimeSec')) document.getElementById('modalSetupTimeSec').value = sec;
+            if (document.getElementById('modalSetupTimeSec')) document.getElementById('modalSetupTimeSec').value = String(sec);
             if (document.getElementById('modalSetupConsensusRule') && rule) document.getElementById('modalSetupConsensusRule').value = rule;
+            if (document.getElementById('modalSetupCommentPolicy') && commentPol) document.getElementById('modalSetupCommentPolicy').value = commentPol;
+            if (document.getElementById('modalSetupAllowQuestion') && allowQ !== undefined) document.getElementById('modalSetupAllowQuestion').checked = !!allowQ;
+            if (document.getElementById('modalSetupAllowCoffee') && allowC !== undefined) document.getElementById('modalSetupAllowCoffee').checked = !!allowC;
+            if (document.getElementById('modalSetupAutoReveal')) document.getElementById('modalSetupAutoReveal').checked = true;
+            updateModalSessionCardPreview();
+        }
+
+        function updateModalSessionParticipantCount() {
+            const cbs = Array.from(document.querySelectorAll('#spRecordEditModal input[name=""participantPks""]'));
+            const checkedCnt = cbs.filter(cb => cb.checked).length;
+            const badge = document.getElementById('modalSetupParticipantCount');
+            if (badge) {
+                badge.textContent = `已勾選 ${checkedCnt} / ${cbs.length} 位投票人`;
+            }
         }
 
         function toggleAllModalSessionParticipants(checkedState) {
             document.querySelectorAll('#spRecordEditModal input[name=""participantPks""]').forEach(cb => {
                 cb.checked = checkedState;
             });
+            updateModalSessionParticipantCount();
+        }
+
+        function selectModalSessionParticipantsByDept(deptName) {
+            if (!deptName) return;
+            document.querySelectorAll('#spRecordEditModal .modal-participant-chip').forEach(chip => {
+                if (chip.getAttribute('data-dept') === deptName) {
+                    const cb = chip.querySelector('input[name=""participantPks""]');
+                    if (cb) cb.checked = true;
+                }
+            });
+            const sel = document.getElementById('modalSetupQuickDeptSelect');
+            if (sel) sel.value = '';
+            updateModalSessionParticipantCount();
+        }
+
+        function selectModalAssignedWorkItemEmployees() {
+            const wPk = document.getElementById('modalSetupWorkItemPk')?.value || '';
+            const assignedList = (typeof workItemAssigneeMap !== 'undefined' && workItemAssigneeMap[wPk]) ? workItemAssigneeMap[wPk] : [];
+            if (assignedList.length === 0) {
+                alert('ℹ️ 目前選取的工項尚無預先指派員工，將保持現有勾選名單。');
+                return;
+            }
+            document.querySelectorAll('#spRecordEditModal input[name=""participantPks""]').forEach(cb => {
+                const empPk = parseInt(cb.value, 10);
+                cb.checked = assignedList.indexOf(empPk) !== -1;
+            });
+            updateModalSessionParticipantCount();
+        }
+
+        function updateModalSessionCardPreview() {
+            const deckSel = document.getElementById('modalSetupDeckPk');
+            const container = document.getElementById('modalSetupCardPreviewContainer');
+            if (!deckSel || !container) return;
+            const opt = deckSel.options[deckSel.selectedIndex];
+            const csv = opt?.getAttribute('data-csv') || '0,0.5,1,2,3,5,8,13,21,?,☕';
+            const minPt = parseFloat(document.getElementById('modalSetupMinPt')?.value || '0');
+            const maxPt = parseFloat(document.getElementById('modalSetupMaxPt')?.value || '21');
+            const allowQ = document.getElementById('modalSetupAllowQuestion')?.checked ?? true;
+            const allowC = document.getElementById('modalSetupAllowCoffee')?.checked ?? true;
+
+            let qSeen = 0;
+            const cards = csv.split(',').map(s => s.trim()).filter(Boolean).map(tok => {
+                if (tok === '?') {
+                    qSeen++;
+                    if (qSeen >= 2) return '☕';
+                }
+                return tok;
+            });
+
+            let html = '';
+            cards.forEach(c => {
+                const meta = getPokerCardMeaningMeta(c);
+                let enabled = true;
+                if (c === '?') enabled = allowQ;
+                else if (c === '☕') enabled = allowC;
+                else {
+                    const v = parseFloat(c);
+                    if (!isNaN(v) && (v < minPt || v > maxPt)) enabled = false;
+                }
+                if (enabled) {
+                    html += `<span style=""display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;border:1.5px solid #2563eb;background:#eff6ff;color:#1e3a8a;font-size:12px;font-weight:800;"">${c} <span style=""font-size:10.5px;color:#1d4ed8;font-weight:600;"">(${meta.shortText})</span></span>`;
+                } else {
+                    html += `<span style=""display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;border:1px dashed #cbd5e1;background:#f1f5f9;color:#94a3b8;font-size:11.5px;text-decoration:line-through;"">${c}</span>`;
+                }
+            });
+            container.innerHTML = html;
         }
 
         function onModalSessionTargetOptionChange() {
@@ -8874,7 +9237,7 @@ public class portalController : Controller
             }
         }
 
-        function openSessionSetupEditModal(sessionPk, targetKindOverride, targetPkOverride, isRevoteMode) {
+        function openSessionSetupEditModal(sessionPk, targetKindOverride, targetPkOverride, isRevoteMode, defaultRevoteOption) {
             let sPk = sessionPk ? Number(sessionPk) : 0;
             if (sPk <= 0 && targetPkOverride && typeof sessionConfigMap !== 'undefined') {
                 const matchKey = Object.keys(sessionConfigMap).find(k => {
@@ -8883,7 +9246,7 @@ public class portalController : Controller
                     if (targetKindOverride === 'workItem') return Number(item.workItemPk) === Number(targetPkOverride);
                     return Number(item.workItemTypePk) === Number(targetPkOverride);
                 });
-                if (matchKey && isRevoteMode) {
+                if (matchKey) {
                     sPk = Number(matchKey);
                 }
             }
@@ -8894,6 +9257,7 @@ public class portalController : Controller
             const typeOptionsHtml = document.getElementById('setupWorkItemTypePk') ? document.getElementById('setupWorkItemTypePk').innerHTML : '';
             const wiOptionsHtml = document.getElementById('setupWorkItemPk') ? document.getElementById('setupWorkItemPk').innerHTML : '';
             const deckOptionsHtml = document.getElementById('setupCardDeckPk') ? document.getElementById('setupCardDeckPk').innerHTML : '<option value=""1"">標準 Fibonacci 牌組</option>';
+            const deptQuickOptionsHtml = document.getElementById('setupQuickDeptSelect') ? document.getElementById('setupQuickDeptSelect').innerHTML : '<option value="""">-- 選擇部門一鍵加入勾選 --</option>';
 
             let defaultTitle = cfg ? (cfg.title || '') : '';
             if (!defaultTitle) {
@@ -8911,18 +9275,28 @@ public class portalController : Controller
             const participantPks = cfg && Array.isArray(cfg.participants) ? cfg.participants : [];
             const allParticipantCheckboxes = Array.from(document.querySelectorAll('.setup-participant-cb'));
             let participantHtml = '';
+            let initCheckedCount = 0;
             if (allParticipantCheckboxes.length > 0) {
                 participantHtml = allParticipantCheckboxes.map(cb => {
                     const empVal = parseInt(cb.value, 10);
                     const isChecked = cfg ? (participantPks.indexOf(empVal) !== -1) : cb.checked;
+                    if (isChecked) initCheckedCount++;
                     const labelEl = cb.closest('label');
+                    const deptAttr = labelEl ? (labelEl.getAttribute('data-dept') || '') : '';
                     const text = labelEl ? (labelEl.innerText || labelEl.textContent || '').trim() : ('員工 #' + empVal);
-                    return `<label style=""display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;font-size:12.5px;cursor:pointer;"">
-                        <input type=""checkbox"" name=""participantPks"" value=""${empVal}"" ${isChecked ? 'checked' : ''} style=""width:auto;"" />
+                    return `<label class=""modal-participant-chip"" data-dept=""${escapeModalHtml(deptAttr)}"" style=""display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;font-size:12.5px;cursor:pointer;"">
+                        <input type=""checkbox"" name=""participantPks"" value=""${empVal}"" ${isChecked ? 'checked' : ''} onchange=""updateModalSessionParticipantCount()"" style=""width:auto;"" />
                         <span>${escapeModalHtml(text)}</span>
                     </label>`;
                 }).join('');
             }
+
+            const resolvedRevoteMode = defaultRevoteOption || (isRevoteMode ? 'restartAll' : (sPk > 0 ? 'restartAll' : 'createNewSession'));
+            const allowQChecked = cfg ? !!cfg.allowQuestionCard : true;
+            const allowCChecked = cfg ? !!cfg.allowCoffeeCard : true;
+            const autoRevealChecked = cfg ? !!cfg.autoRevealWhenAllVoted : true;
+            const restrictVal = cfg ? String(cfg.restrictToParticipant) : 'true';
+            const commentPolicyVal = cfg ? (cfg.voteCommentPolicy || 'optional') : 'optional';
 
             const bodyHtml = `
                 <form method=""post"" action=""/voting/create"">
@@ -8931,20 +9305,24 @@ public class portalController : Controller
                     <div style=""display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 12px;margin-bottom:10px;"">
                         <span style=""font-size:12.5px;font-weight:800;color:#1e3a8a;"">⚡ 一鍵套用盲投規則範本：</span>
                         <div style=""display:flex;gap:6px;flex-wrap:wrap;"">
-                            <button type=""button"" class=""btn btn-outline"" style=""padding:4px 9px;font-size:12px;"" onclick=""applyModalSessionPreset(0.5, 21, 5, 180, 'nearestFibonacci')"">📐 標準 Scrum (0.5~21pt / 180秒)</button>
-                            <button type=""button"" class=""btn btn-outline"" style=""padding:4px 9px;font-size:12px;"" onclick=""applyModalSessionPreset(1, 13, 3, 60, 'nearestFibonacci')"">🚀 快速閃電 (1~13pt / 60秒)</button>
-                            <button type=""button"" class=""btn btn-outline"" style=""padding:4px 9px;font-size:12px;"" onclick=""applyModalSessionPreset(0.5, 34, 3, 300, 'trimmedMean')"">🏛️ 嚴謹評審 (0.5~34pt / 300秒)</button>
+                            <button type=""button"" class=""btn btn-outline"" style=""padding:4px 9px;font-size:12px;"" onclick=""applyModalSessionPreset(0.5, 21, 5, 180, 'nearestFibonacci', 'optional', true, true)"">📐 標準 Scrum (0.5~21pt / 180秒)</button>
+                            <button type=""button"" class=""btn btn-outline"" style=""padding:4px 9px;font-size:12px;"" onclick=""applyModalSessionPreset(1, 13, 3, 60, 'median', 'optional', false, false)"">🚀 快速閃電 (1~13pt / 60秒)</button>
+                            <button type=""button"" class=""btn btn-outline"" style=""padding:4px 9px;font-size:12px;"" onclick=""applyModalSessionPreset(1, 40, 3, 300, 'trimmedMean', 'requiredExtreme', true, true)"">🏛️ 嚴謹評審 (1~40pt / 300秒)</button>
                         </div>
                     </div>
-                    <div style=""margin-bottom:12px;padding:8px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;"">
-                        <label style=""display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-weight:700;color:#92400e;font-size:13px;"">
-                            <input type=""checkbox"" name=""resetCurrentRoundVotes"" id=""modalSetupResetVotes"" value=""true"" ${(isRevoteMode || sPk > 0) ? 'checked' : ''} style=""width:auto;"" />
-                            <span>🔄 重新投票模式：儲存時一併重啟盲投回合並清空既有出牌紀錄（讓全體成員重新投票）</span>
-                        </label>
+                    <div style=""margin-bottom:12px;padding:10px 12px;background:#fffbeb;border:1.5px solid #f59e0b;border-radius:8px;"">
+                        <label style=""font-weight:800;color:#92400e;font-size:13px;margin-bottom:6px;display:block;"">🔄 重新投票 ／ 議程啟動模式（可選擇「全部重新開始」重設回第 1 回合並重新設定投票人與所有相關選項，或「重啟新一輪」）：</label>
+                        <select name=""revoteMode"" id=""modalSetupRevoteMode"" style=""border-color:#d97706;font-weight:700;background:#ffffff;color:#0f172a;"">
+                            <option value=""restartAll"" ${resolvedRevoteMode === 'restartAll' ? 'selected' : ''}>🆕 全部重新開始（清空歷次回合與選票，從第 1 回合全新開始，並套用下方重新設定之投票人名單與所有選項）</option>
+                            <option value=""nextRound"" ${resolvedRevoteMode === 'nextRound' ? 'selected' : ''}>🔄 重啟新一輪盲投（保留歷次回合紀錄，開啟下一輪 N+1 並套用下方重新設定之投票人名單與選項）</option>
+                            <option value=""resetCurrent"" ${resolvedRevoteMode === 'resetCurrent' ? 'selected' : ''}>🔁 重設當前回合（僅清空本回合已出牌紀錄，保持目前回合號並套用下方新設定）</option>
+                            <option value=""keepVotes"" ${resolvedRevoteMode === 'keepVotes' ? 'selected' : ''}>💾 僅更新投票人與設定（保留目前已投選票不清除）</option>
+                            <option value=""createNewSession"" ${resolvedRevoteMode === 'createNewSession' ? 'selected' : ''}>➕ 另建全新盲投議程 Session（保留原議程紀錄不動，額外建立新議程）</option>
+                        </select>
                     </div>
                     <div class=""form-row"">
                         <div>
-                            <label>估算目標類型</label>
+                            <label>1️⃣ 估算目標類型</label>
                             <select name=""targetKind"" id=""modalSetupTargetKind"" onchange=""const isWi=this.value==='workItem'; document.getElementById('modalSetupTypeBox').style.display=isWi?'none':''; document.getElementById('modalSetupWiBox').style.display=isWi?'':'none'; onModalSessionTargetOptionChange();"">
                                 <option value=""workItemType"" ${tKind === 'workItemType' ? 'selected' : ''}>🏷️ 工項代表類型 (tbWorkItemType)</option>
                                 <option value=""workItem"" ${tKind === 'workItem' ? 'selected' : ''}>📋 實際工項 (tbWorkItem)</option>
@@ -8965,78 +9343,138 @@ public class portalController : Controller
                             <input type=""text"" name=""sessionTitle"" id=""modalSetupTitleInput"" value=""${escapeModalHtml(defaultTitle)}"" placeholder=""請輸入議程標題"" required />
                         </div>
                         <div>
-                            <label>使用撲克牌組</label>
-                            <select name=""cardDeckPk"" id=""modalSetupDeckPk"">${deckOptionsHtml}</select>
-                        </div>
-                    </div>
-                    <div class=""form-row"">
-                        <div>
-                            <label>最小點數下限 (minStoryPoint)</label>
-                            <input type=""number"" step=""0.5"" name=""minStoryPoint"" id=""modalSetupMinPt"" value=""${cfg ? cfg.minStoryPoint : 0.5}"" />
-                        </div>
-                        <div>
-                            <label>最大點數上限 (maxStoryPoint)</label>
-                            <input type=""number"" step=""0.5"" name=""maxStoryPoint"" id=""modalSetupMaxPt"" value=""${cfg ? cfg.maxStoryPoint : 21}"" />
-                        </div>
-                        <div>
-                            <label>分歧容許差距 (maxAllowedSpread)</label>
-                            <input type=""number"" step=""0.5"" name=""maxAllowedSpread"" id=""modalSetupSpread"" value=""${cfg ? cfg.maxAllowedSpread : 5}"" />
-                        </div>
-                    </div>
-                    <div class=""form-row"">
-                        <div>
-                            <label>共識收斂演算法</label>
-                            <select name=""consensusRule"" id=""modalSetupConsensusRule"">
-                                <option value=""nearestFibonacci"">📐 最接近費氏牌值 (Nearest Fibonacci)</option>
-                                <option value=""average"">📊 算術平均數 (Arithmetic Mean)</option>
-                                <option value=""median"">🎯 中位數 (Median)</option>
-                                <option value=""trimmedMean"">✂️ 去頭尾平均數 (Trimmed Mean)</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label>回合思考時限 (秒)</label>
-                            <input type=""number"" step=""30"" name=""roundTimeLimitSecond"" id=""modalSetupTimeSec"" value=""${cfg ? cfg.roundTimeLimitSecond : 180}"" />
-                        </div>
-                        <div>
-                            <label>備註/目標提示</label>
+                            <label>估算範圍與驗收重點說明 (DoD)</label>
                             <input type=""text"" name=""roundGoalNote"" value=""${escapeModalHtml(cfg ? cfg.roundGoalNote : '')}"" placeholder=""選填：本回合估算重點提示"" />
                         </div>
                     </div>
-                    <div style=""margin:8px 0;"">
-                        <div style=""display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"">
-                            <label style=""font-weight:700;margin:0;"">👥 受邀參與盲投成員</label>
-                            <div style=""display:flex;gap:6px;"">
-                                <button type=""button"" class=""btn btn-outline"" style=""padding:2px 8px;font-size:11.5px;"" onclick=""toggleAllModalSessionParticipants(true)"">✅ 全選成員</button>
-                                <button type=""button"" class=""btn btn-outline"" style=""padding:2px 8px;font-size:11.5px;"" onclick=""toggleAllModalSessionParticipants(false)"">⬜ 全不選</button>
+                    <div class=""form-row"">
+                        <div>
+                            <label>2️⃣ 撲克牌組樣式</label>
+                            <select name=""cardDeckPk"" id=""modalSetupDeckPk"" onchange=""updateModalSessionCardPreview()"">${deckOptionsHtml}</select>
+                        </div>
+                        <div>
+                            <label>最低允許點數 (Min)</label>
+                            <input type=""number"" step=""0.5"" min=""0"" max=""100"" name=""minStoryPoint"" id=""modalSetupMinPt"" value=""${cfg ? cfg.minStoryPoint : 0.5}"" oninput=""updateModalSessionCardPreview()"" />
+                        </div>
+                        <div>
+                            <label>最高允許點數 (Max)</label>
+                            <input type=""number"" step=""0.5"" min=""0.5"" max=""200"" name=""maxStoryPoint"" id=""modalSetupMaxPt"" value=""${cfg ? cfg.maxStoryPoint : 21}"" oninput=""updateModalSessionCardPreview()"" />
+                        </div>
+                    </div>
+                    <div class=""form-row"" style=""margin-bottom:8px;"">
+                        <label style=""display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:6px 10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;margin:0;font-size:12.5px;"">
+                            <input type=""checkbox"" name=""allowQuestionCard"" id=""modalSetupAllowQuestion"" value=""true"" ${allowQChecked ? 'checked' : ''} onchange=""updateModalSessionCardPreview()"" style=""width:auto;"" />
+                            <span>允許投出「<strong>?</strong> (需求不明需討論)」疑問牌</span>
+                        </label>
+                        <label style=""display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:6px 10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;margin:0;font-size:12.5px;"">
+                            <input type=""checkbox"" name=""allowCoffeeCard"" id=""modalSetupAllowCoffee"" value=""true"" ${allowCChecked ? 'checked' : ''} onchange=""updateModalSessionCardPreview()"" style=""width:auto;"" />
+                            <span>允許投出「<strong>☕</strong> (暫停休息)」休息牌</span>
+                        </label>
+                        <label style=""display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:6px 10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;margin:0;font-size:12.5px;"">
+                            <input type=""checkbox"" name=""autoRevealWhenAllVoted"" id=""modalSetupAutoReveal"" value=""true"" ${autoRevealChecked ? 'checked' : ''} style=""width:auto;"" />
+                            <span>⚡ 全員出牌後自動翻牌揭曉</span>
+                        </label>
+                    </div>
+                    <div style=""background:#f8fafc;border:1px dashed #93c5fd;border-radius:8px;padding:8px 10px;margin-bottom:10px;"">
+                        <div style=""font-size:11.5px;font-weight:700;color:#1e3a8a;margin-bottom:5px;"">🃏 本回合實際開放給投票人點選的撲克牌面即時預覽：</div>
+                        <div id=""modalSetupCardPreviewContainer"" style=""display:flex;flex-wrap:wrap;gap:6px;""></div>
+                    </div>
+                    <div style=""margin:10px 0;padding:10px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;"">
+                        <div style=""display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;"">
+                            <label style=""font-weight:800;color:#1e3a8a;margin:0;"">3️⃣ 重新設定投票人名單與參與權限模式</label>
+                            <span id=""modalSetupParticipantCount"" class=""badge badge-finalized"">已勾選 ${initCheckedCount} / ${allParticipantCheckboxes.length} 位投票人</span>
+                        </div>
+                        <div class=""form-row"" style=""margin-bottom:8px;align-items:end;"">
+                            <div>
+                                <label>參與權限控管模式</label>
+                                <select name=""restrictToParticipant"" id=""modalSetupRestrictToParticipant"">
+                                    <option value=""true"" ${restrictVal === 'true' ? 'selected' : ''}>🔒 僅限勾選的受邀投票人可以出牌 (嚴格名單控管)</option>
+                                    <option value=""false"" ${restrictVal === 'false' ? 'selected' : ''}>🌐 開放全體啟用中員工皆可出牌</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label>依部門快速批次勾選投票人</label>
+                                <select id=""modalSetupQuickDeptSelect"" onchange=""selectModalSessionParticipantsByDept(this.value)"">
+                                    ${deptQuickOptionsHtml}
+                                </select>
+                            </div>
+                            <div style=""display:flex;gap:6px;flex-wrap:wrap;"">
+                                <button type=""button"" class=""btn btn-outline"" style=""padding:6px 8px;font-size:11.5px;background:#fff;"" onclick=""toggleAllModalSessionParticipants(true)"">✅ 全選</button>
+                                <button type=""button"" class=""btn btn-outline"" style=""padding:6px 8px;font-size:11.5px;background:#fff;"" onclick=""toggleAllModalSessionParticipants(false)"">⬜ 清空</button>
+                                <button type=""button"" class=""btn btn-outline"" style=""padding:6px 8px;font-size:11.5px;background:#fff;"" onclick=""selectModalAssignedWorkItemEmployees()"">🎯 僅勾選工項負責員工</button>
                             </div>
                         </div>
-                        <div style=""display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow-y:auto;padding:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;"">
+                        <div style=""display:flex;flex-wrap:wrap;gap:6px;max-height:150px;overflow-y:auto;padding:8px;background:#ffffff;border:1px solid #cbd5e1;border-radius:8px;"">
                             ${participantHtml}
                         </div>
                     </div>
+                    <div class=""form-row"">
+                        <div>
+                            <label>4️⃣ 共識點數計算規則</label>
+                            <select name=""consensusRule"" id=""modalSetupConsensusRule"">
+                                <option value=""nearestFibonacci"">🔢 對齊最接近的費氏牌面值 (Recommended)</option>
+                                <option value=""average"">📊 算術平均數 (四捨五入至 0.5 pt)</option>
+                                <option value=""median"">⚖️ 中位數 (避免極端高低分拉偏)</option>
+                                <option value=""mode"">🏆 眾數 (最多人投出的點數)</option>
+                                <option value=""trimmedMean"">✂️ 去頭尾平均數 (扣除最高最低分後平均)</option>
+                                <option value=""maxConservative"">🛡️ 保守取較高值 (取最高有效點數)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>共識分歧警示門檻 (maxAllowedSpread)</label>
+                            <input type=""number"" step=""0.5"" name=""maxAllowedSpread"" id=""modalSetupSpread"" value=""${cfg ? cfg.maxAllowedSpread : 5}"" />
+                        </div>
+                        <div>
+                            <label>單回合出牌限時</label>
+                            <select name=""roundTimeLimitSecond"" id=""modalSetupTimeSec"">
+                                <option value=""60"">⏱️ 60 秒 (1 分鐘快速估算)</option>
+                                <option value=""120"">⏱️ 120 秒 (2 分鐘標準估算)</option>
+                                <option value=""180"" selected>⏱️ 180 秒 (3 分鐘含需求提問)</option>
+                                <option value=""300"">⏱️ 300 秒 (5 分鐘複雜架構評估)</option>
+                                <option value=""0"">♾️ 不限時間 (0 秒)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class=""form-row"">
+                        <div style=""grid-column: span 3;"">
+                            <label>估算理由填寫規範</label>
+                            <select name=""voteCommentPolicy"" id=""modalSetupCommentPolicy"">
+                                <option value=""optional"" ${commentPolicyVal === 'optional' ? 'selected' : ''}>📝 選填 (鼓勵填寫估算假設與理由)</option>
+                                <option value=""requiredExtreme"" ${commentPolicyVal === 'requiredExtreme' ? 'selected' : ''}>🔍 投出最低/最高極端點數或「?」疑問牌時必填理由</option>
+                                <option value=""requiredAll"" ${commentPolicyVal === 'requiredAll' ? 'selected' : ''}>✍️ 全體參與者出牌時皆必須填寫估算理由</option>
+                            </select>
+                        </div>
+                    </div>
                     <div class=""sp-modal-footer"">
-                        <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
+                        <div style=""display:flex;gap:6px;flex-wrap:wrap;"">
+                            <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
+                            <button type=""button"" class=""btn btn-outline"" style=""color:#1e40af;border-color:#93c5fd;"" onclick=""openFullRoundSetupTabForTarget(${sPk}, '${escapeModalHtml(tKind)}', ${tKind === 'workItem' ? wiPk : wiTypePk}, document.getElementById('modalSetupRevoteMode')?.value || 'restartAll')"">⚙️ 切換至「1-2. 設定盲投回合」完整頁面</button>
+                        </div>
                         <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
                             <button type=""submit"" class=""btn btn-outline"" onclick=""document.getElementById('modalSetupSubmitMode').value='saveStaySetup'"">💾 僅儲存於回合設定</button>
-                            <button type=""submit"" class=""btn btn-primary"" onclick=""document.getElementById('modalSetupSubmitMode').value='saveAndGoVoting'"">${isRevoteMode ? '🔄 儲存設定並啟動重新投票' : (sPk > 0 ? '🚀 儲存更新並前往盲投大廳' : '🚀 建立議程並立即前往盲投大廳')}</button>
+                            <button type=""submit"" class=""btn btn-primary"" onclick=""document.getElementById('modalSetupSubmitMode').value='saveAndGoVoting'"">${isRevoteMode ? '🆕 確認重新設定並啟動盲投議程' : (sPk > 0 ? '🚀 儲存設定並前往盲投大廳' : '🚀 建立議程並立即前往盲投大廳')}</button>
                         </div>
                     </div>
                 </form>
             `;
             openRecordModalShell(
-                isRevoteMode ? '🔄 重新投票回合設定' : (sPk > 0 ? '🃏 單筆編輯盲投議程回合設定' : '🃏 快速發起多人盲投估算議程'),
+                isRevoteMode ? '🆕 重新投票（支援全部重新開始 ＆ 重新設定投票人與所有選項）' : (sPk > 0 ? '🃏 單筆編輯盲投議程回合設定' : '🃏 快速發起多人盲投估算議程'),
                 `<span class=""badge badge-user"">${sPk > 0 ? 'Session #' + sPk : '新盲投議程'}</span>`,
                 bodyHtml
             );
             if (document.getElementById('modalSetupWorkItemTypePk') && wiTypePk) document.getElementById('modalSetupWorkItemTypePk').value = String(wiTypePk);
             if (document.getElementById('modalSetupWorkItemPk') && wiPk) document.getElementById('modalSetupWorkItemPk').value = String(wiPk);
+            if (cfg && document.getElementById('modalSetupDeckPk') && cfg.cardDeckPk) document.getElementById('modalSetupDeckPk').value = String(cfg.cardDeckPk);
             if (cfg && document.getElementById('modalSetupConsensusRule')) document.getElementById('modalSetupConsensusRule').value = cfg.consensusRule || 'nearestFibonacci';
+            if (cfg && document.getElementById('modalSetupTimeSec') && cfg.roundTimeLimitSecond !== undefined) document.getElementById('modalSetupTimeSec').value = String(cfg.roundTimeLimitSecond);
+            updateModalSessionCardPreview();
+            updateModalSessionParticipantCount();
         }
 
-        function triggerRevoteFromTarget(targetKind, targetPk, sessionPk, displayTitle, resetCurrentRoundOnly, returnTab) {
+        function triggerRevoteFromTarget(targetKind, targetPk, sessionPk, displayTitle, resetCurrentRoundOnly, returnTab, restartAllRounds) {
             const sPk = sessionPk ? Number(sessionPk) : 0;
             const tPk = targetPk ? Number(targetPk) : 0;
-            const actionName = resetCurrentRoundOnly ? 'resetRound' : 'revote';
+            const actionName = restartAllRounds ? 'restartAll' : (resetCurrentRoundOnly ? 'resetRound' : 'revote');
             const rTab = returnTab || 'voting';
             const payload = {
                 votingSessionPk: sPk > 0 ? String(sPk) : '0',
@@ -9045,9 +9483,11 @@ public class portalController : Controller
                 targetKind: targetKind === 'workItem' ? 'workItem' : (targetKind === 'workItemType' ? 'workItemType' : ''),
                 workItemTypePk: targetKind === 'workItemType' && tPk > 0 ? String(tPk) : '',
                 workItemPk: targetKind === 'workItem' && tPk > 0 ? String(tPk) : '',
-                roundDiscussionNote: resetCurrentRoundOnly
-                    ? ('管理者針對「' + (displayTitle || '此議程') + '」清空本回合出牌紀錄並重新投票')
-                    : ('管理者針對「' + (displayTitle || '此項目') + '」發起重新投票（開啟新一輪盲投）'),
+                roundDiscussionNote: restartAllRounds
+                    ? ('管理者針對「' + (displayTitle || '此議程') + '」執行全部重新開始（重設回第 1 回合）')
+                    : (resetCurrentRoundOnly
+                        ? ('管理者針對「' + (displayTitle || '此議程') + '」清空本回合出牌紀錄並重新投票')
+                        : ('管理者針對「' + (displayTitle || '此項目') + '」發起重新投票（開啟新一輪盲投）')),
                 returnTab: rTab
             };
             submitDynamicPostAction('/voting/revote', payload);
@@ -9150,7 +9590,7 @@ public class portalController : Controller
                 } else if (rowKind === 'session') {
                     const sPk = tr.getAttribute('data-session-pk') || '';
                     if (sPk) {
-                        openSessionSetupEditModal(sPk);
+                        openSessionSetupEditModal(sPk, '', 0, true, 'restartAll');
                         return;
                     }
                 }
@@ -9250,13 +9690,24 @@ public class portalController : Controller
                 btn.disabled = true;
             }
             const leftSpan = document.createElement('span');
+            leftSpan.style.display = 'inline-flex';
+            leftSpan.style.alignItems = 'center';
+            leftSpan.style.flex = '1';
+            leftSpan.style.minWidth = '0';
             leftSpan.innerHTML = `<span class='sp-ctx-icon'>${icon}</span><span>${label}</span>`;
             btn.appendChild(leftSpan);
             if (subText) {
                 const subSpan = document.createElement('span');
                 subSpan.style.fontSize = '11px';
-                subSpan.style.color = '#64748b';
-                subSpan.style.marginLeft = 'auto';
+                subSpan.style.color = '#475569';
+                subSpan.style.marginLeft = '8px';
+                subSpan.style.whiteSpace = 'nowrap';
+                subSpan.style.flexShrink = '0';
+                subSpan.style.padding = '2px 7px';
+                subSpan.style.borderRadius = '999px';
+                subSpan.style.background = '#f1f5f9';
+                subSpan.style.border = '1px solid #cbd5e1';
+                subSpan.style.fontWeight = '700';
                 subSpan.textContent = subText;
                 btn.appendChild(subSpan);
             }
@@ -9310,7 +9761,7 @@ public class portalController : Controller
                 const wiLastSessionPk = parseInt(tr.getAttribute('data-wi-last-session-pk') || '0', 10);
 
                 headerTitle = `📋 工項右鍵操作：${wiCode} - ${wiTitle}`;
-                headerDiv.innerHTML = `<span>${headerTitle}</span><span class='badge badge-user' style='font-size:11px;'>${wiKindText}｜${wiPt} pt</span>`;
+                headerDiv.innerHTML = `<span>${headerTitle}</span><span class='badge badge-user' style='font-size:11px;white-space:nowrap;'>${wiKindText}｜${wiPt} pt</span>`;
                 spContextMenuEl.appendChild(headerDiv);
 
                 if (isCurrentUserAdmin) {
@@ -9322,12 +9773,16 @@ public class portalController : Controller
                         openWorkItemAssignModal(wiPk, wiCode, wiTitle, wiPt, wiAssignee);
                     }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('🔄', '重新投票此工項點數（重啟新一輪多人盲投議程）', '重新投票', 'primary-action', function () {
+                    spContextMenuEl.appendChild(createCtxMenuItem('🆕', '重新投票 — 全部重新開始（重新設定投票人名單與所有相關選項）', '全部重新開始', 'primary-action', function () {
+                        openSessionSetupEditModal(wiLastSessionPk, 'workItem', wiPk, true, 'restartAll');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('🔄', '重新投票 — 重啟新一輪盲投（沿用原設定直接開啟下一輪）', '重啟新一輪', 'primary-action', function () {
                         triggerRevoteFromTarget('workItem', wiPk, wiLastSessionPk, wiCode + ' - ' + wiTitle, false, 'voting');
                     }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('🃏', '針對此工項發起「多人盲投估算」（彈出 Modal 視窗）', 'Modal 盲投', '', function () {
-                        openSessionSetupEditModal(wiLastSessionPk, 'workItem', wiPk, true);
+                    spContextMenuEl.appendChild(createCtxMenuItem('⚙️', '前往「1-2. 設定盲投回合」完整頁面重新設定並開始', '完整設定頁', '', function () {
+                        openFullRoundSetupTabForTarget(wiLastSessionPk, 'workItem', wiPk, 'restartAll');
                     }));
 
                     spContextMenuEl.appendChild(createCtxMenuItem('⏰', '設為已到期並彈出 Modal 編輯（測試自動扣點寄信）', '到期測試', '', function () {
@@ -9397,7 +9852,7 @@ public class portalController : Controller
                 const tLastSessionPk = parseInt(tr.getAttribute('data-type-last-session-pk') || '0', 10);
 
                 headerTitle = `🏷️ 代表類型右鍵操作：${tCode} - ${tName}`;
-                headerDiv.innerHTML = `<span>${headerTitle}</span><span class='badge badge-user' style='font-size:11px;'>${tPt ? tPt + ' pt' : '待估算'}</span>`;
+                headerDiv.innerHTML = `<span>${headerTitle}</span><span class='badge badge-user' style='font-size:11px;white-space:nowrap;'>${tPt ? tPt + ' pt' : '待估算'}</span>`;
                 spContextMenuEl.appendChild(headerDiv);
 
                 if (isCurrentUserAdmin) {
@@ -9405,12 +9860,16 @@ public class portalController : Controller
                         openWorkItemTypeEditModal(tPk, tCode, tName, tCat, tDesc, tPt, tKind);
                     }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('🔄', '重新投票此代表類型標準點數（重啟新一輪多人盲投議程）', '重新投票', 'primary-action', function () {
+                    spContextMenuEl.appendChild(createCtxMenuItem('🆕', '重新投票 — 全部重新開始（重新設定投票人名單與所有相關選項）', '全部重新開始', 'primary-action', function () {
+                        openSessionSetupEditModal(tLastSessionPk, 'workItemType', tPk, true, 'restartAll');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('🔄', '重新投票 — 重啟新一輪盲投（沿用原設定直接開啟下一輪）', '重啟新一輪', 'primary-action', function () {
                         triggerRevoteFromTarget('workItemType', tPk, tLastSessionPk, tCode + ' - ' + tName, false, 'voting');
                     }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('🃏', '針對此代表類型發起「多人盲投估算」（彈出 Modal 視窗）', 'Modal 盲投', '', function () {
-                        openSessionSetupEditModal(tLastSessionPk, 'workItemType', tPk, true);
+                    spContextMenuEl.appendChild(createCtxMenuItem('⚙️', '前往「1-2. 設定盲投回合」完整頁面重新設定並開始', '完整設定頁', '', function () {
+                        openFullRoundSetupTabForTarget(tLastSessionPk, 'workItemType', tPk, 'restartAll');
                     }));
 
                     spContextMenuEl.appendChild(createCtxMenuItem('🔍', '檢視套用此代表類型的所有工項', '工項篩選', '', function () {
@@ -9449,7 +9908,7 @@ public class portalController : Controller
                 const isSelf = tr.getAttribute('data-emp-self') === '1';
 
                 headerTitle = `👤 員工右鍵操作：${empCode} - ${empName}`;
-                headerDiv.innerHTML = `<span>${headerTitle}</span><span class='badge badge-user' style='font-size:11px;'>${empAcc}</span>`;
+                headerDiv.innerHTML = `<span>${headerTitle}</span><span class='badge badge-user' style='font-size:11px;white-space:nowrap;'>${empAcc}</span>`;
                 spContextMenuEl.appendChild(headerDiv);
 
                 if (isCurrentUserAdmin) {
@@ -9533,16 +9992,20 @@ public class portalController : Controller
                 spContextMenuEl.appendChild(headerDiv);
 
                 if (isCurrentUserAdmin && sPk) {
-                    spContextMenuEl.appendChild(createCtxMenuItem('🔄', '重新投票此盲投議程（開啟新一輪盲投並重設已定案狀態）', '重新投票', 'primary-action', function () {
+                    spContextMenuEl.appendChild(createCtxMenuItem('🆕', '重新投票 — 全部重新開始（重設回第 1 回合，並重新設定投票人與所有選項）', '全部重新開始', 'primary-action', function () {
+                        openSessionSetupEditModal(sPk, '', 0, true, 'restartAll');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('🔄', '重新投票 — 重啟新一輪盲投（保留歷次回合，開啟下一輪並重設已定案狀態）', '重啟新一輪', 'primary-action', function () {
                         triggerRevoteFromTarget('session', 0, sPk, sCode + ' - ' + sTitle, false, 'voting');
                     }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('🔁', '清空本回合已出牌紀錄並重新投票（保持同一回合號）', '重設本輪', 'warn', function () {
+                    spContextMenuEl.appendChild(createCtxMenuItem('🔁', '重新投票 — 清空本回合已出牌紀錄（保持同一回合號重投）', '重設本輪', 'warn', function () {
                         triggerRevoteFromTarget('session', 0, sPk, sCode + ' - ' + sTitle, true, 'voting');
                     }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此盲投議程回合設定（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
-                        openSessionSetupEditModal(sPk);
+                    spContextMenuEl.appendChild(createCtxMenuItem('⚙️', '前往「1-2. 設定盲投回合」完整頁面重新設定並開始', '完整設定頁', '', function () {
+                        openFullRoundSetupTabForTarget(sPk, '', 0, 'restartAll');
                     }));
                 }
 
@@ -10143,9 +10606,9 @@ public class portalController : Controller
 
         function fillSampleBatchEmployees() {
             const sample = [
-                'EMP009,林志豪 (Leo),leo.lin,pass123,leo.lin@company.com,部門經理,開發,admin,1,1,byron.hu',
-                'EMP010,許雅筑 (Chloe),chloe.hsu,pass123,chloe.hsu@company.com,資深工程師,開發,participant,1,0,leo.lin',
-                'EMP011,鄭家銘 (Mark),mark.cheng,admin123,mark.cheng@company.com,部門經理 / 敏捷教練,BI,admin,1,1,byron.hu'
+                'EMP009,林志豪 (Leo),leo.lin,P@ssw0rd,leo.lin@company.com,部門經理,開發,admin,1,1,byron.hu',
+                'EMP010,許雅筑 (Chloe),chloe.hsu,P@ssw0rd,chloe.hsu@company.com,資深工程師,開發,participant,1,0,leo.lin',
+                'EMP011,鄭家銘 (Mark),mark.cheng,P@ssw0rd,mark.cheng@company.com,部門經理 / 敏捷教練,BI,admin,1,1,byron.hu'
             ].join('\n');
             const box = document.getElementById('batchEmpTextarea');
             if (box) box.value = sample;
@@ -10597,6 +11060,10 @@ public class portalController : Controller
 <head>
     <meta charset=""utf-8"" />
     <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
+    <link rel=""icon"" type=""image/svg+xml"" href=""{InlineFaviconSvgDataUri}"" />
+    <link rel=""icon"" type=""image/x-icon"" href=""/favicon.ico?v=2026102703"" />
+    <link rel=""shortcut icon"" type=""image/x-icon"" href=""/favorit.ico?v=2026102703"" />
+    <link rel=""apple-touch-icon"" href=""/favicon.png?v=2026102703"" />
     <title>禁止重複進入同一個盲投 Session - {h(targetSessionRow["sessionCode"])}</title>
     <style>
         body {{ font-family: 'Microsoft JhengHei', 'PingFang TC', sans-serif; background:#0f172a; color:#1e293b; margin:0; padding:32px 16px; }}
@@ -10789,6 +11256,10 @@ public class portalController : Controller
 <head>
     <meta charset=""utf-8"" />
     <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
+    <link rel=""icon"" type=""image/svg+xml"" href=""" + InlineFaviconSvgDataUri + @""" />
+    <link rel=""icon"" type=""image/x-icon"" href=""/favicon.ico?v=2026102703"" />
+    <link rel=""shortcut icon"" type=""image/x-icon"" href=""/favorit.ico?v=2026102703"" />
+    <link rel=""apple-touch-icon"" href=""/favicon.png?v=2026102703"" />
     <title>🃏 [" + h(activeSessionRow["sessionCode"]) + @"] " + h(activeSessionRow["sessionTitle"]) + @" - 獨立盲投 Session 網頁</title>
     <style>
         :root {
@@ -11065,7 +11536,7 @@ public class portalController : Controller
         .form-row { margin-bottom: 12px; }
         table tbody tr { cursor: context-menu; }
         tr.sp-context-active-row td { background: #dbeafe !important; }
-        .sp-context-menu { position: fixed; z-index: 10050; min-width: 260px; max-width: 360px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; box-shadow: 0 14px 34px rgba(15, 23, 42, 0.24); padding: 6px; display: none; user-select: none; }
+        .sp-context-menu { position: fixed; z-index: 10050; min-width: 380px; max-width: 500px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; box-shadow: 0 14px 34px rgba(15, 23, 42, 0.24); padding: 6px; display: none; user-select: none; }
         .sp-context-menu.visible, .sp-context-menu.open { display: block !important; }
         .sp-ctx-header { padding: 7px 10px; font-size: 12px; font-weight: 800; color: #1e3a8a; background: #eff6ff; border-radius: 8px; margin-bottom: 5px; border: 1px solid #bfdbfe; }
         .sp-ctx-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; border: none; background: transparent; padding: 8px 10px; font-size: 13px; font-weight: 700; color: #1e293b; border-radius: 7px; cursor: pointer; }
@@ -11082,7 +11553,8 @@ public class portalController : Controller
     <header>
         <div>
             <h1>
-                <span>🃏 獨立盲投 Session 網頁</span>
+                " + TopbarBrandLogoImgHtml + @"
+                <span>獨立盲投 Session 網頁</span>
                 <span style=""background:#2563eb;padding:3px 10px;border-radius:999px;font-size:12.5px;"">" + h(activeSessionRow["sessionCode"]) + @" - " + h(activeSessionRow["sessionTitle"]) + @"</span>
                 <span style=""background:#16a34a;padding:3px 10px;border-radius:999px;font-size:12px;"">🟢 參與中・單一 Session 防重複進入保護生效中</span>
             </h1>
@@ -11364,10 +11836,55 @@ public class portalController : Controller
                 ? (currentRoundStatRow["roundDiscussionNote"]?.ToString() ?? "")
                 : "";
 
+            string currentTargetKind = activeSessionRow["targetKind"]?.ToString() ?? "workItemType";
+            int currentTargetTypePk = activeSessionRow.Table.Columns.Contains("workItemTypePk") && activeSessionRow["workItemTypePk"] != DBNull.Value
+                ? Convert.ToInt32(activeSessionRow["workItemTypePk"]) : 0;
+            int currentTargetWiPk = activeSessionRow.Table.Columns.Contains("workItemPk") && activeSessionRow["workItemPk"] != DBNull.Value
+                ? Convert.ToInt32(activeSessionRow["workItemPk"]) : 0;
+            int currentDeckPk = activeSessionRow.Table.Columns.Contains("cardDeckPk") && activeSessionRow["cardDeckPk"] != DBNull.Value
+                ? Convert.ToInt32(activeSessionRow["cardDeckPk"]) : 1;
+            bool allowQuestionCard = !activeSessionRow.Table.Columns.Contains("allowQuestionCard") || activeSessionRow["allowQuestionCard"] == DBNull.Value || Convert.ToBoolean(activeSessionRow["allowQuestionCard"]);
+            bool allowCoffeeCard = !activeSessionRow.Table.Columns.Contains("allowCoffeeCard") || activeSessionRow["allowCoffeeCard"] == DBNull.Value || Convert.ToBoolean(activeSessionRow["allowCoffeeCard"]);
+
+            var standaloneDeckOptionsSb = new StringBuilder();
+            if (cardDeckTable.Rows.Count > 0)
+            {
+                foreach (DataRow cdRow in cardDeckTable.Rows)
+                {
+                    int dPk = Convert.ToInt32(cdRow.Table.Columns.Contains("cardDeckPk") ? cdRow["cardDeckPk"] : cdRow["pk"]);
+                    string normCsv = normalizeCardDeckCsv(cdRow["cardValueCsv"]?.ToString());
+                    standaloneDeckOptionsSb.Append($"<option value='{dPk}' {(dPk == currentDeckPk ? "selected" : "")}>{h(cdRow["deckName"])} ({h(formatCardDeckCsvForOption(normCsv))})</option>");
+                }
+            }
+            else
+            {
+                standaloneDeckOptionsSb.Append("<option value='1'>標準敏捷費氏牌組</option>");
+            }
+
+            var standaloneDeptOptionsSb = new StringBuilder();
+            standaloneDeptOptionsSb.Append("<option value=''>-- 選擇部門一鍵加入勾選投票人 --</option>");
+            foreach (DataRow dRow in deptTable.Rows)
+            {
+                standaloneDeptOptionsSb.Append($"<option value='{h(dRow["departmentName"])}'>🏢 加入【{h(dRow["departmentName"])}】全體成員</option>");
+            }
+
+            var standaloneVoterChipsSb = new StringBuilder();
+            foreach (DataRow eRow in empTable.Rows)
+            {
+                if (!Convert.ToBoolean(eRow["isActive"])) continue;
+                int ePk = Convert.ToInt32(eRow["employeePk"]);
+                bool isPartChecked = currentSessionParticipantIds.Count == 0 || currentSessionParticipantIds.Contains(ePk);
+                standaloneVoterChipsSb.Append($@"
+                    <label class=""standalone-voter-chip"" data-dept=""{h(eRow["departmentName"])}"" style=""display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;background:#ffffff;font-size:12.5px;cursor:pointer;white-space:normal;"">
+                        <input type=""checkbox"" name=""participantPks"" class=""standalone-voter-cb"" value=""{ePk}"" {(isPartChecked ? "checked" : "")} style=""width:auto;"" />
+                        <span><strong>{h(eRow["employeeName"])}</strong> ({h(eRow["departmentName"])} / {h(eRow["jobTitle"])})</span>
+                    </label>");
+            }
+
             sb.Append($@"
             <div class=""card"">
                 <div class=""card-title"">
-                    <span>🎛️ 議程主持人控制台（翻牌揭曉 / 進入下一輪重投 / 拍板定案）</span>
+                    <span>🎛️ 議程主持人控制台（翻牌揭曉 / 重啟新一輪 / 全部重新開始 / 拍板定案）</span>
                     <span class=""badge badge-revealed"">僅主持人 / 管理員可見</span>
                 </div>
                 {(isSpreadOverLimit ? $@"<div style=""background:#fef2f2;border:1px solid #f87171;color:#991b1b;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;font-weight:700;"">⚠️ 分歧度超標提醒：本回合點數極差為 <strong>{curSpread:0.##} pt</strong>，超過門檻 (<strong>{sessionMaxSpread:0.##} pt</strong>)！建議邀請最高票與最低票成員說明後，點擊「🔄 開啟下一回合重新盲投」。</div>" : "")}
@@ -11385,16 +11902,19 @@ public class portalController : Controller
                             👀 1. 立即翻牌揭曉 (Reveal Cards)
                         </button>
                         <button type=""submit"" name=""submitAction"" value=""nextRound"" class=""btn btn-primary"" onclick=""document.getElementById('controlActionType').value='nextRound'"">
-                            🔄 2. 開啟下一回合重新盲投 (Next Round)
+                            🔄 2. 重啟新一輪盲投 (Next Round)
                         </button>
                         <button type=""submit"" name=""submitAction"" value=""resetRound"" class=""btn btn-outline"" style=""border-color:#d97706;color:#b45309;background:#fffbeb;"" onclick=""document.getElementById('controlActionType').value='resetRound'"">
-                            🔁 3. 重新投票 (清空本回合已出牌 / 重啟盲投)
+                            🔁 3. 重設本回合 (清空本輪選票)
+                        </button>
+                        <button type=""submit"" name=""submitAction"" value=""restartAll"" class=""btn btn-outline"" style=""border-color:#dc2626;color:#b91c1c;background:#fef2f2;"" onclick=""document.getElementById('controlActionType').value='restartAll'"">
+                            🆕 4. 全部重新開始 (重設回第 1 回合)
                         </button>
                         <button type=""submit"" name=""submitAction"" value=""finalize"" class=""btn btn-success"" onclick=""document.getElementById('inputFinalStoryPoint').value='{suggestedFinalPt.ToString(CultureInfo.InvariantCulture)}'; document.getElementById('controlActionType').value='finalize';"">
-                            🏆 4. 一鍵採用推薦點數 ({suggestedFinalPt:0.##} pt) 拍板定案
+                            🏆 5. 一鍵採用推薦點數 ({suggestedFinalPt:0.##} pt) 拍板定案
                         </button>
                     </div>
-                    <div style=""background:#f8fafc;border:1px solid #cbd5e1;padding:12px;border-radius:8px;"">
+                    <div style=""background:#f8fafc;border:1px solid #cbd5e1;padding:12px;border-radius:8px;margin-bottom:12px;"">
                         <div style=""font-weight:700;margin-bottom:8px;color:#15803d;"">
                             ✅ 達成共識拍板定案（自動回寫工項之最終 Story Point｜依「{h(consensusRuleText)}」推薦值：<strong>{suggestedFinalPt:0.##} pt</strong>）
                         </div>
@@ -11414,6 +11934,134 @@ public class portalController : Controller
                         </div>
                     </div>
                 </form>
+
+                <details style=""background:#eff6ff;border:1.5px solid #3b82f6;border-radius:10px;padding:12px 14px;"">
+                    <summary style=""cursor:pointer;font-weight:800;font-size:14px;color:#1e3a8a;user-select:none;"">
+                        🆕 重新投票並重新設定所有相關選項（包含：重新設定投票人名單、參與權限、牌組、最低/最高點數、? / ☕ 特殊牌、共識規則、倒數時限、理由規範，並全部重新開始或重啟新一輪）
+                    </summary>
+                    <form method=""post"" action=""/voting/create"" style=""margin-top:12px;"" onsubmit=""window.__isInternalSessionNavigation=true; isAutoReloading=true;"">
+                        <input type=""hidden"" name=""votingSessionPk"" value=""{activeSessionPk}"" />
+                        <input type=""hidden"" name=""fromStandalone"" value=""true"" />
+                        <input type=""hidden"" name=""tabInstanceId"" value=""{h(assignedTabInstanceId)}"" />
+                        <input type=""hidden"" name=""targetKind"" value=""{h(currentTargetKind)}"" />
+                        <input type=""hidden"" name=""workItemTypePk"" value=""{(currentTargetTypePk > 0 ? currentTargetTypePk.ToString() : "")}"" />
+                        <input type=""hidden"" name=""workItemPk"" value=""{(currentTargetWiPk > 0 ? currentTargetWiPk.ToString() : "")}"" />
+                        <div class=""form-row"" style=""background:#fffbeb;border:1px solid #f59e0b;border-radius:8px;padding:10px 12px;"">
+                            <label style=""color:#92400e;"">🔄 選擇重新投票模式（全部重新開始 vs 重啟新一輪）</label>
+                            <select name=""revoteMode"" style=""border-color:#d97706;font-weight:700;background:#ffffff;"">
+                                <option value=""restartAll"" selected>🆕 全部重新開始（清空歷次回合與選票，從第 1 回合全新開始，並套用下方重新設定之投票人名單與所有選項）</option>
+                                <option value=""nextRound"">🔄 重啟新一輪盲投（保留歷次回合紀錄，開啟下一輪 N+1 並套用下方重新設定之投票人名單與所有選項）</option>
+                                <option value=""resetCurrent"">🔁 重設當前回合（僅清空本回合已出牌紀錄，保持目前回合號並更新選項）</option>
+                                <option value=""keepVotes"">💾 僅更新投票人名單與選項（保留目前已投選票不清除）</option>
+                            </select>
+                        </div>
+                        <div style=""display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;"">
+                            <div>
+                                <label>盲投議程標題</label>
+                                <input type=""text"" name=""sessionTitle"" value=""{h(activeSessionRow["sessionTitle"])}"" required />
+                            </div>
+                            <div>
+                                <label>本回合估算範圍與驗收重點說明 (DoD)</label>
+                                <input type=""text"" name=""roundGoalNote"" value=""{h(roundTopicGoal)}"" placeholder=""例如：包含 DB SP、API 權限驗證與單元測試"" />
+                            </div>
+                        </div>
+                        <div style=""display:grid;grid-template-columns:1.4fr 0.8fr 0.8fr;gap:10px;margin-bottom:10px;"">
+                            <div>
+                                <label>撲克牌組樣式</label>
+                                <select name=""cardDeckPk"">{standaloneDeckOptionsSb}</select>
+                            </div>
+                            <div>
+                                <label>最低允許點數 (Min)</label>
+                                <input type=""number"" step=""0.5"" min=""0"" max=""100"" name=""minStoryPoint"" value=""{sessionMinPt:0.##}"" required />
+                            </div>
+                            <div>
+                                <label>最高允許點數 (Max)</label>
+                                <input type=""number"" step=""0.5"" min=""0.5"" max=""200"" name=""maxStoryPoint"" value=""{sessionMaxPt:0.##}"" required />
+                            </div>
+                        </div>
+                        <div style=""display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;"">
+                            <label style=""display:inline-flex;align-items:center;gap:6px;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:7px 10px;cursor:pointer;"">
+                                <input type=""checkbox"" name=""allowQuestionCard"" value=""true"" {(allowQuestionCard ? "checked" : "")} style=""width:auto;"" />
+                                <span>允許「?」疑問牌</span>
+                            </label>
+                            <label style=""display:inline-flex;align-items:center;gap:6px;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:7px 10px;cursor:pointer;"">
+                                <input type=""checkbox"" name=""allowCoffeeCard"" value=""true"" {(allowCoffeeCard ? "checked" : "")} style=""width:auto;"" />
+                                <span>允許「☕」休息牌</span>
+                            </label>
+                            <label style=""display:inline-flex;align-items:center;gap:6px;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:7px 10px;cursor:pointer;"">
+                                <input type=""checkbox"" name=""autoRevealWhenAllVoted"" value=""true"" {(autoRevealWhenAllVoted ? "checked" : "")} style=""width:auto;"" />
+                                <span>⚡ 全員出牌自動翻牌</span>
+                            </label>
+                        </div>
+                        <div style=""background:#ffffff;border:1px solid #93c5fd;border-radius:8px;padding:10px 12px;margin-bottom:10px;"">
+                            <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px;"">
+                                <label style=""margin:0;color:#1e3a8a;"">👥 重新設定投票人名單與參與權限模式</label>
+                                <div style=""display:flex;gap:6px;flex-wrap:wrap;"">
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:4px 8px;font-size:11.5px;"" onclick=""document.querySelectorAll('.standalone-voter-cb').forEach(c=>c.checked=true)"">✅ 全選所有員工</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:4px 8px;font-size:11.5px;"" onclick=""document.querySelectorAll('.standalone-voter-cb').forEach(c=>c.checked=false)"">⬜ 清空全部勾選</button>
+                                </div>
+                            </div>
+                            <div style=""display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;"">
+                                <div>
+                                    <label>參與權限控管模式</label>
+                                    <select name=""restrictToParticipant"">
+                                        <option value=""true"" {(restrictToParticipant ? "selected" : "")}>🔒 僅限勾選的受邀投票人可以出牌 (嚴格名單控管)</option>
+                                        <option value=""false"" {(!restrictToParticipant ? "selected" : "")}>🌐 開放全體啟用中員工皆可出牌</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label>依部門快速加入投票人</label>
+                                    <select onchange=""if(this.value){{ document.querySelectorAll('.standalone-voter-chip').forEach(el=>{{ if(el.getAttribute('data-dept')===this.value){{ const c=el.querySelector('.standalone-voter-cb'); if(c) c.checked=true; }} }}); this.value=''; }}"">
+                                        {standaloneDeptOptionsSb}
+                                    </select>
+                                </div>
+                            </div>
+                            <div style=""display:flex;flex-wrap:wrap;gap:6px;max-height:150px;overflow-y:auto;padding:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;"">
+                                {standaloneVoterChipsSb}
+                            </div>
+                        </div>
+                        <div style=""display:grid;grid-template-columns:1.2fr 0.8fr 1fr;gap:10px;margin-bottom:10px;"">
+                            <div>
+                                <label>共識點數計算規則</label>
+                                <select name=""consensusRule"">
+                                    <option value=""nearestFibonacci"" {(consensusRule == "nearestFibonacci" ? "selected" : "")}>🔢 對齊最接近的費氏牌面值</option>
+                                    <option value=""average"" {(consensusRule == "average" ? "selected" : "")}>📊 算術平均數</option>
+                                    <option value=""median"" {(consensusRule == "median" ? "selected" : "")}>⚖️ 中位數</option>
+                                    <option value=""mode"" {(consensusRule == "mode" ? "selected" : "")}>🏆 眾數</option>
+                                    <option value=""trimmedMean"" {(consensusRule == "trimmedMean" ? "selected" : "")}>✂️ 去頭去尾平均數</option>
+                                    <option value=""maxConservative"" {(consensusRule == "maxConservative" ? "selected" : "")}>🛡️ 保守取較高值</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label>分歧警示門檻 (pt)</label>
+                                <input type=""number"" step=""0.5"" min=""0"" max=""100"" name=""maxAllowedSpread"" value=""{sessionMaxSpread:0.##}"" />
+                            </div>
+                            <div>
+                                <label>單回合出牌限時</label>
+                                <select name=""roundTimeLimitSecond"">
+                                    <option value=""60"" {(roundTimeLimitSecond == 60 ? "selected" : "")}>⏱️ 60 秒</option>
+                                    <option value=""120"" {(roundTimeLimitSecond == 120 ? "selected" : "")}>⏱️ 120 秒</option>
+                                    <option value=""180"" {(roundTimeLimitSecond == 180 ? "selected" : "")}>⏱️ 180 秒</option>
+                                    <option value=""300"" {(roundTimeLimitSecond == 300 ? "selected" : "")}>⏱️ 300 秒</option>
+                                    <option value=""0"" {(roundTimeLimitSecond == 0 ? "selected" : "")}>♾️ 不限時間 (0 秒)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style=""display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;"">
+                            <div>
+                                <label>估算理由填寫規範</label>
+                                <select name=""voteCommentPolicy"">
+                                    <option value=""optional"" {(voteCommentPolicy == "optional" ? "selected" : "")}>📝 選填 (鼓勵填寫估算假設與理由)</option>
+                                    <option value=""requiredExtreme"" {(voteCommentPolicy == "requiredExtreme" ? "selected" : "")}>🔍 投出最低/最高極端點數或「?」疑問牌時必填理由</option>
+                                    <option value=""requiredAll"" {(voteCommentPolicy == "requiredAll" ? "selected" : "")}>✍️ 全體參與者出牌時皆必須填寫估算理由</option>
+                                </select>
+                            </div>
+                            <button type=""submit"" class=""btn btn-primary"" style=""padding:10px 18px;"">
+                                🆕 套用新投票人與所有設定並啟動重新投票
+                            </button>
+                        </div>
+                    </form>
+                </details>
             </div>");
         }
         else
@@ -12077,6 +12725,10 @@ public class portalController : Controller
 <head>
     <meta charset=""utf-8"" />
     <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"" />
+    <link rel=""icon"" type=""image/svg+xml"" href=""{InlineFaviconSvgDataUri}"" />
+    <link rel=""icon"" type=""image/x-icon"" href=""/favicon.ico?v=2026102703"" />
+    <link rel=""shortcut icon"" type=""image/x-icon"" href=""/favorit.ico?v=2026102703"" />
+    <link rel=""apple-touch-icon"" href=""/favicon.png?v=2026102703"" />
     <title>線上說明與操作畫面搜尋手冊 - Azure 多人參與 Story Point 估算與工項權重管理系統</title>
     <style>
         :root {{ --bg:#f1f5f9; --text:#0f172a; --muted:#64748b; --border:#cbd5e1; }}
@@ -12152,7 +12804,8 @@ public class portalController : Controller
 <body>
     <div class=""topbar"">
         <div class=""topbar-title"">
-            <span>📖 Azure 多人參與 Story Point 系統 — 線上說明與操作畫面搜尋中心</span>
+            {TopbarBrandLogoImgHtml}
+            <span>Azure 多人參與 Story Point 系統 — 線上說明與操作畫面搜尋中心</span>
             <span style=""font-size:12px;background:#1e293b;padding:4px 10px;border-radius:6px;color:#5eead4;"">全文關鍵字即時檢索 ｜ 12 幅實機操作畫面詳解</span>
         </div>
         <div class=""topbar-user"">
