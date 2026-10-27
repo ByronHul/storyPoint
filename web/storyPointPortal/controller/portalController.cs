@@ -721,6 +721,7 @@ public class portalController : Controller
         [FromForm] string? voteCommentPolicy = "optional",
         [FromForm] bool restrictToParticipant = true,
         [FromForm] string? roundGoalNote = null,
+        [FromForm] string? defaultWorkItemKind = null,
         [FromForm] bool resetCurrentRoundVotes = false,
         [FromForm] bool restartAllRounds = false,
         [FromForm] bool openNextRound = false,
@@ -795,6 +796,7 @@ public class portalController : Controller
                 ["voteCommentPolicy"] = string.IsNullOrWhiteSpace(voteCommentPolicy) ? "optional" : voteCommentPolicy.Trim(),
                 ["restrictToParticipant"] = restrictToParticipant,
                 ["roundGoalNote"] = roundGoalNote,
+                ["defaultWorkItemKind"] = string.IsNullOrWhiteSpace(defaultWorkItemKind) ? null : defaultWorkItemKind.Trim(),
                 ["resetCurrentRoundVotes"] = resetCurrentRoundVotes,
                 ["restartAllRounds"] = restartAllRounds,
                 ["openNextRound"] = openNextRound,
@@ -2081,6 +2083,8 @@ public class portalController : Controller
         [FromForm] string? badgeIcon = "📌",
         [FromForm] string? badgeColor = "blue",
         [FromForm] int sortOrder = 100,
+        [FromForm] decimal? minStoryPoint = null,
+        [FromForm] decimal? maxStoryPoint = null,
         [FromForm] string? mainFeatureSummary = null,
         [FromForm] string? estimationTrait = null,
         [FromForm] string? timeAndDeliverableTrait = null,
@@ -2092,7 +2096,7 @@ public class portalController : Controller
         string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "kinds" : returnTab.Trim();
         if (!isAdminUser())
         {
-            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("僅管理者可新增或修改預設工項類型。"));
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("僅管理者可新增或修改工項類型與基本規範。"));
         }
 
         try
@@ -2116,6 +2120,8 @@ public class portalController : Controller
                 ["badgeIcon"] = resolvedIcon,
                 ["badgeColor"] = string.IsNullOrWhiteSpace(badgeColor) ? "blue" : badgeColor.Trim(),
                 ["sortOrder"] = sortOrder,
+                ["minStoryPoint"] = minStoryPoint,
+                ["maxStoryPoint"] = maxStoryPoint,
                 ["mainFeatureSummary"] = string.IsNullOrWhiteSpace(mainFeatureSummary) ? null : mainFeatureSummary.Trim(),
                 ["estimationTrait"] = string.IsNullOrWhiteSpace(estimationTrait) ? null : estimationTrait.Trim(),
                 ["timeAndDeliverableTrait"] = string.IsNullOrWhiteSpace(timeAndDeliverableTrait) ? null : timeAndDeliverableTrait.Trim(),
@@ -2126,12 +2132,12 @@ public class portalController : Controller
 
             string savedCode = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["kindCode"]?.ToString() ?? kindCode) : kindCode;
             string savedName = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["kindName"]?.ToString() ?? kindName) : kindName;
-            return Redirect($"/?tab={targetTab}&msg=" + Uri.EscapeDataString($"預設工項類型「{savedCode} - {savedName}」及主要特徵已成功儲存！"));
+            return Redirect($"/?tab={targetTab}&msg=" + Uri.EscapeDataString($"工項類型「{savedCode} - {savedName}」及一般工項基本規範與 Story Point 範圍已成功儲存！"));
         }
         catch (Exception ex)
         {
             await logPortalExceptionAsync("portalController.saveWorkItemKind", ex);
-            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("儲存預設工項類型失敗（已記錄至系統 Log）：" + ex.Message));
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("儲存工項類型失敗（已記錄至系統 Log）：" + ex.Message));
         }
     }
 
@@ -8476,14 +8482,21 @@ public class portalController : Controller
 
         // 個別投票議程邊項本身展開/收合詳情
         function toggleSessionItemDetail(evt, sessionPk, btnEl) {
-            evt.stopPropagation();
-            evt.preventDefault();
+            if (evt) {
+                evt.stopPropagation();
+                evt.preventDefault();
+            }
             const detailEl = document.getElementById('session-detail-' + sessionPk);
             if (!detailEl) return;
             const isCollapsed = detailEl.classList.toggle('collapsed');
-            if (btnEl) {
-                btnEl.textContent = isCollapsed ? '▾ 邊項詳情' : '▴ 收合詳情';
+            const targetBtn = btnEl || document.querySelector('#sidebarSessionCard_' + sessionPk + ' .btn-item-toggle');
+            if (targetBtn) {
+                targetBtn.textContent = isCollapsed ? '▾ 展開' : '▴ 收合';
             }
+        }
+
+        function toggleSessionCard(sessionPk) {
+            toggleSessionItemDetail(null, sessionPk, null);
         }
 
         function selectPokerCard(cardEl, val) {
@@ -10659,8 +10672,10 @@ public class portalController : Controller
             const rowKind = tr.getAttribute('data-row-kind') || 'generic';
             if (rowKind === 'session' && !tr.closest('table')) {
                 const sPk = tr.getAttribute('data-session-pk') || '';
+                const sCode = tr.getAttribute('data-session-code') || '';
+                const sTitle = tr.getAttribute('data-session-title') || '';
                 if (sPk) {
-                    enterVotingSessionFromPending(null, Number(sPk));
+                    enterVotingSessionFromPending(null, Number(sPk), [sCode, sTitle].filter(Boolean).join(' - '));
                     return;
                 }
             }
@@ -11163,13 +11178,14 @@ public class portalController : Controller
                 spContextMenuEl.appendChild(headerDiv);
 
                 if (sPk) {
+                    const sFullLabel = [sCode, sTitle].filter(Boolean).join(' - ');
                     if (sStatus === 'finalized') {
                         spContextMenuEl.appendChild(createCtxMenuItem('🔍', '檢視此已定案 Session 獨立盲投網頁', '#' + sPk, 'primary-action', function () {
-                            enterVotingSessionFromPending(null, Number(sPk));
+                            enterVotingSessionFromPending(null, Number(sPk), sFullLabel);
                         }));
                     } else if (isOpenByMe) {
                         spContextMenuEl.appendChild(createCtxMenuItem('🟢', '參與中（已在獨立網頁進行中・點擊聚焦或提醒）', '參與中 #' + sPk, 'primary-action', function () {
-                            enterVotingSessionFromPending(null, Number(sPk));
+                            enterVotingSessionFromPending(null, Number(sPk), sFullLabel);
                         }));
 
                         spContextMenuEl.appendChild(createCtxMenuItem('↩️', '暫離「參與中」獨立網頁（移回「📂 待參與」清單，保留投票資格）', '暫離移回待參與', '', function () {
@@ -11177,7 +11193,7 @@ public class portalController : Controller
                         }));
                     } else {
                         spContextMenuEl.appendChild(createCtxMenuItem('🚀', '點選進入「參與中」獨立盲投網頁（開新分頁開始投票）', '進入 #' + sPk, 'primary-action', function () {
-                            enterVotingSessionFromPending(null, Number(sPk));
+                            enterVotingSessionFromPending(null, Number(sPk), sFullLabel);
                         }));
                     }
 
@@ -12848,6 +12864,38 @@ public class portalController : Controller
                 method: 'POST',
                 credentials: 'same-origin'
             }).catch(function () { });
+        }
+
+        // 從滑鼠右鍵快捷選單或雙擊卡片進入「🟢 參與中」獨立盲投網頁：
+        // 先執行 openIndependentVotingSession 檢查防重複進入並移入「參與中」，再開啟新分頁（若被阻擋則自動導向）
+        function enterVotingSessionFromPending(evt, sessionPk, sessionTitle) {
+            const pk = Number(sessionPk);
+            if (!pk || pk <= 0) return false;
+            const sideCard = document.getElementById('sidebarSessionCard_' + pk);
+            const lobbyCard = document.getElementById('lobbySessionCard_' + pk);
+            const fallbackTitle = sessionTitle
+                || (sideCard ? [sideCard.getAttribute('data-session-code'), sideCard.getAttribute('data-session-title')].filter(Boolean).join(' - ') : '')
+                || (lobbyCard ? [lobbyCard.getAttribute('data-session-code'), lobbyCard.getAttribute('data-session-title')].filter(Boolean).join(' - ') : '')
+                || ('Session #' + pk);
+            const allowed = openIndependentVotingSession(evt, pk, fallbackTitle);
+            if (!allowed) {
+                return false;
+            }
+            const targetUrl = '/voting/session?sessionPk=' + pk;
+            const tempLink = document.createElement('a');
+            tempLink.href = targetUrl;
+            tempLink.target = '_blank';
+            tempLink.rel = 'noopener';
+            tempLink.style.display = 'none';
+            document.body.appendChild(tempLink);
+            tempLink.click();
+            document.body.removeChild(tempLink);
+            return true;
+        }
+
+        // 從滑鼠右鍵快捷選單執行「↩️ 暫離移回待參與」
+        function leaveVotingSessionToPending(evt, sessionPk) {
+            return leaveParticipatingSessionFromLobby(evt, sessionPk);
         }
 
         // 參與者點擊「🚪 退出 Session (不再參與投票)」：退出「📂 待參與」或「🟢 參與中」的盲投 Session，不再參與該工項的投票
