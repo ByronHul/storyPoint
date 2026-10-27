@@ -4317,7 +4317,7 @@ public class portalController : Controller
             <div class=""menu-group-list"">
                 <!-- 主選單 1: 多人估算 -->
                 <div class=""menu-dropdown"" id=""menu-group-voting"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "voting" || currentTab == "roundSetup" || currentTab == "history" ? "active-group" : "")}"" data-tip=""多人估算與過程：Story Point 即時盲投大廳、回合設定與決策歷程查詢"" onclick=""toggleDropdownMenu(event, 'menu-group-voting')"">
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "voting" || currentTab == "history" ? "active-group" : "")}"" data-tip=""多人估算與過程：Story Point 即時盲投大廳、回合設定與決策歷程查詢"" onclick=""toggleDropdownMenu(event, 'menu-group-voting')"">
                         <span>🃏 多人估算</span>
                         <span class=""menu-caret"">▼</span>
                     </button>
@@ -4451,7 +4451,7 @@ public class portalController : Controller
             sb.Append($@"
                 <!-- 主選單 4: 組織與員工 (管理者可見全域管理 + 個人帳密修改) -->
                 <div class=""menu-dropdown"" id=""menu-group-employees"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "employees" || currentTab == "myAccount" ? "active-group" : "")}"" data-tip=""組織與員工帳密管理：管理部門主管註記、上下層樹狀階層、員工列表與 CSV / Excel 批次匯入"" onclick=""toggleDropdownMenu(event, 'menu-group-employees')"">
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "employees" ? "active-group" : "")}"" data-tip=""組織與員工帳密管理：管理部門主管註記、上下層樹狀階層、員工列表與 CSV / Excel 批次匯入"" onclick=""toggleDropdownMenu(event, 'menu-group-employees')"">
                         <span>👥 組織與員工</span>
                         <span class=""menu-caret"">▼</span>
                     </button>
@@ -4514,7 +4514,7 @@ public class portalController : Controller
             sb.Append($@"
                 <!-- 主選單 4: 帳號設定 (參與者可見) -->
                 <div class=""menu-dropdown"" id=""menu-group-employees"">
-                    <button type=""button"" class=""menu-main-btn {(currentTab == "employees" || currentTab == "myAccount" ? "active-group" : "")}"" data-tip=""個人帳密設定：檢視個人基本資料並隨時修改自己的登入帳號與密碼"" onclick=""toggleDropdownMenu(event, 'menu-group-employees')"">
+                    <button type=""button"" class=""menu-main-btn {(currentTab == "employees" ? "active-group" : "")}"" data-tip=""個人帳密設定：檢視個人基本資料並隨時修改自己的登入帳號與密碼"" onclick=""toggleDropdownMenu(event, 'menu-group-employees')"">
                         <span>🔑 帳號設定</span>
                         <span class=""menu-caret"">▼</span>
                     </button>
@@ -7555,10 +7555,12 @@ public class portalController : Controller
             const subItem = document.querySelector('.menu-sub-item[data-tab=""' + tabName + '""]');
             if (subItem) {
                 subItem.classList.add('active');
-                const parentDropdown = subItem.closest('.menu-dropdown');
-                if (parentDropdown) {
-                    const mainBtn = parentDropdown.querySelector('.menu-main-btn');
-                    if (mainBtn) mainBtn.classList.add('active-group');
+                if (tabName !== 'roundSetup' && tabName !== 'myAccount') {
+                    const parentDropdown = subItem.closest('.menu-dropdown');
+                    if (parentDropdown) {
+                        const mainBtn = parentDropdown.querySelector('.menu-main-btn');
+                        if (mainBtn) mainBtn.classList.add('active-group');
+                    }
                 }
             }
             if (tabName === 'roundSetup') {
