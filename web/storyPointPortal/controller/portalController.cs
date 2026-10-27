@@ -1382,7 +1382,8 @@ public class portalController : Controller
                         bool dbEntered = (pr.Table.Columns.Contains("isEnteredEffective") && pr["isEnteredEffective"] != DBNull.Value && Convert.ToBoolean(pr["isEnteredEffective"]))
                             || (pr.Table.Columns.Contains("hasEnteredSession") && pr["hasEnteredSession"] != DBNull.Value && Convert.ToBoolean(pr["hasEnteredSession"]))
                             || (pr.Table.Columns.Contains("hasVotedCurrentRound") && pr["hasVotedCurrentRound"] != DBNull.Value && Convert.ToBoolean(pr["hasVotedCurrentRound"]));
-                        bool isEntered = leaseDictForPk.ContainsKey(empId) || dbEntered || (sessionPk.HasValue && sessionPk.Value == pk && empId == currentEmpPk);
+                        bool isCallerInStandaloneSession = !string.IsNullOrWhiteSpace(tabInstanceId) && sessionPk.HasValue && sessionPk.Value == pk && empId == currentEmpPk;
+                        bool isEntered = leaseDictForPk.ContainsKey(empId) || dbEntered || isCallerInStandaloneSession;
                         if (isEntered)
                         {
                             enteredNames.Add(empName);
@@ -1441,7 +1442,7 @@ public class portalController : Controller
                     if (st == "voting" && pk > latestVotingPk) latestVotingPk = pk;
                 }
 
-                sigParts.Add($"{pk}:{st}:{rn}:{vc}:{pc}:{enteredCnt}:{(isViewerPart ? 1 : 0)}");
+                sigParts.Add($"{pk}:{st}:{rn}:{vc}:{pc}:{(isViewerPart ? 1 : 0)}");
 
                 if (sessionPk.HasValue && sessionPk.Value > 0 && pk == sessionPk.Value)
                 {
@@ -1486,7 +1487,8 @@ public class portalController : Controller
                         || (pr.Table.Columns.Contains("hasEnteredSession") && pr["hasEnteredSession"] != DBNull.Value && Convert.ToBoolean(pr["hasEnteredSession"]))
                         || hasVoted;
                     bool hasLease = targetLeaseMap.TryGetValue(empId, out var empLease);
-                    bool isEntered = hasLease || dbEntered || (sessionPk.HasValue && sessionPk.Value == vsPk && empId == currentEmpPk);
+                    bool isCallerInStandaloneTarget = !string.IsNullOrWhiteSpace(tabInstanceId) && sessionPk.HasValue && sessionPk.Value == vsPk && empId == currentEmpPk;
+                    bool isEntered = hasLease || dbEntered || isCallerInStandaloneTarget;
 
                     string enteredAtText = "";
                     if (hasLease && empLease != null)
@@ -5643,8 +5645,14 @@ public class portalController : Controller
             }
         }
 
+        string lobbyMemberSessionPksCsv = string.Join(",", sessionTable.Rows.Cast<DataRow>().Where(r => (r["sessionStatus"]?.ToString() ?? "") == "finalized" || !r.Table.Columns.Contains("isViewerParticipant") || (r["isViewerParticipant"] != DBNull.Value && Convert.ToBoolean(r["isViewerParticipant"]))).Select(r => Convert.ToInt32(r["votingSessionPk"])));
+        string lobbyListSignatureStr = string.Join("|", sessionTable.Rows.Cast<DataRow>().Select(r => $"{r["votingSessionPk"]}:{r["sessionStatus"]}:{r["currentRoundNumber"]}:{(r.Table.Columns.Contains("currentRoundVoteCount") && r["currentRoundVoteCount"] != DBNull.Value ? r["currentRoundVoteCount"] : 0)}:{(r.Table.Columns.Contains("participantCount") && r["participantCount"] != DBNull.Value ? r["participantCount"] : 0)}:{(!r.Table.Columns.Contains("isViewerParticipant") || (r["isViewerParticipant"] != DBNull.Value && Convert.ToBoolean(r["isViewerParticipant"])) ? 1 : 0)}"));
+        string activeSessionStatusInit = activeSessionRow != null ? (activeSessionRow["sessionStatus"]?.ToString() ?? "voting") : "";
+        int activeRoundNumberInit = activeSessionRow != null && activeSessionRow["currentRoundNumber"] != DBNull.Value ? Convert.ToInt32(activeSessionRow["currentRoundNumber"]) : 0;
+        int activeRoundVoteCountInit = activeSessionRow != null && activeSessionRow.Table.Columns.Contains("currentRoundVoteCount") && activeSessionRow["currentRoundVoteCount"] != DBNull.Value ? Convert.ToInt32(activeSessionRow["currentRoundVoteCount"]) : 0;
+
         sb.Append($"<div id='pane-voting' class='tab-pane {(currentTab == "voting" ? "active" : "")}'>");
-        sb.Append("<div class='grid-voting' id='votingGridContainer'>");
+        sb.Append($@"<div class='grid-voting' id='votingGridContainer' data-active-session-pk='{activeSessionPk}' data-session-status='{h(activeSessionStatusInit)}' data-round-number='{activeRoundNumberInit}' data-vote-count='{activeRoundVoteCountInit}' data-member-pks='{h(lobbyMemberSessionPksCsv)}' data-list-sig='{h(lobbyListSignatureStr)}'>");
 
         // 左側：投票議程清單 (分成「📂 待參與」、「🟢 參與中」與「📁 已拍板定案議程」三個可展開收合 Folder；個人從「待參與」點選後才會進入「參與中」的獨立網頁)
         sb.Append("<div class='card voting-sidebar-card' id='votingSidebarCard'>");
@@ -13648,15 +13656,27 @@ public class portalController : Controller
         // 2. 提供手動「🔄 重新整理」按鈕，可隨時刷新呈現最新投票議程
         // 3. 支援同一人同時以多個獨立網頁參與「不同」盲投 Session，並即時攔截「同一個 Session 重複進入」
         const currentEmployeePk = " + curEmpPk + @";
-        const currentVotingSessionPk = " + activeSessionPk + @";
+        let currentVotingSessionPk = " + activeSessionPk + @";
         let currentSessionStatus = '" + (activeSessionRow != null ? (activeSessionRow["sessionStatus"]?.ToString() ?? "voting") : "") + @"';
-        let currentRoundNumber = " + (activeSessionRow != null && activeSessionRow["currentRoundNumber"] != DBNull.Value ? Convert.ToInt32(activeSessionRow["currentRoundNumber"]) : 1) + @";
+        let currentRoundNumber = " + (activeSessionRow != null && activeSessionRow["currentRoundNumber"] != DBNull.Value ? Convert.ToInt32(activeSessionRow["currentRoundNumber"]) : 0) + @";
         let currentRoundVoteCount = " + (activeSessionRow != null && activeSessionRow.Table.Columns.Contains("currentRoundVoteCount") && activeSessionRow["currentRoundVoteCount"] != DBNull.Value ? Convert.ToInt32(activeSessionRow["currentRoundVoteCount"]) : 0) + @";
         let currentMemberSessionPks = [" + string.Join(",", sessionTable.Rows.Cast<DataRow>().Where(r => (r["sessionStatus"]?.ToString() ?? "") == "finalized" || !r.Table.Columns.Contains("isViewerParticipant") || (r["isViewerParticipant"] != DBNull.Value && Convert.ToBoolean(r["isViewerParticipant"]))).Select(r => Convert.ToInt32(r["votingSessionPk"]))) + @"];
-        const currentSessionListSignature = '" + string.Join("|", sessionTable.Rows.Cast<DataRow>().Select(r => $"{r["votingSessionPk"]}:{r["sessionStatus"]}:{r["currentRoundNumber"]}:{(r.Table.Columns.Contains("currentRoundVoteCount") && r["currentRoundVoteCount"] != DBNull.Value ? r["currentRoundVoteCount"] : 0)}:{(r.Table.Columns.Contains("participantCount") && r["participantCount"] != DBNull.Value ? r["participantCount"] : 0)}:{(!r.Table.Columns.Contains("isViewerParticipant") || (r["isViewerParticipant"] != DBNull.Value && Convert.ToBoolean(r["isViewerParticipant"])) ? 1 : 0)}")) + @"';
+        let currentSessionListSignature = '" + string.Join("|", sessionTable.Rows.Cast<DataRow>().Select(r => $"{r["votingSessionPk"]}:{r["sessionStatus"]}:{r["currentRoundNumber"]}:{(r.Table.Columns.Contains("currentRoundVoteCount") && r["currentRoundVoteCount"] != DBNull.Value ? r["currentRoundVoteCount"] : 0)}:{(r.Table.Columns.Contains("participantCount") && r["participantCount"] != DBNull.Value ? r["participantCount"] : 0)}:{(!r.Table.Columns.Contains("isViewerParticipant") || (r["isViewerParticipant"] != DBNull.Value && Convert.ToBoolean(r["isViewerParticipant"])) ? 1 : 0)}")) + @"';
         let myActiveOpenSessionPks = [" + string.Join(",", sqlDataService.getActiveLockedSessionPksForEmployee(curEmpPk)) + @"];
         window.__justEnteredSessionTs = window.__justEnteredSessionTs || {};
         let isAutoReloading = false;
+
+        // 載入後清理網址列上的暫時性提示參數 (msg/err)，避免按 F5 重新整理時重複閃現舊提示橫幅
+        try {
+            if (window.history && window.history.replaceState) {
+                const initUrl = new URL(window.location.href);
+                if (initUrl.searchParams.has('msg') || initUrl.searchParams.has('err')) {
+                    initUrl.searchParams.delete('msg');
+                    initUrl.searchParams.delete('err');
+                    window.history.replaceState(null, '', initUrl.pathname + initUrl.search);
+                }
+            }
+        } catch (e) { }
 
         // 檢查某個 Session 是否目前正由本人在某個獨立網頁開啟中（處於「🟢 參與中」狀態）
         function isSessionCurrentlyOpenByMe(sessionPk) {
@@ -14029,38 +14049,165 @@ public class portalController : Controller
             return id === 'inputVoteComment' || name === 'roundDiscussionNote' || name === 'finalDecisionNote' || name === 'finalStoryPoint';
         }
 
-        function triggerAutoFlipReload(targetSessionPk, reasonMsg) {
+        // 無閃爍平滑局部更新大廳 DOM（使用 fetch + DOMParser 原地更新 KPI 與議程卡片，保留捲軸位置、資料夾收合與展開狀態，避免整頁重新載入閃白）
+        function softRefreshLobbyDom(targetSessionPk, reasonMsg, btnEl) {
             if (isAutoReloading) return;
             isAutoReloading = true;
-            const pk = targetSessionPk !== undefined && targetSessionPk !== null ? targetSessionPk : currentVotingSessionPk;
-            const nextUrl = '/?tab=voting' + (pk > 0 ? '&sessionPk=' + pk : '') + (reasonMsg ? '&msg=' + encodeURIComponent(reasonMsg) : '');
-            window.location.href = nextUrl;
+            const pk = targetSessionPk !== undefined && targetSessionPk !== null ? Number(targetSessionPk) : Number(currentVotingSessionPk);
+            const cleanUrl = '/?tab=voting' + (pk > 0 ? '&sessionPk=' + pk : '');
+            const fetchUrl = cleanUrl + '&_t=' + Date.now();
+            const origBtnHtml = btnEl ? (btnEl.getAttribute('data-orig-label') || btnEl.innerHTML) : '';
+            if (btnEl && !btnEl.getAttribute('data-orig-label')) {
+                btnEl.setAttribute('data-orig-label', origBtnHtml);
+            }
+
+            fetch(fetchUrl, { credentials: 'same-origin', cache: 'no-store' })
+                .then(function (res) {
+                    if (!res.ok || (res.url && res.url.indexOf('/login') !== -1)) {
+                        window.location.href = cleanUrl;
+                        return null;
+                    }
+                    return res.text();
+                })
+                .then(function (htmlText) {
+                    if (!htmlText) {
+                        isAutoReloading = false;
+                        return;
+                    }
+                    const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+                    const newGrid = doc.getElementById('votingGridContainer');
+                    const curGrid = document.getElementById('votingGridContainer');
+                    if (!newGrid || !curGrid) {
+                        window.location.href = cleanUrl;
+                        return;
+                    }
+
+                    // 1. 保存目前使用者的展開/收合與捲軸狀態，確保局部替換後完全不跳動
+                    const wasSidebarCollapsed = curGrid.classList.contains('sidebar-collapsed');
+                    const curSidebarBody = document.getElementById('votingSidebarBody');
+                    const wasSidebarBodyCollapsed = curSidebarBody ? curSidebarBody.classList.contains('collapsed') : false;
+                    const sidebarScrollTop = curSidebarBody ? curSidebarBody.scrollTop : 0;
+                    const savedWindowScrollY = window.scrollY;
+
+                    const folderCollapsedState = {};
+                    curGrid.querySelectorAll('.agenda-folder').forEach(function (f) {
+                        if (f.id) folderCollapsedState[f.id] = f.classList.contains('collapsed');
+                    });
+                    const detailCollapsedState = {};
+                    curGrid.querySelectorAll('.session-item-detail').forEach(function (d) {
+                        if (d.id) detailCollapsedState[d.id] = d.classList.contains('collapsed');
+                    });
+
+                    // 2. 局部更新頂部 KPI 卡片（僅在內容有異動時才更新）
+                    const curKpi = document.querySelector('.kpi-grid');
+                    const newKpi = doc.querySelector('.kpi-grid');
+                    if (curKpi && newKpi && curKpi.innerHTML !== newKpi.innerHTML) {
+                        curKpi.innerHTML = newKpi.innerHTML;
+                    }
+
+                    // 3. 原地更新盲投大廳區塊並立即還原 UI 收合與捲軸狀態
+                    curGrid.innerHTML = newGrid.innerHTML;
+                    curGrid.classList.toggle('sidebar-collapsed', wasSidebarCollapsed);
+
+                    const nextSidebarBody = document.getElementById('votingSidebarBody');
+                    if (nextSidebarBody) {
+                        nextSidebarBody.classList.toggle('collapsed', wasSidebarBodyCollapsed);
+                        nextSidebarBody.scrollTop = sidebarScrollTop;
+                    }
+                    const toggleBodyBtn = document.getElementById('btnToggleSidebarBody');
+                    if (toggleBodyBtn) {
+                        toggleBodyBtn.textContent = wasSidebarBodyCollapsed ? '▾ 展開清單' : '▴ 收合清單';
+                    }
+
+                    Object.keys(folderCollapsedState).forEach(function (fId) {
+                        const fEl = document.getElementById(fId);
+                        if (fEl) fEl.classList.toggle('collapsed', folderCollapsedState[fId]);
+                    });
+                    Object.keys(detailCollapsedState).forEach(function (dId) {
+                        const dEl = document.getElementById(dId);
+                        if (dEl) {
+                            const isCol = detailCollapsedState[dId];
+                            dEl.classList.toggle('collapsed', isCol);
+                            const sPk = dId.replace('session-detail-', '');
+                            const tBtn = document.querySelector('#sidebarSessionCard_' + sPk + ' .btn-item-toggle');
+                            if (tBtn) tBtn.textContent = isCol ? '▾ 展開' : '▴ 收合';
+                        }
+                    });
+
+                    // 4. 同步更新前端追蹤狀態變數與簽章
+                    currentVotingSessionPk = Number(newGrid.getAttribute('data-active-session-pk') || pk || 0);
+                    currentSessionStatus = newGrid.getAttribute('data-session-status') || '';
+                    currentRoundNumber = Number(newGrid.getAttribute('data-round-number') || 0);
+                    currentRoundVoteCount = Number(newGrid.getAttribute('data-vote-count') || 0);
+                    const memberPksAttr = newGrid.getAttribute('data-member-pks') || '';
+                    currentMemberSessionPks = memberPksAttr
+                        ? memberPksAttr.split(',').map(Number).filter(function (n) { return !isNaN(n) && n > 0; })
+                        : [];
+                    currentSessionListSignature = newGrid.getAttribute('data-list-sig') || '';
+
+                    curGrid.setAttribute('data-active-session-pk', String(currentVotingSessionPk));
+                    curGrid.setAttribute('data-session-status', currentSessionStatus);
+                    curGrid.setAttribute('data-round-number', String(currentRoundNumber));
+                    curGrid.setAttribute('data-vote-count', String(currentRoundVoteCount));
+                    curGrid.setAttribute('data-member-pks', memberPksAttr);
+                    curGrid.setAttribute('data-list-sig', currentSessionListSignature);
+
+                    updateLobbyActiveSessionLocks();
+
+                    if (window.history && window.history.replaceState && isVotingPaneActive()) {
+                        window.history.replaceState(null, '', cleanUrl);
+                    }
+                    window.scrollTo(0, savedWindowScrollY);
+
+                    if (btnEl) {
+                        btnEl.disabled = false;
+                        btnEl.innerHTML = '✅ 已更新';
+                        setTimeout(function () {
+                            if (btnEl) btnEl.innerHTML = btnEl.getAttribute('data-orig-label') || '🔄 重新整理';
+                        }, 1000);
+                    }
+                    isAutoReloading = false;
+                })
+                .catch(function () {
+                    if (btnEl) {
+                        btnEl.disabled = false;
+                        btnEl.innerHTML = btnEl.getAttribute('data-orig-label') || '🔄 重新整理';
+                    }
+                    isAutoReloading = false;
+                });
         }
 
-        // 手動點擊「🔄 重新整理」按鈕：立即向後端查詢屬於該成員的最新投票議程並刷新畫面
+        function triggerAutoFlipReload(targetSessionPk, reasonMsg) {
+            softRefreshLobbyDom(targetSessionPk, reasonMsg, null);
+        }
+
+        // 手動點擊「🔄 重新整理」按鈕：立即以無閃爍局部更新方式載入屬於該成員的最新投票議程與狀態
         function refreshVotingSessionsNow(btnEl) {
             if (btnEl) {
+                if (!btnEl.getAttribute('data-orig-label')) {
+                    btnEl.setAttribute('data-orig-label', btnEl.innerHTML);
+                }
                 btnEl.disabled = true;
-                btnEl.textContent = '⏳ 重新整理中...';
+                btnEl.textContent = '⏳ 更新中...';
             }
             fetch('/voting/liveStatus?sessionPk=' + currentVotingSessionPk + '&_t=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
                 .then(function (res) { return res.ok ? res.json() : null; })
                 .then(function (data) {
-                    if (data && data.found) {
-                        const allPks = Array.isArray(data.allSessionPks) ? data.allSessionPks.map(Number) : [];
-                        const newlyAddedPk = allPks.find(function (id) { return currentMemberSessionPks.indexOf(id) === -1; });
-                        const targetPk = newlyAddedPk || data.latestOngoingSessionPk || data.votingSessionPk || currentVotingSessionPk;
-                        const msg = newlyAddedPk
-                            ? '🆕 已重新整理並載入屬於您的新投票議程！'
-                            : '🔄 已重新整理最新投票議程清單與狀態！';
-                        isAutoReloading = false;
-                        triggerAutoFlipReload(targetPk, msg);
-                    } else {
-                        window.location.href = '/?tab=voting';
+                    if (data && Array.isArray(data.myActiveOpenSessionPks)) {
+                        updateLobbyActiveSessionLocks(data.myActiveOpenSessionPks);
                     }
+                    if (data && data.sessionPresenceMap) {
+                        updateLobbySessionPresenceDisplay(data.sessionPresenceMap);
+                    }
+                    const allPks = (data && Array.isArray(data.allSessionPks)) ? data.allSessionPks.map(Number) : [];
+                    const newlyAddedPk = allPks.find(function (id) { return currentMemberSessionPks.indexOf(id) === -1; });
+                    const targetPk = newlyAddedPk || (data && (data.latestOngoingSessionPk || data.votingSessionPk)) || currentVotingSessionPk;
+                    isAutoReloading = false;
+                    softRefreshLobbyDom(targetPk, '', btnEl);
                 })
                 .catch(function () {
-                    window.location.href = '/?tab=voting' + (currentVotingSessionPk > 0 ? '&sessionPk=' + currentVotingSessionPk : '');
+                    isAutoReloading = false;
+                    softRefreshLobbyDom(currentVotingSessionPk, '', btnEl);
                 });
         }
 
@@ -14076,12 +14223,19 @@ public class portalController : Controller
                 const safeEnt = entNames.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 const safeNotEnt = notEntNames.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+                const nextTextHtml = '🟢 已進場：<strong>' + entCnt + ' / ' + partCnt + '</strong> 人（' + safeEnt + '）' +
+                    (notEntNames !== '全員已進場' ? '<span style=""color:#64748b;font-weight:600;"">｜⏳ 未進場：' + safeNotEnt + '</span>' : '');
+                const nextDetailHtml = '🟢 <strong>已進場人員 (' + entCnt + '/' + partCnt + ')：</strong><span style=""color:#15803d;font-weight:700;"">' + safeEnt + '</span> ｜ ⏳ <strong>待進場：</strong><span style=""color:#64748b;"">' + safeNotEnt + '</span>';
+
                 document.querySelectorAll('[data-session-presence-text=""' + pkKey + '""]').forEach(function (el) {
-                    el.innerHTML = '🟢 已進場：<strong>' + entCnt + ' / ' + partCnt + '</strong> 人（' + safeEnt + '）' +
-                        (notEntNames !== '全員已進場' ? '<span style=""color:#64748b;font-weight:600;"">｜⏳ 未進場：' + safeNotEnt + '</span>' : '');
+                    if (el.innerHTML !== nextTextHtml) {
+                        el.innerHTML = nextTextHtml;
+                    }
                 });
                 document.querySelectorAll('[data-session-presence-detail=""' + pkKey + '""]').forEach(function (el) {
-                    el.innerHTML = '🟢 <strong>已進場人員 (' + entCnt + '/' + partCnt + ')：</strong><span style=""color:#15803d;font-weight:700;"">' + safeEnt + '</span> ｜ ⏳ <strong>待進場：</strong><span style=""color:#64748b;"">' + safeNotEnt + '</span>';
+                    if (el.innerHTML !== nextDetailHtml) {
+                        el.innerHTML = nextDetailHtml;
+                    }
                 });
             });
         }
@@ -14120,9 +14274,9 @@ public class portalController : Controller
                     if (!isVotingPaneActive()) return;
 
                     // 2. 檢查大廳議程清單狀態或票數是否變更
-                    const statusChanged = data.sessionStatus && data.sessionStatus !== currentSessionStatus;
-                    const roundChanged = Number(data.currentRoundNumber) !== Number(currentRoundNumber);
-                    const voteCountChanged = Number(data.voteCount) !== Number(currentRoundVoteCount);
+                    const statusChanged = Boolean(data.sessionStatus) && data.sessionStatus !== currentSessionStatus;
+                    const roundChanged = Number(data.currentRoundNumber || 0) !== Number(currentRoundNumber || 0);
+                    const voteCountChanged = Number(data.voteCount || 0) !== Number(currentRoundVoteCount || 0);
                     const listSigChanged = (data.sessionListSignature || '') !== currentSessionListSignature;
 
                     if ((statusChanged || roundChanged || voteCountChanged || listSigChanged) && !isUserTypingVoteComment()) {
@@ -14142,8 +14296,14 @@ public class portalController : Controller
                 .build();
 
             conn.on('onVotingSessionUpdated', function (payload) {
+                // 進場/離場事件僅靜默同步人數與名單，不彈出頂部橫幅避免畫面上下跳動閃爍
+                if (payload.eventName === 'participantEntered' || payload.eventName === 'participantLeft') {
+                    pollMemberVotingStatus(null, '');
+                    return;
+                }
+
                 const banner = document.getElementById('liveSignalRBanner');
-                if (banner) {
+                if (banner && payload.messageText) {
                     banner.style.display = 'block';
                     banner.innerHTML = '⚡ <strong>即時同步通知 (' + payload.timestamp + ')：</strong>' + payload.messageText +
                         ' <a href=""/voting/session?sessionPk=' + payload.votingSessionPk + '"" target=""_blank"" rel=""noopener"" onclick=""return openIndependentVotingSession(event, ' + payload.votingSessionPk + ')"" class=""btn btn-primary"" style=""padding:4px 10px;font-size:12px;margin-left:10px;"">🚀 開啟此 Session 獨立盲投網頁 ↗</a>';
@@ -14811,7 +14971,7 @@ public class portalController : Controller
         </div>
     </header>
 
-    <div class=""container"">
+    <div class=""container"" id=""standaloneMainContainer"" data-session-status=""" + h(status) + @""" data-round-number=""" + currentRoundNumber + @""" data-vote-count=""" + currentRoundVotes.Count + @""">
         <div id=""duplicateAttemptBanner"" class=""alert"" style=""display:none;background:#fef3c7;color:#92400e;border:2px solid #f59e0b;""></div>
         <div id=""liveSignalRBanner"" class=""alert alert-live""></div>");
 
@@ -16146,15 +16306,20 @@ public class portalController : Controller
         })();
 
         // 6. 單回合倒數計時器
-        (function initRoundCountdown() {
+        function initRoundCountdown() {
+            if (window.__roundCountdownTimer) {
+                clearInterval(window.__roundCountdownTimer);
+                window.__roundCountdownTimer = null;
+            }
             const box = document.getElementById('roundCountdownBox');
             if (!box) return;
             let remain = parseInt(box.getAttribute('data-limit') || '0', 10);
             if (isNaN(remain) || remain <= 0) return;
-            const timer = setInterval(function () {
+            window.__roundCountdownTimer = setInterval(function () {
                 remain--;
                 if (remain <= 0) {
-                    clearInterval(timer);
+                    clearInterval(window.__roundCountdownTimer);
+                    window.__roundCountdownTimer = null;
                     box.textContent = '⏰ 本回合計時已到！請儘速完成出牌或由主持人翻牌';
                     box.style.background = '#dc2626';
                 } else {
@@ -16163,7 +16328,8 @@ public class portalController : Controller
                     box.textContent = '⏳ 倒數計時：' + (m > 0 ? (m + '分 ' + s + '秒') : (s + ' 秒'));
                 }
             }, 1000);
-        })();
+        }
+        initRoundCountdown();
 
         function isUserTypingInStandalone() {
             const activeEl = document.activeElement;
@@ -16173,22 +16339,135 @@ public class portalController : Controller
             return id === 'inputVoteComment' || name === 'roundDiscussionNote' || name === 'finalDecisionNote' || name === 'finalStoryPoint';
         }
 
-        function triggerStandaloneAutoReload(reasonMsg) {
+        // 無閃爍平滑局部更新獨立盲投桌面 DOM（使用 fetch + DOMParser 原地更新牌桌與統計表，保留輸入框內容與捲軸位置，避免整頁重載閃爍）
+        function softRefreshStandaloneSessionDom(reasonMsg, btnEl) {
             if (isAutoReloading) return;
             isAutoReloading = true;
-            window.__isInternalSessionNavigation = true;
-            const nextUrl = '/voting/session?sessionPk=' + currentVotingSessionPk +
+            const fetchUrl = '/voting/session?sessionPk=' + currentVotingSessionPk +
                 '&tabInstanceId=' + encodeURIComponent(assignedTabInstanceId) +
-                (reasonMsg ? '&msg=' + encodeURIComponent(reasonMsg) : '');
-            window.location.href = nextUrl;
+                (reasonMsg ? '&msg=' + encodeURIComponent(reasonMsg) : '') +
+                '&_t=' + Date.now();
+            const origBtnHtml = btnEl ? (btnEl.getAttribute('data-orig-label') || btnEl.innerHTML) : '';
+            if (btnEl && !btnEl.getAttribute('data-orig-label')) {
+                btnEl.setAttribute('data-orig-label', origBtnHtml);
+            }
+
+            fetch(fetchUrl, { credentials: 'same-origin', cache: 'no-store' })
+                .then(function (res) {
+                    if (!res.ok || (res.url && (res.url.indexOf('/login') !== -1 || res.url.indexOf('tab=voting') !== -1))) {
+                        window.__isInternalSessionNavigation = true;
+                        window.location.href = res.url || fetchUrl;
+                        return null;
+                    }
+                    return res.text();
+                })
+                .then(function (htmlText) {
+                    if (!htmlText) {
+                        isAutoReloading = false;
+                        return;
+                    }
+                    const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+                    const newContainer = doc.getElementById('standaloneMainContainer');
+                    const curContainer = document.getElementById('standaloneMainContainer');
+                    if (!newContainer || !curContainer) {
+                        window.__isInternalSessionNavigation = true;
+                        window.location.href = fetchUrl;
+                        return;
+                    }
+
+                    // 保存目前使用者尚未送出的選牌、備註與捲軸位置
+                    const prevRound = currentRoundNumber;
+                    const savedCardVal = document.getElementById('inputCardLabel') ? document.getElementById('inputCardLabel').value : '';
+                    const savedQuickCbEl = document.getElementById('cbQuickSingleClickCast');
+                    const hasSavedQuickCb = Boolean(savedQuickCbEl);
+                    const savedQuickChecked = savedQuickCbEl ? savedQuickCbEl.checked : true;
+                    const savedComment = document.getElementById('inputVoteComment') ? document.getElementById('inputVoteComment').value : '';
+                    const savedRoundNote = document.getElementById('inputRoundDiscussionNote') ? document.getElementById('inputRoundDiscussionNote').value : '';
+                    const savedFinalPt = document.getElementById('inputFinalStoryPoint') ? document.getElementById('inputFinalStoryPoint').value : '';
+                    const savedFinalNote = document.getElementById('inputFinalDecisionNote') ? document.getElementById('inputFinalDecisionNote').value : '';
+                    const savedScrollY = window.scrollY;
+
+                    curContainer.innerHTML = newContainer.innerHTML;
+
+                    currentSessionStatus = newContainer.getAttribute('data-session-status') || currentSessionStatus;
+                    currentRoundNumber = Number(newContainer.getAttribute('data-round-number') || currentRoundNumber);
+                    currentRoundVoteCount = Number(newContainer.getAttribute('data-vote-count') || 0);
+                    curContainer.setAttribute('data-session-status', currentSessionStatus);
+                    curContainer.setAttribute('data-round-number', String(currentRoundNumber));
+                    curContainer.setAttribute('data-vote-count', String(currentRoundVoteCount));
+
+                    // 若仍在同一回合，還原使用者剛才輸入中的欄位值
+                    if (currentRoundNumber === prevRound) {
+                        if (currentSessionStatus === 'voting') {
+                            const nextCardInput = document.getElementById('inputCardLabel');
+                            const nextCardText = document.getElementById('selectedCardText');
+                            if (savedCardVal && nextCardInput) {
+                                nextCardInput.value = savedCardVal;
+                                if (nextCardText) nextCardText.textContent = savedCardVal;
+                                document.querySelectorAll('.deck-card-btn').forEach(function (b) {
+                                    const bTitle = b.getAttribute('title') || '';
+                                    const isMatch = bTitle.indexOf(savedCardVal + '：') === 0;
+                                    b.classList.toggle('selected', isMatch);
+                                });
+                            }
+                            const nextQuickCb = document.getElementById('cbQuickSingleClickCast');
+                            if (hasSavedQuickCb && nextQuickCb) {
+                                nextQuickCb.checked = savedQuickChecked;
+                            }
+                            const nextCommentEl = document.getElementById('inputVoteComment');
+                            if (savedComment && nextCommentEl && !nextCommentEl.value) {
+                                nextCommentEl.value = savedComment;
+                            }
+                        }
+                        const nextRoundNoteEl = document.getElementById('inputRoundDiscussionNote');
+                        if (savedRoundNote && nextRoundNoteEl && !nextRoundNoteEl.value) {
+                            nextRoundNoteEl.value = savedRoundNote;
+                        }
+                        const nextFinalPtEl = document.getElementById('inputFinalStoryPoint');
+                        if (savedFinalPt && nextFinalPtEl) {
+                            nextFinalPtEl.value = savedFinalPt;
+                        }
+                        const nextFinalNoteEl = document.getElementById('inputFinalDecisionNote');
+                        if (savedFinalNote && nextFinalNoteEl && !nextFinalNoteEl.value) {
+                            nextFinalNoteEl.value = savedFinalNote;
+                        }
+                    }
+
+                    initUniversalTableSortAndLock();
+                    initRoundCountdown();
+                    window.scrollTo(0, savedScrollY);
+
+                    if (btnEl) {
+                        btnEl.disabled = false;
+                        btnEl.innerHTML = '✅ 已更新';
+                        setTimeout(function () {
+                            if (btnEl) btnEl.innerHTML = btnEl.getAttribute('data-orig-label') || '🔄 重新整理本頁';
+                        }, 1000);
+                    }
+                    isAutoReloading = false;
+                })
+                .catch(function () {
+                    if (btnEl) {
+                        btnEl.disabled = false;
+                        btnEl.innerHTML = btnEl.getAttribute('data-orig-label') || '🔄 重新整理本頁';
+                    }
+                    isAutoReloading = false;
+                });
+        }
+
+        function triggerStandaloneAutoReload(reasonMsg) {
+            softRefreshStandaloneSessionDom(reasonMsg, null);
         }
 
         function refreshStandaloneSessionNow(btnEl) {
             if (btnEl) {
+                if (!btnEl.getAttribute('data-orig-label')) {
+                    btnEl.setAttribute('data-orig-label', btnEl.innerHTML);
+                }
                 btnEl.disabled = true;
-                btnEl.textContent = '⏳ 重新整理中...';
+                btnEl.textContent = '⏳ 更新中...';
             }
-            triggerStandaloneAutoReload('🔄 已重新整理本盲投 Session 最新桌面狀態！');
+            softRefreshStandaloneSessionDom('', btnEl);
         }
 
         function escapeHtmlClient(s) {
@@ -16229,27 +16508,30 @@ public class portalController : Controller
                     seatCard.classList.toggle('seat-not-entered', !isEntered);
                 }
                 if (seatBadge) {
-                    seatBadge.className = isEntered ? 'seat-presence-pill entered' : 'seat-presence-pill not-entered';
-                    seatBadge.textContent = isEntered
+                    const nextBadgeCls = isEntered ? 'seat-presence-pill entered' : 'seat-presence-pill not-entered';
+                    const nextBadgeTxt = isEntered
                         ? ('🟢 已進場' + (enteredAtText ? ' (' + enteredAtText + ')' : ''))
                         : '⏳ 尚未進場';
+                    if (seatBadge.className !== nextBadgeCls) seatBadge.className = nextBadgeCls;
+                    if (seatBadge.textContent !== nextBadgeTxt) seatBadge.textContent = nextBadgeTxt;
                 }
                 if (!hasVoted && currentSessionStatus === 'voting') {
                     if (seatBox && seatBox.classList.contains('playing-card-empty')) {
                         if (isEntered) {
-                            seatBox.textContent = '💭 思考中...';
+                            if (seatBox.textContent !== '💭 思考中...') seatBox.textContent = '💭 思考中...';
                             seatBox.style.borderColor = '#86efac';
                             seatBox.style.color = '#dcfce7';
                             seatBox.style.background = 'rgba(22,163,74,0.18)';
                         } else {
-                            seatBox.textContent = '🚪 待進場';
+                            if (seatBox.textContent !== '🚪 待進場') seatBox.textContent = '🚪 待進場';
                             seatBox.style.borderColor = '';
                             seatBox.style.color = '';
                             seatBox.style.background = '';
                         }
                     }
                     if (seatVoteStatus) {
-                        seatVoteStatus.textContent = isEntered ? '🟢 已進場・尚未出牌' : '⏳ 尚未進場・未出牌';
+                        const nextVoteTxt = isEntered ? '🟢 已進場・尚未出牌' : '⏳ 尚未進場・未出牌';
+                        if (seatVoteStatus.textContent !== nextVoteTxt) seatVoteStatus.textContent = nextVoteTxt;
                         seatVoteStatus.style.color = isEntered ? '#bbf7d0' : '#cbd5e1';
                         seatVoteStatus.style.fontWeight = isEntered ? '700' : '400';
                     }
@@ -16259,23 +16541,25 @@ public class portalController : Controller
             const totalVoterCnt = Number(data.participantCount || expectedVoterCount || parts.length);
             const headerEnteredEl = document.getElementById('headerEnteredCountVal');
             if (headerEnteredEl) {
-                headerEnteredEl.textContent = enteredList.length + ' / ' + totalVoterCnt;
+                const nextHeaderTxt = enteredList.length + ' / ' + totalVoterCnt;
+                if (headerEnteredEl.textContent !== nextHeaderTxt) headerEnteredEl.textContent = nextHeaderTxt;
             }
             const barEnteredCntEl = document.getElementById('presenceBarEnteredCount');
             if (barEnteredCntEl) {
-                barEnteredCntEl.textContent = String(enteredList.length);
+                const nextBarEntTxt = String(enteredList.length);
+                if (barEnteredCntEl.textContent !== nextBarEntTxt) barEnteredCntEl.textContent = nextBarEntTxt;
             }
             const barWaitingCntEl = document.getElementById('presenceBarNotEnteredCount');
             if (barWaitingCntEl) {
-                barWaitingCntEl.textContent = String(waitingList.length);
+                const nextBarWaitTxt = String(waitingList.length);
+                if (barWaitingCntEl.textContent !== nextBarWaitTxt) barWaitingCntEl.textContent = nextBarWaitTxt;
             }
 
             const enteredRosterEl = document.getElementById('enteredRosterList');
             if (enteredRosterEl) {
-                if (enteredList.length === 0) {
-                    enteredRosterEl.innerHTML = '<span style=""font-size:12.5px;color:#fde68a;"">尚無人進場</span>';
-                } else {
-                    enteredRosterEl.innerHTML = enteredList.map(function (info) {
+                const nextEnteredHtml = enteredList.length === 0
+                    ? '<span style=""font-size:12.5px;color:#fde68a;"">尚無人進場</span>'
+                    : enteredList.map(function (info) {
                         const selfTag = info.isSelf ? ' (您)' : '';
                         const timeTag = info.enteredAtText ? (' · ' + escapeHtmlClient(info.enteredAtText) + ' 進場') : '';
                         const voteTag = info.hasVoted
@@ -16284,18 +16568,21 @@ public class portalController : Controller
                         return '<span class=""presence-chip-entered"">🟢 ' + escapeHtmlClient(info.name) + selfTag +
                             ' <span style=""font-weight:600;color:#166534;font-size:11px;"">(' + escapeHtmlClient(info.dept) + timeTag + ')</span> ' + voteTag + '</span>';
                     }).join('');
+                if (enteredRosterEl.innerHTML !== nextEnteredHtml) {
+                    enteredRosterEl.innerHTML = nextEnteredHtml;
                 }
             }
 
             const waitingRosterEl = document.getElementById('notEnteredRosterList');
             if (waitingRosterEl) {
-                if (waitingList.length === 0) {
-                    waitingRosterEl.innerHTML = '<span style=""display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;background:rgba(22,163,74,0.35);color:#bbf7d0;border:1px solid #4ade80;font-size:12px;font-weight:800;"">🎉 全員皆已進場到齊！</span>';
-                } else {
-                    waitingRosterEl.innerHTML = waitingList.map(function (w) {
+                const nextWaitingHtml = waitingList.length === 0
+                    ? '<span style=""display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;background:rgba(22,163,74,0.35);color:#bbf7d0;border:1px solid #4ade80;font-size:12px;font-weight:800;"">🎉 全員皆已進場到齊！</span>'
+                    : waitingList.map(function (w) {
                         return '<span class=""presence-chip-waiting"">⏳ ' + escapeHtmlClient(w.name) +
                             ' <span style=""font-size:11px;opacity:0.85;"">(' + escapeHtmlClient(w.dept) + '・尚未進場)</span></span>';
                     }).join('');
+                if (waitingRosterEl.innerHTML !== nextWaitingHtml) {
+                    waitingRosterEl.innerHTML = nextWaitingHtml;
                 }
             }
         }

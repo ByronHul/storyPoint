@@ -662,6 +662,15 @@
     3. **後端控制器與預存程序 (`portalController.cs`、`storyPoint.spCreateVotingSession`、`storyPoint.spControlVotingSession`)**：
         * 針對已定案基本工項發起「重啟新一輪」或「全部重新開始」時，自動載入該基本工項之原盲投議程（或為種子基本工項自動建立盲投議程），將基本工項狀態重設為 `estimationStatus = 'voting'`、`standardStoryPoint = null`，並將重投前之標準點數完整記錄於 `storyPoint.tbPointHistory` 稽核歷程表。
 
+### 2.29 Refresh 與背景自動輪詢時畫面不閃爍規範 (Non-Flickering Seamless Refresh & Live Polling)
+* **消除背景輪詢簽章不一致導致的循環重載**：
+    1. 大廳前端 `currentSessionListSignature` 與後端 `/voting/liveStatus` 之 `sessionListSignature` 必須採用完全一致的欄位結構 (`{votingSessionPk}:{sessionStatus}:{currentRoundNumber}:{currentRoundVoteCount}:{participantCount}:{isViewerParticipant}`)，進場人數 (`enteredCount`) 異動由前端 DOM 即時差異更新 (`updateLobbySessionPresenceDisplay`) 處理，不得觸發整頁重新載入。
+    2. 後端 `/voting/liveStatus` 僅在呼叫端帶有獨立盲投網頁 `tabInstanceId` 時，才將呼叫者本身視為已在該獨立網頁進場，避免使用者停留於大廳 (`/?tab=voting`) 輪詢時誤判進場人數造成畫面數值來回跳動。
+* **無閃爍平滑局部更新 (Soft Refresh via `fetch` + `DOMParser`)**：
+    1. 無論使用者手動點擊「`🔄 重新整理` / `🔄 重新整理議程清單` / `🔄 重新整理本頁`」按鈕，或由 SignalR 推播與背景輪詢觸發更新，大廳 (`softRefreshLobbyDom`) 與獨立盲投 Session 網頁 (`softRefreshStandaloneSessionDom`) 一律透過背景 `fetch` 搭配 `DOMParser` 原地更新 DOM 區塊，不執行整頁跳轉 (`window.location.href`)，徹底消除瀏覽器白屏與畫面閃爍。
+    2. 局部更新時完整保留使用者當前的畫面捲軸位置 (`window.scrollY`)、左側邊欄寬度與清單收合狀態、各資料夾 (`待參與` / `參與中`) 與議程卡片詳情的展開/收合狀態，以及獨立盲投網頁中尚未送出的選牌與出牌理由輸入內容。
+    3. 即時進場名單與座位狀態更新 (`updateLobbySessionPresenceDisplay`、`updateStandalonePresenceDom`) 僅在實際內容有變更時才寫入 `innerHTML` / `textContent`，避免週期性無意義的 DOM 重繪。
+
 ---
 
 ## 3. 系統架構與技術開發規範
