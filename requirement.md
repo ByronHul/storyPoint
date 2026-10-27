@@ -497,6 +497,19 @@
         * `ps/manageWorkItem.ps1` 支援 `-mainFeatureSummary`、`-estimationTrait`、`-timeAndDeliverableTrait` 及 `-keyword` 參數。
         * `ps/ui/tabWorkItemType.ps1` 上半部直接呈現「🗂️ 一、預設工項類型增、刪、修、查管理與主要特徵一覽表 (`tbWorkItemKind`)」，支援完整增刪修查與表列主要特徵。
 
+### 2.25 各盲投 Session 參與者可退出「待參與」與「參與中」的 Session，退出後該 Session 就不再參與該工項的投票（`storyPoint.spWithdrawVotingSession`）
+* **核心需求**：各盲投 Session 參與者（不論一般參與者或管理員/主持人）皆能隨時退出位於「**📂 待參與**」與「**🟢 參與中**」的盲投 Session，退出後該參與者與該 Session 就不再參與該工項（或工項代表類型）的投票：
+    1. **預存程序 `storyPoint.spWithdrawVotingSession` 與 `storyPoint.spGetVotingProcessHistory`**：
+        * 參與者執行退出時，將其從該盲投議程之受邀參與者名單 (`storyPoint.tbVotingSessionParticipant`) 移除（若原議程為全體員工模式 `restrictToParticipant = 0`，自動先將其他在職同仁寫入名單並設為 `restrictToParticipant = 1`），並清除該參與者於本場議程已投出的選票紀錄 (`storyPoint.tbVoteRecord`)，重新計算各回合出牌人數與平均/最低/最高點數。
+        * `storyPoint.spGetVotingProcessHistory` 輸出 `isViewerParticipant` 欄位；一旦參與者退出該 Session，該 Session 立即從其「**📂 待參與**」與「**🟢 參與中**」清單中徹底移除，不再參與該工項的投票。
+        * **剩餘參與者自動翻牌檢核**：若退出後該 Session 仍有其他剩餘參與者 (`@remainingParticipantCount > 0`)，且剩餘參與者皆已完成出牌，系統立即自動觸發翻牌揭曉 (`sessionStatus = 'revealed'`)。
+        * **無剩餘參與者自動結束清理**：若該 Session 所有參與者皆已退出 (`@remainingParticipantCount <= 0`)，系統自動結束並移除該筆盲投 Session，同步復原關聯之工項 (`storyPoint.tbWorkItem.estimationStatus`) 或工項代表類型 (`storyPoint.tbWorkItemType.estimationStatus`) 狀態，使該 Session 不再參與該工項的投票。
+    2. **全方位操作入口（涵蓋「📂 待參與」、「🟢 參與中」及獨立盲投網頁）**：
+        * **投票議程清單側邊欄 (`#votingSidebarCard`) 與盲投大廳 (`#pane-voting`)**：於「**📂 待參與**」與「**🟢 參與中**」的每一張 Session 卡片上，均直接提供醒目的「**`🚪 退出 Session (不再參與投票)`**」按鈕（卡片標題列亦提供精簡「`🚪 退出`」按鈕）；同時將原本僅釋放網頁分頁鎖定的按鈕明確標示為「`↩️ 暫離移回待參與`」。
+        * **獨立盲投 Session 網頁 (`/voting/session`)**：頂部導覽列提供「**`🚪 退出此 Session (不再參與本工項投票)`**」按鈕，支援在獨立網頁內直接退出並透過 `BroadcastChannel` 同步關閉或導回大廳。
+        * **表格滑鼠右鍵選單 (`#spRowContextMenu`)**：對進行中盲投議程列按右鍵提供「`🚪 退出此盲投 Session（不再參與該工項投票）`」。
+        * **PowerShell Console (`ps/manageVotingSession.ps1`) 與多 Tab GUI (`ps/ui/tabVoting.ps1`)**：新增 `-actionType 'withdrawSession'` 與 GUI「`🚪 退出 Session`」按鈕。
+
 ---
 
 ## 3. 系統架構與技術開發規範

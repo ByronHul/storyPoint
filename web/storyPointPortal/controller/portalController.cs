@@ -503,6 +503,8 @@ public class portalController : Controller
             DataTable cardDeckTable = dashDs.Tables.Count > 6 ? dashDs.Tables[6] : new DataTable();
             DataTable logTable = dashDs.Tables.Count > 7 ? dashDs.Tables[7] : _sqlService.getFallbackLogTable();
             DataTable kindTable = dashDs.Tables.Count > 8 ? dashDs.Tables[8] : new DataTable();
+            DataTable iconTable = dashDs.Tables.Count > 9 ? dashDs.Tables[9] : new DataTable();
+            ensureCustomIconsRestoredToDisk(iconTable);
 
             // 載入投票議程與過程資料（依角色自動隔離：一般員工僅能看到自己的投票出牌紀錄，不可看到其他人的出牌與分數）
             var voteDs = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spGetVotingProcessHistory", new Dictionary<string, object?>
@@ -536,7 +538,7 @@ public class portalController : Controller
 
             string html = buildPortalHtml(
                 currentTab, activeSessionPk, isAdmin, msg, err,
-                deptTable, empTable, typeTable, itemTable, assignTable, historyTable, cardDeckTable, logTable, kindTable,
+                deptTable, empTable, typeTable, itemTable, assignTable, historyTable, cardDeckTable, logTable, kindTable, iconTable,
                 sessionTable, roundTable, voteRecordTable, participantTable
             );
 
@@ -1293,11 +1295,16 @@ public class portalController : Controller
                 int pc = r.Table.Columns.Contains("participantCount") && r["participantCount"] != DBNull.Value
                     ? Convert.ToInt32(r["participantCount"])
                     : 0;
+                bool isViewerPart = !r.Table.Columns.Contains("isViewerParticipant")
+                    || (r["isViewerParticipant"] != DBNull.Value && Convert.ToBoolean(r["isViewerParticipant"]));
 
-                allSessionPks.Add(pk);
-                if (pk > newestPk) newestPk = pk;
+                if (st == "finalized" || isViewerPart)
+                {
+                    allSessionPks.Add(pk);
+                    if (pk > newestPk) newestPk = pk;
+                }
 
-                if (st == "voting" || st == "revealed")
+                if ((st == "voting" || st == "revealed") && isViewerPart)
                 {
                     ongoingSessionPks.Add(pk);
                     if (myActiveOpenSessionPks.Contains(pk))
@@ -1312,7 +1319,7 @@ public class portalController : Controller
                     if (st == "voting" && pk > latestVotingPk) latestVotingPk = pk;
                 }
 
-                sigParts.Add($"{pk}:{st}:{rn}:{vc}:{pc}");
+                sigParts.Add($"{pk}:{st}:{rn}:{vc}:{pc}:{(isViewerPart ? 1 : 0)}");
 
                 if (sessionPk.HasValue && sessionPk.Value > 0 && pk == sessionPk.Value)
                 {
@@ -1422,7 +1429,7 @@ public class portalController : Controller
 
         if (redirectLobby)
         {
-            return Redirect("/?tab=voting&msg=" + Uri.EscapeDataString($"您已結束盲投議程 (#{targetSessionPk}) 的「參與中」獨立網頁狀態，該議程已移回「📂 待參與」清單。"));
+            return Redirect("/?tab=voting&msg=" + Uri.EscapeDataString($"您已暫離盲投議程 (#{targetSessionPk}) 的「參與中」獨立網頁狀態，該議程已移回「📂 待參與」清單。"));
         }
 
         return Json(new
@@ -1431,6 +1438,148 @@ public class portalController : Controller
             votingSessionPk = targetSessionPk,
             myActiveOpenSessionPks = sqlDataService.getActiveLockedSessionPksForEmployee(empPk)
         });
+    }
+
+    /// <summary>
+    /// 參與者退出「📂 待參與」或「🟢 參與中」之盲投 Session (/voting/withdraw 或 /voting/session/withdraw)：
+    /// 退出後即自該 Session 參與者名單移除並清除已出牌紀錄，該參與者與該 Session 對其不再參與該工項的投票；
+    /// 若該 Session 已無任何剩餘參與者，則自動結束並移除該 Session，使該 Session 不再參與該工項的投票。
+    /// </summary>
+    [HttpPost("voting/withdraw")]
+    [HttpPost("voting/session/withdraw")]
+    [HttpGet("voting/session/withdraw")]
+    [Authorize]
+    public async Task<IActionResult> withdrawVotingSession(
+        [FromQuery] int? sessionPk = null,
+        [FromForm] int? votingSessionPk = null,
+        [FromForm] int? employeePk = null,
+        [FromQuery] string? tabInstanceId = null,
+        [FromForm] string? formTabInstanceId = null,
+        [FromForm] string? returnTab = "voting",
+        [FromQuery] bool ajax = false)
+    {
+        int currentEmpPk = getCurrentEmployeePk();
+        string currentAcc = getCurrentLoginAccount();
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "voting" : returnTab.Trim();
+
+        int targetSessionPk = votingSessionPk ?? sessionPk ?? 0;
+        int targetEmpPk = (employeePk.HasValue && employeePk.Value > 0 && isAdminUser())
+            ? employeePk.Value
+            : currentEmpPk;
+        string? resolvedTabId = !string.IsNullOrWhiteSpace(tabInstanceId) ? tabInstanceId : formTabInstanceId;
+
+        if (Request.HasFormContentType)
+        {
+            if (targetSessionPk <= 0 &&
+                int.TryParse(Request.Form["sessionPk"].FirstOrDefault() ?? Request.Form["votingSessionPk"].FirstOrDefault(), out int formSpk) &&
+                formSpk > 0)
+            {
+                targetSessionPk = formSpk;
+            }
+            if (string.IsNullOrWhiteSpace(resolvedTabId))
+            {
+                resolvedTabId = Request.Form["tabInstanceId"].FirstOrDefault() ?? Request.Form["formTabInstanceId"].FirstOrDefault();
+            }
+            if (Request.Form["ajax"].FirstOrDefault() == "true" || Request.Form["ajax"].FirstOrDefault() == "1")
+            {
+                ajax = true;
+            }
+        }
+
+        bool wantsJson = ajax || (Request.Headers["Accept"].ToString().IndexOf("application/json", StringComparison.OrdinalIgnoreCase) >= 0);
+
+        if (targetSessionPk <= 0 || targetEmpPk <= 0)
+        {
+            string badMsg = "請指定要退出的盲投 Session。";
+            if (wantsJson)
+            {
+                return BadRequest(new { success = false, message = badMsg });
+            }
+            return Redirect($"/?tab={Uri.EscapeDataString(targetTab)}&err=" + Uri.EscapeDataString(badMsg));
+        }
+
+        try
+        {
+            // 先釋放該名員工在此盲投 Session 的獨立網頁參與鎖定 (若處於「🟢 參與中」則一併解除)
+            sqlDataService.releaseVotingSessionLease(targetEmpPk, targetSessionPk, null);
+
+            var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spWithdrawVotingSession", new Dictionary<string, object?>
+            {
+                ["votingSessionPk"] = targetSessionPk,
+                ["employeePk"] = targetEmpPk,
+                ["operatorAccount"] = currentAcc
+            });
+
+            string sCode = "";
+            string sTitle = "";
+            string empName = getCurrentEmployeeName();
+            int remainingCnt = 0;
+            bool isAutoRevealed = false;
+            bool isSessionClosed = false;
+            string spResultMsg = "";
+
+            if (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0)
+            {
+                DataRow r0 = ds.Tables[0].Rows[0];
+                if (r0.Table.Columns.Contains("sessionCode") && r0["sessionCode"] != DBNull.Value)
+                    sCode = r0["sessionCode"]?.ToString() ?? "";
+                if (r0.Table.Columns.Contains("sessionTitle") && r0["sessionTitle"] != DBNull.Value)
+                    sTitle = r0["sessionTitle"]?.ToString() ?? "";
+                if (r0.Table.Columns.Contains("withdrawnEmployeeName") && r0["withdrawnEmployeeName"] != DBNull.Value)
+                    empName = r0["withdrawnEmployeeName"]?.ToString() ?? empName;
+                if (r0.Table.Columns.Contains("remainingParticipantCount") && r0["remainingParticipantCount"] != DBNull.Value)
+                    remainingCnt = Convert.ToInt32(r0["remainingParticipantCount"]);
+                if (r0.Table.Columns.Contains("isAutoRevealed") && r0["isAutoRevealed"] != DBNull.Value)
+                    isAutoRevealed = Convert.ToBoolean(r0["isAutoRevealed"]);
+                if (r0.Table.Columns.Contains("isSessionClosed") && r0["isSessionClosed"] != DBNull.Value)
+                    isSessionClosed = Convert.ToBoolean(r0["isSessionClosed"]);
+                if (r0.Table.Columns.Contains("resultMessage") && r0["resultMessage"] != DBNull.Value)
+                    spResultMsg = r0["resultMessage"]?.ToString() ?? "";
+            }
+
+            string msgText = !string.IsNullOrWhiteSpace(spResultMsg)
+                ? $"🚪 {spResultMsg}"
+                : (isSessionClosed
+                    ? $"🚪 已退出盲投 Session「{sCode} - {sTitle}」；因該 Session 已無剩餘參與者，該 Session 已自動結束，不再參與該工項的投票！"
+                    : $"🚪 已成功退出盲投 Session「{sCode} - {sTitle}」，不再參與該工項於此 Session 的投票（剩餘參與者：{remainingCnt} 人）！");
+
+            await _hubContext.Clients.All.SendAsync("onVotingSessionUpdated", new
+            {
+                votingSessionPk = targetSessionPk,
+                eventName = isSessionClosed ? "sessionDeleted" : (isAutoRevealed ? "reveal" : "participantWithdrawn"),
+                sessionStatus = isSessionClosed ? "closed" : (isAutoRevealed ? "revealed" : null),
+                messageText = msgText,
+                timestamp = DateTime.Now.ToString("HH:mm:ss")
+            });
+
+            if (wantsJson)
+            {
+                return Json(new
+                {
+                    success = true,
+                    votingSessionPk = targetSessionPk,
+                    sessionCode = sCode,
+                    sessionTitle = sTitle,
+                    remainingParticipantCount = remainingCnt,
+                    isAutoRevealed = isAutoRevealed,
+                    isSessionClosed = isSessionClosed,
+                    message = msgText,
+                    myActiveOpenSessionPks = sqlDataService.getActiveLockedSessionPksForEmployee(targetEmpPk)
+                });
+            }
+
+            return Redirect($"/?tab={Uri.EscapeDataString(targetTab)}&msg=" + Uri.EscapeDataString(msgText));
+        }
+        catch (Exception ex)
+        {
+            await logPortalExceptionAsync("portalController.withdrawVotingSession", ex);
+            string errMsg = "退出盲投 Session 失敗（已記錄至系統 Log）：" + ex.Message;
+            if (wantsJson)
+            {
+                return StatusCode(500, new { success = false, message = errMsg });
+            }
+            return Redirect($"/?tab={Uri.EscapeDataString(targetTab)}&err=" + Uri.EscapeDataString(errMsg));
+        }
     }
 
     /// <summary>
@@ -1491,7 +1640,16 @@ public class portalController : Controller
 
             if (targetSessionRow == null)
             {
-                return Redirect("/?tab=voting&err=" + Uri.EscapeDataString($"找不到指定的盲投議程 (#{targetSessionPk})，或您不屬於本場議程的受邀參與者名單。"));
+                return Redirect("/?tab=voting&err=" + Uri.EscapeDataString($"找不到指定的盲投議程 (#{targetSessionPk})，或您已退出本場議程、不再參與該工項的投票。"));
+            }
+
+            string targetSessionStatus = targetSessionRow["sessionStatus"]?.ToString() ?? "voting";
+            bool isViewerParticipant = !targetSessionRow.Table.Columns.Contains("isViewerParticipant")
+                || (targetSessionRow["isViewerParticipant"] != DBNull.Value && Convert.ToBoolean(targetSessionRow["isViewerParticipant"]));
+            if (targetSessionStatus != "finalized" && !isViewerParticipant)
+            {
+                sqlDataService.releaseVotingSessionLease(currentEmpPk, targetSessionPk, null);
+                return Redirect("/?tab=voting&msg=" + Uri.EscapeDataString($"您已退出盲投 Session「{targetSessionRow["sessionCode"]} - {targetSessionRow["sessionTitle"]}」，不再參與該工項的投票。"));
             }
 
             // 檢查是否有同分頁 F5 重新整理暫存 Cookie
@@ -1566,6 +1724,328 @@ public class portalController : Controller
     // 4. 工項類型 (tbWorkItemKind)、工項代表類型 (tbWorkItemType) 與實際工項 (tbWorkItem) 增刪修端點
     // =========================================================================
 
+    private static bool isImageIconValue(string? iconVal)
+    {
+        if (string.IsNullOrWhiteSpace(iconVal)) return false;
+        string v = iconVal.Trim();
+        return v.StartsWith("/", StringComparison.OrdinalIgnoreCase)
+            || v.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || v.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            || v.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string renderIconDisplayHtml(string? iconVal, int sizePx = 18)
+    {
+        string v = string.IsNullOrWhiteSpace(iconVal) ? "📌" : iconVal.Trim();
+        if (isImageIconValue(v))
+        {
+            return $"<img src='{h(v)}' alt='icon' class='sp-kind-icon-img' style='width:{sizePx}px;height:{sizePx}px;object-fit:contain;vertical-align:-3px;margin-right:3px;border-radius:3px;display:inline-block;' />";
+        }
+        return $"<span class='sp-kind-icon-emoji' style='font-size:{Math.Max(13, sizePx - 2)}px;line-height:1;vertical-align:baseline;margin-right:2px;'>{h(v)}</span>";
+    }
+
+    private static string formatOptionIconPrefix(string? iconVal)
+    {
+        string v = string.IsNullOrWhiteSpace(iconVal) ? "📌" : iconVal.Trim();
+        return isImageIconValue(v) ? "🖼️" : h(v);
+    }
+
+    private static List<string> getCandidateCustomIconDirs()
+    {
+        var dirs = new List<string>();
+        string cwdDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "icons", "custom");
+        dirs.Add(cwdDir);
+        string baseDir = Path.Combine(AppContext.BaseDirectory, "wwwroot", "icons", "custom");
+        if (!dirs.Contains(baseDir, StringComparer.OrdinalIgnoreCase))
+        {
+            dirs.Add(baseDir);
+        }
+        string workspacePortalRoot = @"c:\temp\storyPoint\web\storyPointPortal\wwwroot\icons\custom";
+        if (Directory.Exists(@"c:\temp\storyPoint\web\storyPointPortal\wwwroot") &&
+            !dirs.Contains(workspacePortalRoot, StringComparer.OrdinalIgnoreCase))
+        {
+            dirs.Add(workspacePortalRoot);
+        }
+        return dirs;
+    }
+
+    private static void ensureCustomIconsRestoredToDisk(DataTable? iconTable)
+    {
+        if (iconTable == null || iconTable.Rows.Count == 0) return;
+        try
+        {
+            var targetDirs = getCandidateCustomIconDirs();
+            foreach (string dir in targetDirs)
+            {
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            }
+
+            foreach (DataRow row in iconTable.Rows)
+            {
+                string iconVal = row.Table.Columns.Contains("iconValue") ? (row["iconValue"]?.ToString() ?? "") : "";
+                string base64 = row.Table.Columns.Contains("iconDataBase64") && row["iconDataBase64"] != DBNull.Value
+                    ? (row["iconDataBase64"]?.ToString() ?? "")
+                    : "";
+                if (!iconVal.StartsWith("/icons/custom/", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(base64))
+                {
+                    continue;
+                }
+                string fileName = Path.GetFileName(iconVal);
+                if (string.IsNullOrWhiteSpace(fileName)) continue;
+
+                byte[]? rawBytes = null;
+                foreach (string dir in targetDirs)
+                {
+                    string filePath = Path.Combine(dir, fileName);
+                    if (!System.IO.File.Exists(filePath))
+                    {
+                        rawBytes ??= Convert.FromBase64String(base64);
+                        System.IO.File.WriteAllBytes(filePath, rawBytes);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // 忽略磁碟同步非致命錯誤，並由動態端點備援提供圖片
+        }
+    }
+
+    private async Task<(string iconValue, string iconCode, string iconName, int iconPk)> saveUploadedIconFileInternalAsync(
+        IFormFile iconFile,
+        string? customIconName = null,
+        string? iconCategory = "自行上傳圖示")
+    {
+        if (iconFile == null || iconFile.Length == 0)
+        {
+            throw new InvalidOperationException("請選擇要上傳的圖示檔案。");
+        }
+        if (iconFile.Length > 2 * 1024 * 1024)
+        {
+            throw new InvalidOperationException("上傳的代表圖示檔案大小不可超過 2 MB。");
+        }
+
+        string origName = Path.GetFileNameWithoutExtension(iconFile.FileName ?? "icon");
+        string ext = (Path.GetExtension(iconFile.FileName ?? ".png") ?? ".png").ToLowerInvariant();
+        var allowedExts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [".png"] = "image/png",
+            [".svg"] = "image/svg+xml",
+            [".jpg"] = "image/jpeg",
+            [".jpeg"] = "image/jpeg",
+            [".webp"] = "image/webp",
+            [".ico"] = "image/x-icon",
+            [".gif"] = "image/gif"
+        };
+        if (!allowedExts.TryGetValue(ext, out string? mimeType))
+        {
+            throw new InvalidOperationException("僅支援上傳 PNG、SVG、JPG、WEBP、ICO 或 GIF 格式的圖示檔案。");
+        }
+
+        var safeChars = origName.Where(c => char.IsLetterOrDigit(c) || c == '-' || c == '_').Take(24).ToArray();
+        string safeStem = safeChars.Length > 0 ? new string(safeChars) : "icon";
+        string stamp = DateTime.Now.ToString("yyyyMMddHHmmssfff");
+        string uniqueFileName = $"custom_{stamp}_{safeStem}{ext}";
+        string iconValue = $"/icons/custom/{uniqueFileName}";
+        string iconCode = $"custom_{stamp}_{safeStem}";
+        if (iconCode.Length > 60) iconCode = iconCode[..60];
+
+        string cleanDisplayName = string.IsNullOrWhiteSpace(customIconName)
+            ? (string.IsNullOrWhiteSpace(origName) ? "自訂上傳圖示" : origName.Trim())
+            : customIconName.Trim();
+
+        byte[] fileBytes;
+        using (var ms = new MemoryStream())
+        {
+            await iconFile.CopyToAsync(ms);
+            fileBytes = ms.ToArray();
+        }
+        string base64Data = Convert.ToBase64String(fileBytes);
+
+        foreach (string dir in getCandidateCustomIconDirs())
+        {
+            try
+            {
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                await System.IO.File.WriteAllBytesAsync(Path.Combine(dir, uniqueFileName), fileBytes);
+            }
+            catch
+            {
+                // 確保至少主要目錄或資料庫寫入成功
+            }
+        }
+
+        var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpsertWorkItemIcon", new Dictionary<string, object?>
+        {
+            ["iconPk"] = null,
+            ["iconCode"] = iconCode,
+            ["iconName"] = cleanDisplayName,
+            ["iconCategory"] = string.IsNullOrWhiteSpace(iconCategory) ? "自行上傳圖示" : iconCategory.Trim(),
+            ["iconKind"] = "customUpload",
+            ["iconValue"] = iconValue,
+            ["mimeType"] = mimeType,
+            ["iconDataBase64"] = base64Data,
+            ["sortOrder"] = 5,
+            ["isCustomUpload"] = true,
+            ["operatorAccount"] = getCurrentLoginAccount()
+        });
+
+        int savedPk = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0 && ds.Tables[0].Rows[0]["iconPk"] != DBNull.Value)
+            ? Convert.ToInt32(ds.Tables[0].Rows[0]["iconPk"])
+            : 0;
+        return (iconValue, iconCode, cleanDisplayName, savedPk);
+    }
+
+    [HttpGet("icons/custom/{fileName}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> serveCustomIconFallback(string fileName)
+    {
+        try
+        {
+            string cleanFile = Path.GetFileName(fileName ?? "");
+            if (string.IsNullOrWhiteSpace(cleanFile)) return NotFound();
+
+            foreach (string dir in getCandidateCustomIconDirs())
+            {
+                string diskPath = Path.Combine(dir, cleanFile);
+                if (System.IO.File.Exists(diskPath))
+                {
+                    string ext = Path.GetExtension(cleanFile).ToLowerInvariant();
+                    string contentType = ext switch
+                    {
+                        ".svg" => "image/svg+xml",
+                        ".jpg" or ".jpeg" => "image/jpeg",
+                        ".webp" => "image/webp",
+                        ".ico" => "image/x-icon",
+                        ".gif" => "image/gif",
+                        _ => "image/png"
+                    };
+                    byte[] bytes = await System.IO.File.ReadAllBytesAsync(diskPath);
+                    return File(bytes, contentType);
+                }
+            }
+
+            var dashDs = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spGetStoryPointDashboard");
+            if (dashDs.Tables.Count > 9)
+            {
+                string targetVal = $"/icons/custom/{cleanFile}";
+                foreach (DataRow r in dashDs.Tables[9].Rows)
+                {
+                    string v = r["iconValue"]?.ToString() ?? "";
+                    string b64 = r.Table.Columns.Contains("iconDataBase64") && r["iconDataBase64"] != DBNull.Value ? (r["iconDataBase64"]?.ToString() ?? "") : "";
+                    if (string.Equals(v, targetVal, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(b64))
+                    {
+                        byte[] raw = Convert.FromBase64String(b64);
+                        string mime = r["mimeType"]?.ToString() ?? "image/png";
+                        return File(raw, mime);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Fallback
+        }
+        return NotFound();
+    }
+
+    [HttpPost("workitem/icon/upload")]
+    [Authorize]
+    public async Task<IActionResult> uploadWorkItemIcon(
+        IFormFile? iconFile,
+        [FromForm] string? iconName = null,
+        [FromForm] string? iconCategory = "自行上傳圖示",
+        [FromForm] string? returnTab = "types")
+    {
+        bool wantsJson = Request.Headers.Accept.ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(Request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "types" : returnTab.Trim();
+
+        if (!isAdminUser())
+        {
+            if (wantsJson) return Json(new { ok = false, message = "僅管理者可上傳新增代表圖示。" });
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("僅管理者可上傳新增代表圖示。"));
+        }
+
+        try
+        {
+            if (iconFile == null || iconFile.Length == 0)
+            {
+                if (wantsJson) return Json(new { ok = false, message = "請先選擇要上傳的圖示檔案 (支援 PNG / SVG / JPG / WEBP / ICO / GIF)。" });
+                return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("請先選擇要上傳的圖示檔案。"));
+            }
+
+            var saved = await saveUploadedIconFileInternalAsync(iconFile, iconName, iconCategory);
+            string okMsg = $"✅ 已成功上傳並新增代表圖示「{saved.iconName}」！";
+            if (wantsJson)
+            {
+                return Json(new
+                {
+                    ok = true,
+                    message = okMsg,
+                    icon = new
+                    {
+                        iconPk = saved.iconPk,
+                        iconCode = saved.iconCode,
+                        iconName = saved.iconName,
+                        iconCategory = string.IsNullOrWhiteSpace(iconCategory) ? "自行上傳圖示" : iconCategory.Trim(),
+                        iconKind = "customUpload",
+                        iconValue = saved.iconValue,
+                        isCustomUpload = true
+                    }
+                });
+            }
+            return Redirect($"/?tab={targetTab}&msg=" + Uri.EscapeDataString(okMsg));
+        }
+        catch (Exception ex)
+        {
+            await logPortalExceptionAsync("portalController.uploadWorkItemIcon", ex);
+            if (wantsJson) return Json(new { ok = false, message = "上傳代表圖示失敗：" + ex.Message });
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("上傳代表圖示失敗：" + ex.Message));
+        }
+    }
+
+    [HttpPost("workitem/icon/delete")]
+    [Authorize]
+    public async Task<IActionResult> deleteWorkItemIcon(
+        [FromForm] int? iconPk,
+        [FromForm] string? iconCode = null,
+        [FromForm] string? returnTab = "types")
+    {
+        bool wantsJson = Request.Headers.Accept.ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(Request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "types" : returnTab.Trim();
+
+        if (!isAdminUser())
+        {
+            if (wantsJson) return Json(new { ok = false, message = "僅管理者可刪除自訂代表圖示。" });
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("僅管理者可刪除自訂代表圖示。"));
+        }
+
+        try
+        {
+            var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spDeleteWorkItemIcon", new Dictionary<string, object?>
+            {
+                ["iconPk"] = iconPk,
+                ["iconCode"] = string.IsNullOrWhiteSpace(iconCode) ? null : iconCode.Trim(),
+                ["operatorAccount"] = getCurrentLoginAccount()
+            });
+            string delName = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["deletedIconName"]?.ToString() ?? "") : "";
+            string delVal = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["deletedIconValue"]?.ToString() ?? "") : "";
+            if (wantsJson)
+            {
+                return Json(new { ok = true, deletedIconPk = iconPk ?? 0, deletedIconCode = iconCode ?? "", deletedIconValue = delVal, message = $"🗑️ 已刪除自訂代表圖示「{delName}」" });
+            }
+            return Redirect($"/?tab={targetTab}&msg=" + Uri.EscapeDataString($"🗑️ 已刪除自訂代表圖示「{delName}」！"));
+        }
+        catch (Exception ex)
+        {
+            await logPortalExceptionAsync("portalController.deleteWorkItemIcon", ex);
+            if (wantsJson) return Json(new { ok = false, message = "刪除代表圖示失敗：" + ex.Message });
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("刪除代表圖示失敗：" + ex.Message));
+        }
+    }
+
     [HttpPost("workitem/kind/save")]
     [Authorize]
     public async Task<IActionResult> saveWorkItemKind(
@@ -1579,7 +2059,9 @@ public class portalController : Controller
         [FromForm] string? estimationTrait = null,
         [FromForm] string? timeAndDeliverableTrait = null,
         [FromForm] string? description = null,
-        [FromForm] string? returnTab = "types")
+        [FromForm] string? returnTab = "types",
+        IFormFile? customIconFile = null,
+        [FromForm] string? customIconName = null)
     {
         string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "types" : returnTab.Trim();
         if (!isAdminUser())
@@ -1589,12 +2071,23 @@ public class portalController : Controller
 
         try
         {
+            string resolvedIcon = string.IsNullOrWhiteSpace(badgeIcon) ? "📌" : badgeIcon.Trim();
+            if (customIconFile != null && customIconFile.Length > 0)
+            {
+                var uploaded = await saveUploadedIconFileInternalAsync(
+                    customIconFile,
+                    string.IsNullOrWhiteSpace(customIconName) ? $"{kindName}專屬圖示" : customIconName.Trim(),
+                    "自行上傳圖示"
+                );
+                resolvedIcon = uploaded.iconValue;
+            }
+
             var ds = await _sqlService.executeStoredProcedureDataSetAsync("storyPoint.spUpsertWorkItemKind", new Dictionary<string, object?>
             {
                 ["workItemKindPk"] = workItemKindPk,
                 ["kindCode"] = (kindCode ?? "").Trim(),
                 ["kindName"] = (kindName ?? "").Trim(),
-                ["badgeIcon"] = string.IsNullOrWhiteSpace(badgeIcon) ? "📌" : badgeIcon.Trim(),
+                ["badgeIcon"] = resolvedIcon,
                 ["badgeColor"] = string.IsNullOrWhiteSpace(badgeColor) ? "blue" : badgeColor.Trim(),
                 ["sortOrder"] = sortOrder,
                 ["mainFeatureSummary"] = string.IsNullOrWhiteSpace(mainFeatureSummary) ? null : mainFeatureSummary.Trim(),
@@ -4693,11 +5186,13 @@ public class portalController : Controller
                 activeSessionRow = r;
             }
             string st = r["sessionStatus"]?.ToString() ?? "";
+            bool isViewerPart = !r.Table.Columns.Contains("isViewerParticipant")
+                || (r["isViewerParticipant"] != DBNull.Value && Convert.ToBoolean(r["isViewerParticipant"]));
             if (st == "finalized")
             {
                 finalizedSessions.Add(r);
             }
-            else
+            else if (isViewerPart)
             {
                 ongoingSessions.Add(r);
             }
@@ -4783,6 +5278,7 @@ public class portalController : Controller
                     <div style=""display:flex;align-items:center;gap:4px;flex-wrap:wrap;"">
                         {stateBadgeHtml}
                         <span class=""badge {badgeCls}"">{h(sRow["sessionStatusText"])}</span>
+                        {(!isFinalized ? $@"<button type=""button"" class=""btn-item-toggle"" style=""background:#fef2f2;border-color:#fca5a5;color:#dc2626;font-weight:700;"" onclick=""withdrawFromVotingSession(event, {sPk}, '{jsSafeTitle}')"" title=""退出此盲投 Session（不論待參與或參與中皆可退出，退出後不再參與該工項於本 Session 的投票）"">🚪 退出</button>" : "")}
                         <button type=""button"" class=""btn-item-toggle"" onclick=""toggleSessionItemDetail(event, {sPk}, this)"">{toggleBtnText}</button>
                     </div>
                 </div>
@@ -4801,7 +5297,8 @@ public class portalController : Controller
                         <a href=""/voting/session?sessionPk={sPk}"" target=""_blank"" rel=""noopener"" data-session-enter-btn=""{sPk}"" data-session-title=""{h(sRow["sessionCode"] + " - " + sRow["sessionTitle"])}"" onclick=""return openIndependentVotingSession(event, {sPk}, '{jsSafeTitle}')"" class=""btn {(isAlreadyOpen ? "btn-outline" : "btn-primary")}"" style=""padding:4px 9px;font-size:11.5px;{(isAlreadyOpen ? "background:#dcfce7;color:#15803d;border-color:#86efac;" : "")}"">
                             {(isFinalized ? "🔍 檢視此定案 Session 獨立頁" : (isAlreadyOpen ? "🟢 參與中 (獨立網頁進行中・禁重複進入)" : "🚀 點選進入「參與中」獨立網頁"))}
                         </a>
-                        {(!isFinalized ? $"<button type='button' data-session-leave-btn='{sPk}' onclick='leaveParticipatingSessionFromLobby(event, {sPk})' class='btn btn-outline' style='display:{(isAlreadyOpen ? "inline-block" : "none")};padding:4px 8px;font-size:11.5px;color:#dc2626;border-color:#fca5a5;background:#fff;' title='結束本場議程的獨立網頁參與狀態並移回「待參與」'>🚪 結束參與</button>" : "")}
+                        {(!isFinalized ? $"<button type='button' data-session-withdraw-btn='{sPk}' onclick=\"withdrawFromVotingSession(event, {sPk}, '{jsSafeTitle}')\" class='btn btn-outline' style='padding:4px 8px;font-size:11.5px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;font-weight:800;' title='退出此盲投 Session（不論位於「待參與」或「參與中」皆可退出，退出後該 Session 就不再參與該工項的投票）'>🚪 退出 Session (不再參與投票)</button>" : "")}
+                        {(!isFinalized ? $"<button type='button' data-session-leave-btn='{sPk}' onclick='leaveParticipatingSessionFromLobby(event, {sPk})' class='btn btn-outline' style='display:{(isAlreadyOpen ? "inline-block" : "none")};padding:4px 8px;font-size:11.5px;color:#475569;border-color:#cbd5e1;background:#fff;' title='僅關閉獨立網頁參與鎖定並移回「待參與」（仍保留投票參與人資格）'>↩️ 暫離移回待參與</button>" : "")}
                         {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:11.5px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' onclick=\"triggerRevoteFromTarget('session', 0, {sPk}, '{jsSafeTitle}', false, 'voting')\" title='針對此議程啟動重新投票（沿用原設定開啟新一輪盲投）'>🔄 重啟新一輪</button>" : "")}
                         {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:11.5px;color:#b45309;border-color:#fcd34d;background:#fffbeb;' onclick=\"openSessionSetupEditModal({sPk}, '', 0, true, 'restartAll')\" title='全部重新開始（清空歷次回合回第 1 回合，並重新設定投票人名單與所有相關選項）'>🆕 全部重新開始(重設選項)</button>" : "")}
                         {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 8px;font-size:11.5px;' onclick=\"openFullRoundSetupTabForTarget({sPk}, '', 0, 'restartAll')\">⚙️ 完整設定頁</button>" : "")}
@@ -4904,7 +5401,7 @@ public class portalController : Controller
                 <div>
                     <span style=""font-size:18px;"">🌐 多人盲投 Session 獨立網頁入口中心（分成「待參與」與「參與中」）</span>
                     <div style=""font-size:12.5px;color:#64748b;font-weight:normal;margin-top:3px;"">
-                        進行中的議程依個人參與狀態分為「<strong>📂 待參與</strong>」與「<strong>🟢 參與中</strong>」｜<strong>由個人從「待參與」點選，才會進入到「參與中」的獨立專屬網頁 (<code>/voting/session?sessionPk=...</code>)</strong>
+                        進行中的議程依個人參與狀態分為「<strong>📂 待參與</strong>」與「<strong>🟢 參與中</strong>」｜<strong>各 Session 參與者皆可隨時退出「待參與」與「參與中」的 Session，退出後即不再參與該工項的投票</strong>
                     </div>
                 </div>
                 <div style=""display:flex;align-items:center;gap:8px;flex-wrap:wrap;"">
@@ -4917,7 +5414,8 @@ public class portalController : Controller
             <div style=""background:linear-gradient(135deg,#eff6ff 0%,#f0fdf4 100%);border:1px solid #93c5fd;border-radius:10px;padding:12px 16px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;"">
                 <div style=""font-size:13px;color:#1e3a8a;line-height:1.65;"">
                     <div>1️⃣ <strong>個人從「📂 待參與」點選進入：</strong>所有新發起或尚未進入的盲投議程皆位於「<strong>📂 待參與</strong>」；當您個人從「待參與」點選某場議程時，系統才會在新的瀏覽器分頁開啟專屬獨立網頁，並將該議程移入您的「<strong>🟢 參與中</strong>」。</div>
-                    <div>2️⃣ <strong>多開參與不同議程 ＆ 同議程防重複進入：</strong>您可從「待參與」點選多個<strong>不同</strong>議程同時以多個獨立網頁參與；已位於「<strong>🟢 參與中</strong>」的議程代表已在獨立網頁開啟中，系統自動鎖定禁止重複進入（離開或關閉獨立網頁後即自動移回「待參與」）。</div>
+                    <div>2️⃣ <strong>多開參與不同議程 ＆ 同議程防重複進入：</strong>您可從「待參與」點選多個<strong>不同</strong>議程同時以多個獨立網頁參與；已位於「<strong>🟢 參與中</strong>」的議程代表已在獨立網頁開啟中，系統自動鎖定禁止重複進入。</div>
+                    <div>3️⃣ <strong>隨時退出「待參與」與「參與中」Session：</strong>各 Session 參與者皆可隨時於「<strong>📂 待參與</strong>」或「<strong>🟢 參與中</strong>」點擊「<strong>🚪 退出 Session (不再參與投票)</strong>」，退出後該 Session 就不再參與該工項的投票。</div>
                 </div>
                 <div style=""display:flex;gap:10px;flex-wrap:wrap;"">
                     <div style=""background:#ffffff;border:1.5px solid #f59e0b;border-radius:10px;padding:8px 14px;text-align:center;min-width:135px;"">
@@ -4969,7 +5467,8 @@ public class portalController : Controller
                         <a href=""/voting/session?sessionPk={sPk}"" target=""_blank"" rel=""noopener"" data-session-enter-btn=""{sPk}"" data-session-title=""{h(sRow["sessionCode"] + " - " + sRow["sessionTitle"])}"" onclick=""return openIndependentVotingSession(event, {sPk}, '{jsCardTitle}')"" class=""btn {(isOpenNow ? "btn-outline" : "btn-primary")}"" style=""flex:1;padding:8px 12px;font-size:13px;{(isOpenNow ? "background:#dcfce7;color:#15803d;border-color:#86efac;" : "")}"">
                             {(isOpenNow ? "🟢 參與中 (獨立網頁進行中・禁重複進入)" : "🚀 點選進入「參與中」獨立網頁")}
                         </a>
-                        <button type=""button"" data-session-leave-btn=""{sPk}"" onclick=""leaveParticipatingSessionFromLobby(event, {sPk})"" class=""btn btn-outline"" style=""display:{(isOpenNow ? "inline-block" : "none")};padding:8px 10px;font-size:12px;color:#dc2626;border-color:#fca5a5;background:#fff;"" title=""結束本場議程的獨立網頁參與狀態並移回「待參與」"">🚪 結束參與</button>
+                        <button type=""button"" data-session-withdraw-btn=""{sPk}"" onclick=""withdrawFromVotingSession(event, {sPk}, '{jsCardTitle}')"" class=""btn btn-outline"" style=""padding:8px 10px;font-size:12px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;font-weight:800;"" title=""退出此盲投 Session（不論位於「待參與」或「參與中」皆可退出，退出後該 Session 就不再參與該工項的投票）"">🚪 退出 Session (不再參與投票)</button>
+                        <button type=""button"" data-session-leave-btn=""{sPk}"" onclick=""leaveParticipatingSessionFromLobby(event, {sPk})"" class=""btn btn-outline"" style=""display:{(isOpenNow ? "inline-block" : "none")};padding:8px 10px;font-size:12px;color:#475569;border-color:#cbd5e1;background:#fff;"" title=""僅關閉獨立網頁參與鎖定並移回「待參與」（仍保留投票參與人資格）"">↩️ 暫離移回待參與</button>
                         {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:8px 10px;font-size:12px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' onclick=\"triggerRevoteFromTarget('session', 0, {sPk}, '{jsCardTitle}', false, 'voting')\" title='針對此議程重啟新一輪盲投'>🔄 重啟新一輪</button>" : "")}
                         {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:8px 10px;font-size:12px;color:#b45309;border-color:#fcd34d;background:#fffbeb;' onclick=\"openSessionSetupEditModal({sPk}, '', 0, true, 'restartAll')\" title='全部重新開始（重設回第 1 回合，並重新設定投票人名單與所有選項）'>🆕 全部重新開始(重設選項)</button>" : "")}
                         {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:8px 10px;font-size:12px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;' onclick=\"triggerDeleteVotingSession({sPk}, '{escapeJsString(sRow["sessionCode"]?.ToString() ?? "")}', '{escapeJsString(sRow["sessionTitle"]?.ToString() ?? "")}', 'voting')\" title='永久刪除此場盲投回合／議程'>🗑️ 刪除回合</button>" : "")}
@@ -10253,6 +10752,7 @@ public class portalController : Controller
                 const sPk = tr.getAttribute('data-session-pk') || '';
                 const sCode = tr.getAttribute('data-session-code') || '';
                 const sTitle = tr.getAttribute('data-session-title') || '';
+                const sStatus = tr.getAttribute('data-session-status') || '';
                 const sRound = Number(tr.getAttribute('data-session-round') || '1');
                 const sTotalRounds = Number(tr.getAttribute('data-session-total-rounds') || '1');
                 const sUrl = tr.getAttribute('data-session-url') || ('/voting/session?sessionPk=' + sPk);
@@ -10261,6 +10761,12 @@ public class portalController : Controller
                 headerTitle = `🃏 盲投議程右鍵操作：${sCode}`;
                 headerDiv.innerHTML = `<span>${headerTitle}</span>`;
                 spContextMenuEl.appendChild(headerDiv);
+
+                if (sStatus !== 'finalized' && sPk) {
+                    spContextMenuEl.appendChild(createCtxMenuItem('🚪', `退出此盲投 Session（不再參與該工項投票）`, '退出投票', 'danger', function () {
+                        withdrawFromVotingSession(null, sPk, `${sCode} - ${sTitle}`, 'roundSetup');
+                    }));
+                }
 
                 if (isCurrentUserAdmin && sPk) {
                     spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此盲投議程回合設定（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
@@ -11169,8 +11675,8 @@ public class portalController : Controller
         let currentSessionStatus = '" + (activeSessionRow != null ? (activeSessionRow["sessionStatus"]?.ToString() ?? "voting") : "") + @"';
         let currentRoundNumber = " + (activeSessionRow != null && activeSessionRow["currentRoundNumber"] != DBNull.Value ? Convert.ToInt32(activeSessionRow["currentRoundNumber"]) : 1) + @";
         let currentRoundVoteCount = " + (activeSessionRow != null && activeSessionRow.Table.Columns.Contains("currentRoundVoteCount") && activeSessionRow["currentRoundVoteCount"] != DBNull.Value ? Convert.ToInt32(activeSessionRow["currentRoundVoteCount"]) : 0) + @";
-        const currentMemberSessionPks = [" + string.Join(",", sessionTable.Rows.Cast<DataRow>().Select(r => Convert.ToInt32(r["votingSessionPk"]))) + @"];
-        const currentSessionListSignature = '" + string.Join("|", sessionTable.Rows.Cast<DataRow>().Select(r => $"{r["votingSessionPk"]}:{r["sessionStatus"]}:{r["currentRoundNumber"]}:{(r.Table.Columns.Contains("currentRoundVoteCount") && r["currentRoundVoteCount"] != DBNull.Value ? r["currentRoundVoteCount"] : 0)}:{(r.Table.Columns.Contains("participantCount") && r["participantCount"] != DBNull.Value ? r["participantCount"] : 0)}")) + @"';
+        let currentMemberSessionPks = [" + string.Join(",", sessionTable.Rows.Cast<DataRow>().Where(r => (r["sessionStatus"]?.ToString() ?? "") == "finalized" || !r.Table.Columns.Contains("isViewerParticipant") || (r["isViewerParticipant"] != DBNull.Value && Convert.ToBoolean(r["isViewerParticipant"]))).Select(r => Convert.ToInt32(r["votingSessionPk"]))) + @"];
+        const currentSessionListSignature = '" + string.Join("|", sessionTable.Rows.Cast<DataRow>().Select(r => $"{r["votingSessionPk"]}:{r["sessionStatus"]}:{r["currentRoundNumber"]}:{(r.Table.Columns.Contains("currentRoundVoteCount") && r["currentRoundVoteCount"] != DBNull.Value ? r["currentRoundVoteCount"] : 0)}:{(r.Table.Columns.Contains("participantCount") && r["participantCount"] != DBNull.Value ? r["participantCount"] : 0)}:{(!r.Table.Columns.Contains("isViewerParticipant") || (r["isViewerParticipant"] != DBNull.Value && Convert.ToBoolean(r["isViewerParticipant"])) ? 1 : 0)}")) + @"';
         let myActiveOpenSessionPks = [" + string.Join(",", sqlDataService.getActiveLockedSessionPksForEmployee(curEmpPk)) + @"];
         window.__justEnteredSessionTs = window.__justEnteredSessionTs || {};
         let isAutoReloading = false;
@@ -11365,7 +11871,7 @@ public class portalController : Controller
             return true;
         }
 
-        // 從大廳點擊「🚪 結束參與」：釋放該議程的獨立網頁參與狀態並將議程移回「📂 待參與」
+        // 從大廳點擊「↩️ 暫離移回待參與」：釋放該議程的獨立網頁參與狀態並將議程移回「📂 待參與」
         function leaveParticipatingSessionFromLobby(evt, sessionPk) {
             if (evt) {
                 evt.preventDefault();
@@ -11396,6 +11902,61 @@ public class portalController : Controller
             }).catch(function () { });
         }
 
+        // 參與者點擊「🚪 退出 Session (不再參與投票)」：退出「📂 待參與」或「🟢 參與中」的盲投 Session，不再參與該工項的投票
+        function withdrawFromVotingSession(evt, sessionPk, sessionTitle, returnTab) {
+            if (evt) {
+                evt.preventDefault();
+                evt.stopPropagation();
+            }
+            const pk = Number(sessionPk);
+            if (!pk || pk <= 0) return false;
+            const titleLabel = sessionTitle || ('Session #' + pk);
+            const confirmMsg = '確定要退出盲投 Session「' + titleLabel + '」嗎？\n\n退出後：\n• 此 Session 將從您的「📂 待參與」與「🟢 參與中」清單移除\n• 您與此 Session 將不再參與該工項／代表類型的投票（若該 Session 已無其他剩餘參與者，系統亦將自動結束該 Session）';
+            if (!window.confirm(confirmMsg)) {
+                return false;
+            }
+
+            if (window.__justEnteredSessionTs) {
+                delete window.__justEnteredSessionTs[pk];
+            }
+            myActiveOpenSessionPks = myActiveOpenSessionPks.filter(function (id) { return id !== pk; });
+            currentMemberSessionPks = currentMemberSessionPks.filter(function (id) { return id !== pk; });
+            try {
+                localStorage.removeItem('sp_active_session_lock_' + currentEmployeePk + '_' + pk);
+            } catch (e) { }
+
+            if (typeof BroadcastChannel !== 'undefined') {
+                try {
+                    const ch = new BroadcastChannel('sp_voting_session_guard');
+                    ch.postMessage({
+                        type: 'SESSION_WITHDRAWN',
+                        employeePk: currentEmployeePk,
+                        sessionPk: pk,
+                        sessionTitle: titleLabel
+                    });
+                } catch (e) { }
+            }
+
+            // 立即從畫面移除該筆「📂 待參與」或「🟢 參與中」卡片並更新計數徽章
+            const sideCard = document.getElementById('sidebarSessionCard_' + pk);
+            if (sideCard && sideCard.parentElement) {
+                sideCard.parentElement.removeChild(sideCard);
+            }
+            const lobbyCard = document.getElementById('lobbySessionCard_' + pk);
+            if (lobbyCard && lobbyCard.parentElement) {
+                lobbyCard.parentElement.removeChild(lobbyCard);
+            }
+            updateLobbyActiveSessionLocks();
+
+            isAutoReloading = true;
+            submitDynamicPostAction('/voting/session/withdraw', {
+                votingSessionPk: pk,
+                sessionPk: pk,
+                returnTab: returnTab || 'voting'
+            });
+            return false;
+        }
+
         // 監聽跨分頁 BroadcastChannel 與 storage 事件，當獨立盲投網頁開啟或關閉時，大廳即時更新「待參與 / 參與中」分組
         if (typeof BroadcastChannel !== 'undefined') {
             try {
@@ -11414,6 +11975,17 @@ public class portalController : Controller
                             delete window.__justEnteredSessionTs[sPk];
                         }
                         myActiveOpenSessionPks = myActiveOpenSessionPks.filter(function (id) { return id !== sPk; });
+                        updateLobbyActiveSessionLocks();
+                    } else if (msg.type === 'SESSION_WITHDRAWN' && sPk > 0) {
+                        if (window.__justEnteredSessionTs) {
+                            delete window.__justEnteredSessionTs[sPk];
+                        }
+                        myActiveOpenSessionPks = myActiveOpenSessionPks.filter(function (id) { return id !== sPk; });
+                        currentMemberSessionPks = currentMemberSessionPks.filter(function (id) { return id !== sPk; });
+                        const sc = document.getElementById('sidebarSessionCard_' + sPk);
+                        if (sc && sc.parentElement) sc.parentElement.removeChild(sc);
+                        const lc = document.getElementById('lobbySessionCard_' + sPk);
+                        if (lc && lc.parentElement) lc.parentElement.removeChild(lc);
                         updateLobbyActiveSessionLocks();
                     }
                 };
@@ -12118,8 +12690,11 @@ public class portalController : Controller
             <a href=""/help?topic=topic-voting-standalone"" target=""_blank"" class=""btn btn-outline"" style=""padding:6px 12px;font-size:12.5px;background:#0d9488;color:#fff;border-color:#5eead4;font-weight:800;"" title=""開啟系統線上說明與獨立盲投操作畫面手冊"">
                 📖 線上說明
             </a>
-            <a href=""/voting/session/leave?sessionPk=" + activeSessionPk + @"&tabInstanceId=" + h(assignedTabInstanceId) + @"&redirectLobby=true"" onclick=""onExplicitLeaveSessionClick()"" class=""btn btn-danger"" style=""padding:6px 12px;font-size:12.5px;"">
-                🚪 結束參與並返回大廳 (移回待參與)
+            " + (status != "finalized" ? $@"<button type=""button"" onclick=""withdrawFromStandaloneSession(event)"" class=""btn btn-danger"" style=""padding:6px 12px;font-size:12.5px;background:#b91c1c;border:1px solid #fca5a5;font-weight:800;"" title=""退出此盲投 Session（退出後該 Session 就不再參與該工項的投票）"">
+                🚪 退出此 Session (不再參與本工項投票)
+            </button>" : "") + @"
+            <a href=""/voting/session/leave?sessionPk=" + activeSessionPk + @"&tabInstanceId=" + h(assignedTabInstanceId) + @"&redirectLobby=true"" onclick=""onExplicitLeaveSessionClick()"" class=""btn btn-outline"" style=""padding:6px 12px;font-size:12.5px;background:rgba(255,255,255,0.16);color:#fff;border-color:rgba(255,255,255,0.45);"" title=""僅關閉本獨立網頁並將此議程移回「待參與」清單（仍保留投票參與人資格）"">
+                ↩️ 暫離返回大廳 (移回待參與)
             </a>
             <a href=""/logout"" onclick=""onExplicitLeaveSessionClick()"" class=""btn btn-outline"" style=""padding:6px 12px;font-size:12.5px;background:#dc2626;color:#fff;border-color:#f87171;font-weight:800;"" title=""安全登出目前帳號、釋放本議程鎖定並返回員工登入頁面"">
                 🚪 登出系統
@@ -12157,6 +12732,9 @@ public class portalController : Controller
             string sSt = sRow["sessionStatus"]?.ToString() ?? "voting";
             if (sSt == "finalized" && sPk != activeSessionPk) continue;
             bool isCurrent = sPk == activeSessionPk;
+            bool isViewerPart = !sRow.Table.Columns.Contains("isViewerParticipant")
+                || (sRow["isViewerParticipant"] != DBNull.Value && Convert.ToBoolean(sRow["isViewerParticipant"]));
+            if (!isCurrent && !isViewerPart) continue;
             bool isOtherLocked = !isCurrent && myActiveLockedPks.Contains(sPk);
 
             if (isCurrent)
@@ -12804,7 +13382,15 @@ public class portalController : Controller
                             localStorage.removeItem('sp_active_session_lock_' + currentEmployeePk + '_' + currentVotingSessionPk);
                             window.close();
                         } catch (e) { }
-                        window.location.href = '/?tab=voting&msg=' + encodeURIComponent('您已結束盲投議程 (#' + currentVotingSessionPk + ') 的「參與中」狀態，議程已移回「📂 待參與」。');
+                        window.location.href = '/?tab=voting&msg=' + encodeURIComponent('您已暫離盲投議程 (#' + currentVotingSessionPk + ') 的「參與中」狀態，議程已移回「📂 待參與」。');
+                    } else if (msg.type === 'SESSION_WITHDRAWN' && Number(msg.sessionPk) === Number(currentVotingSessionPk)) {
+                        window.__isInternalSessionNavigation = true;
+                        try {
+                            document.cookie = 'sp_reload_inst_' + currentVotingSessionPk + '=; path=/; max-age=0';
+                            localStorage.removeItem('sp_active_session_lock_' + currentEmployeePk + '_' + currentVotingSessionPk);
+                            window.close();
+                        } catch (e) { }
+                        window.location.href = '/?tab=voting&msg=' + encodeURIComponent('🚪 您已退出盲投 Session (#' + currentVotingSessionPk + ')，不再參與該工項的投票。');
                     }
                 };
             } catch (e) { }
@@ -12824,6 +13410,52 @@ public class portalController : Controller
                     });
                 }
             } catch (e) { }
+        }
+
+        function withdrawFromStandaloneSession(evt) {
+            if (evt) {
+                evt.preventDefault();
+                evt.stopPropagation();
+            }
+            const confirmMsg = '確定要退出本場盲投 Session 嗎？\n\n退出後：\n• 此 Session 將從您的「📂 待參與」與「🟢 參與中」清單移除\n• 您與此 Session 將不再參與該工項／代表類型的投票（若該 Session 已無其他剩餘參與者，系統亦將自動結束該 Session）';
+            if (!window.confirm(confirmMsg)) {
+                return false;
+            }
+            window.__isInternalSessionNavigation = true;
+            try {
+                document.cookie = 'sp_reload_inst_' + currentVotingSessionPk + '=; path=/; max-age=0';
+                localStorage.removeItem('sp_active_session_lock_' + currentEmployeePk + '_' + currentVotingSessionPk);
+                if (guardChannel) {
+                    guardChannel.postMessage({
+                        type: 'SESSION_WITHDRAWN',
+                        employeePk: currentEmployeePk,
+                        sessionPk: currentVotingSessionPk,
+                        tabInstanceId: assignedTabInstanceId
+                    });
+                }
+            } catch (e) { }
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/voting/session/withdraw';
+            form.style.display = 'none';
+            const f1 = document.createElement('input');
+            f1.type = 'hidden';
+            f1.name = 'votingSessionPk';
+            f1.value = String(currentVotingSessionPk);
+            form.appendChild(f1);
+            const f2 = document.createElement('input');
+            f2.type = 'hidden';
+            f2.name = 'tabInstanceId';
+            f2.value = assignedTabInstanceId || '';
+            form.appendChild(f2);
+            const f3 = document.createElement('input');
+            f3.type = 'hidden';
+            f3.name = 'returnTab';
+            f3.value = 'voting';
+            form.appendChild(f3);
+            document.body.appendChild(form);
+            form.submit();
+            return false;
         }
 
         // 3. 當分頁重新整理(F5)、表單送出或關閉時：

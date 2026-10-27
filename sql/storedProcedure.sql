@@ -3638,7 +3638,17 @@ begin
             case when @isViewerAdmin = 1 or v.sessionStatus in ('revealed', 'finalized') then v.currentRoundMinPoint else null end as currentRoundMinPoint,
             case when @isViewerAdmin = 1 or v.sessionStatus in ('revealed', 'finalized') then v.currentRoundMaxPoint else null end as currentRoundMaxPoint,
             v.currentRoundVoteCount,
-            v.currentRoundDiscussionNote
+            v.currentRoundDiscussionNote,
+            case
+                when exists (
+                    select 1
+                    from storyPoint.tbVotingSessionParticipant as vsp
+                    where vsp.votingSessionPk = v.votingSessionPk
+                      and vsp.employeePk = @viewerEmployeePk
+                ) then cast(1 as bit)
+                when v.restrictToParticipant = 0 and @viewerEmployeePk is not null then cast(1 as bit)
+                else cast(0 as bit)
+            end as isViewerParticipant
         from storyPoint.vwVotingSessionSummary as v
         where (@votingSessionPk is null or v.votingSessionPk = @votingSessionPk)
           and (@workItemTypePk is null or v.workItemTypePk = @workItemTypePk)
@@ -3646,24 +3656,29 @@ begin
           and (
               @isViewerAdmin = 1
               or v.restrictToParticipant = 0
-              or v.hostEmployeePk = @viewerEmployeePk
               or exists (
                   select 1
                   from storyPoint.tbVotingSessionParticipant as vsp
                   where vsp.votingSessionPk = v.votingSessionPk
                     and vsp.employeePk = @viewerEmployeePk
               )
-              or exists (
-                  select 1
-                  from storyPoint.tbWorkItemAssignment as wia
-                  where wia.workItemPk = v.workItemPk
-                    and wia.employeePk = @viewerEmployeePk
-              )
-              or exists (
-                  select 1
-                  from storyPoint.tbVoteRecord as vrec
-                  where vrec.votingSessionPk = v.votingSessionPk
-                    and vrec.employeePk = @viewerEmployeePk
+              or (
+                  v.sessionStatus = 'finalized'
+                  and (
+                      v.hostEmployeePk = @viewerEmployeePk
+                      or exists (
+                          select 1
+                          from storyPoint.tbWorkItemAssignment as wia
+                          where wia.workItemPk = v.workItemPk
+                            and wia.employeePk = @viewerEmployeePk
+                      )
+                      or exists (
+                          select 1
+                          from storyPoint.tbVoteRecord as vrec
+                          where vrec.votingSessionPk = v.votingSessionPk
+                            and vrec.employeePk = @viewerEmployeePk
+                      )
+                  )
               )
           )
         order by
@@ -4360,6 +4375,29 @@ begin
         from storyPoint.tbWorkItemKind as wik
         where wik.isActive = 1
         order by wik.sortOrder asc, wik.pk asc;
+
+        -- Result Set 10: 代表圖示庫清單 (包含系統內建多種 Emoji 符號圖示、彩色 SVG 向量圖示，以及使用者自行上傳新增之圖示)
+        if object_id('storyPoint.tbWorkItemIcon', 'u') is not null
+        begin
+            select
+                wii.pk as iconPk,
+                wii.iconCode,
+                wii.iconName,
+                wii.iconCategory,
+                wii.iconKind,
+                wii.iconValue,
+                wii.mimeType,
+                wii.iconDataBase64,
+                wii.sortOrder,
+                wii.isCustomUpload,
+                wii.isActive,
+                wii.uploadedBy,
+                wii.createdAt,
+                wii.updatedAt
+            from storyPoint.tbWorkItemIcon as wii
+            where wii.isActive = 1
+            order by wii.isCustomUpload desc, wii.sortOrder asc, wii.pk asc;
+        end
     end try
     begin catch
         set @durationMs = datediff(millisecond, @startTime, sysdatetime());
@@ -4995,7 +5033,7 @@ create or alter procedure storyPoint.spUpsertWorkItemKind
     @workItemKindPk int = null,
     @kindCode varchar(64),
     @kindName nvarchar(128),
-    @badgeIcon nvarchar(32) = N'📌',
+    @badgeIcon nvarchar(512) = N'📌',
     @badgeColor varchar(32) = 'blue',
     @sortOrder int = 100,
     @mainFeatureSummary nvarchar(512) = null,
@@ -5012,7 +5050,7 @@ begin
     declare @targetPk int = isnull(@workItemKindPk, 0);
     declare @cleanCode varchar(64) = ltrim(rtrim(isnull(@kindCode, '')));
     declare @cleanName nvarchar(128) = ltrim(rtrim(isnull(@kindName, N'')));
-    declare @cleanIcon nvarchar(32) = case
+    declare @cleanIcon nvarchar(512) = case
         when @badgeIcon is null or datalength(ltrim(rtrim(@badgeIcon))) = 0 then N'📌'
         else ltrim(rtrim(@badgeIcon))
     end;
@@ -5811,6 +5849,552 @@ begin
             @objectName = 'storyPoint.spDeleteVotingRound',
             @durationMillisecond = @durationMs,
             @executionResult = N'刪除單一盲投回合失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @operatorAccount;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
+-- 23. 參與者退出待參與或參與中之盲投 Session 預存程序 (storyPoint.spWithdrawVotingSession)
+-- ============================================================================
+/*
+用途說明: 允許各盲投 Session 參與者隨時退出「待參與」或「參與中」之盲投議程 (tbVotingSession)，
+          退出後即自該議程參與者名單 (tbVotingSessionParticipant) 移除並清除其在該議程之出牌紀錄 (tbVoteRecord)，
+          使該名參與者及該 Session 對其不再參與該工項／代表類型的投票；
+          重新計算當前回合統計數據，若剩餘參與者皆已完成出牌則自動觸發翻牌揭曉 ('revealed')；
+          若該 Session 所有參與者皆已退出（剩餘參與人數為 0），則自動結束並清理該筆盲投 Session，
+          使該 Session 不再參與該工項或代表類型的投票。
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-27
+參數說明:
+    @votingSessionPk int          : 欲退出之盲投議程主鍵
+    @employeePk      int          : 退出之參與員工主鍵 (若未傳入則由 @operatorAccount 自動解析)
+    @operatorAccount varchar(128) : 操作者登入帳號或員工編號
+修改歷程:
+    2026-10-27 初版建立，支援參與者退出待參與跟參與中的盲投 Session，不再參與該工項投票
+*/
+create or alter procedure storyPoint.spWithdrawVotingSession
+    @votingSessionPk int,
+    @employeePk int = null,
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+    declare @targetSessionPk int = isnull(@votingSessionPk, 0);
+    declare @targetEmpPk int = isnull(@employeePk, 0);
+    declare @sessionCode varchar(64) = null;
+    declare @sessionTitle nvarchar(256) = null;
+    declare @sessionStatus varchar(32) = null;
+    declare @currentRound int = 1;
+    declare @restrictToParticipant bit = 1;
+    declare @autoReveal bit = 1;
+    declare @targetKind varchar(32) = null;
+    declare @workItemTypePk int = null;
+    declare @workItemPk int = null;
+    declare @empCode varchar(64) = null;
+    declare @empName nvarchar(128) = null;
+    declare @remainingParticipantCount int = 0;
+    declare @currentRoundVoteCount int = 0;
+    declare @votedParticipantCount int = 0;
+    declare @isAutoRevealed bit = 0;
+    declare @isSessionClosed bit = 0;
+    declare @fallbackSessionPk int = null;
+
+    begin try
+        select
+            @sessionCode = sessionCode,
+            @sessionTitle = sessionTitle,
+            @sessionStatus = sessionStatus,
+            @currentRound = isnull(currentRoundNumber, 1),
+            @restrictToParticipant = isnull(restrictToParticipant, 1),
+            @autoReveal = isnull(autoRevealWhenAllVoted, 1),
+            @targetKind = targetKind,
+            @workItemTypePk = workItemTypePk,
+            @workItemPk = workItemPk
+        from storyPoint.tbVotingSession
+        where pk = @targetSessionPk;
+
+        if @sessionCode is null
+        begin
+            ;throw 50039, N'找不到指定的盲投議程 Session。', 1;
+        end
+
+        if @sessionStatus = 'finalized'
+        begin
+            ;throw 50040, N'此盲投議程已拍板定案，無須退出進行中投票。', 1;
+        end
+
+        if @targetEmpPk <= 0 and isnull(ltrim(rtrim(@operatorAccount)), '') <> ''
+        begin
+            select top 1
+                @targetEmpPk = pk
+            from storyPoint.tbEmployee
+            where loginAccount = ltrim(rtrim(@operatorAccount))
+               or employeeCode = ltrim(rtrim(@operatorAccount));
+        end
+
+        select
+            @empCode = employeeCode,
+            @empName = employeeName
+        from storyPoint.tbEmployee
+        where pk = @targetEmpPk;
+
+        if @empName is null
+        begin
+            ;throw 50041, N'找不到欲退出盲投 Session 的員工資料。', 1;
+        end
+
+        -- 若原議程為全體員工模式 (restrictToParticipant = 0) 且尚未展開名單，先將其他在職同仁寫入名單並轉為指定名單模式
+        if @restrictToParticipant = 0 and not exists (
+            select 1
+            from storyPoint.tbVotingSessionParticipant
+            where votingSessionPk = @targetSessionPk
+        )
+        begin
+            insert into storyPoint.tbVotingSessionParticipant (
+                votingSessionPk,
+                employeePk,
+                isRequiredVoter,
+                joinedAt
+            )
+            select
+                @targetSessionPk,
+                e.pk,
+                1,
+                sysdatetime()
+            from storyPoint.tbEmployee as e
+            where e.isActive = 1
+              and e.pk <> @targetEmpPk;
+        end
+
+        update storyPoint.tbVotingSession
+        set restrictToParticipant = 1,
+            updatedAt = sysdatetime()
+        where pk = @targetSessionPk;
+
+        -- 1. 從該盲投議程參與者名單中移除此員工
+        delete from storyPoint.tbVotingSessionParticipant
+        where votingSessionPk = @targetSessionPk
+          and employeePk = @targetEmpPk;
+
+        -- 2. 清除該名員工於本場進行中盲投議程所投出的選票紀錄
+        delete from storyPoint.tbVoteRecord
+        where votingSessionPk = @targetSessionPk
+          and employeePk = @targetEmpPk;
+
+        -- 3. 重新計算該議程各回合的出牌人數與統計分數
+        update vr
+        set vr.voteCount = isnull(stat.cnt, 0),
+            vr.averagePoint = stat.avgPt,
+            vr.minPoint = stat.minPt,
+            vr.maxPoint = stat.maxPt
+        from storyPoint.tbVotingRound as vr
+        outer apply (
+            select
+                count(1) as cnt,
+                cast(round(avg(numericPointValue), 2) as decimal(10, 2)) as avgPt,
+                min(numericPointValue) as minPt,
+                max(numericPointValue) as maxPt
+            from storyPoint.tbVoteRecord as vrec
+            where vrec.votingRoundPk = vr.pk
+        ) as stat
+        where vr.votingSessionPk = @targetSessionPk;
+
+        -- 4. 檢查剩餘有效參與者人數
+        select
+            @remainingParticipantCount = count(1)
+        from storyPoint.tbVotingSessionParticipant as vsp
+        inner join storyPoint.tbEmployee as e
+            on vsp.employeePk = e.pk
+        where vsp.votingSessionPk = @targetSessionPk
+          and vsp.isRequiredVoter = 1
+          and e.isActive = 1;
+
+        if @remainingParticipantCount <= 0
+        begin
+            -- 所有參與者皆已退出此盲投 Session：該 Session 不再參與該工項或代表類型的投票，自動清理並回復標的狀態
+            delete from storyPoint.tbVoteRecord
+            where votingSessionPk = @targetSessionPk;
+
+            delete from storyPoint.tbVotingRound
+            where votingSessionPk = @targetSessionPk;
+
+            delete from storyPoint.tbVotingSessionParticipant
+            where votingSessionPk = @targetSessionPk;
+
+            update storyPoint.tbPointHistory
+            set votingSessionPk = null
+            where votingSessionPk = @targetSessionPk;
+
+            if @workItemTypePk is not null
+            begin
+                select top 1 @fallbackSessionPk = pk
+                from storyPoint.tbVotingSession
+                where workItemTypePk = @workItemTypePk
+                  and pk <> @targetSessionPk
+                order by pk desc;
+
+                update storyPoint.tbWorkItemType
+                set lastVotingSessionPk = case
+                        when lastVotingSessionPk = @targetSessionPk then @fallbackSessionPk
+                        else lastVotingSessionPk
+                    end,
+                    estimationStatus = case
+                        when estimationStatus = 'voting' and not exists (
+                            select 1
+                            from storyPoint.tbVotingSession
+                            where workItemTypePk = @workItemTypePk
+                              and pk <> @targetSessionPk
+                              and sessionStatus in ('voting', 'revealed')
+                        ) then case when standardStoryPoint is not null then 'finalized' else 'pending' end
+                        else estimationStatus
+                    end,
+                    updatedAt = sysdatetime()
+                where pk = @workItemTypePk;
+            end
+
+            if @workItemPk is not null
+            begin
+                update storyPoint.tbWorkItem
+                set estimationStatus = case
+                        when estimationStatus = 'voting' and not exists (
+                            select 1
+                            from storyPoint.tbVotingSession
+                            where workItemPk = @workItemPk
+                              and pk <> @targetSessionPk
+                              and sessionStatus in ('voting', 'revealed')
+                        ) then 'finalized'
+                        else estimationStatus
+                    end,
+                    updatedAt = sysdatetime()
+                where pk = @workItemPk;
+            end
+
+            delete from storyPoint.tbVotingSession
+            where pk = @targetSessionPk;
+
+            set @isSessionClosed = 1;
+            set @sessionStatus = 'closed';
+            set @currentRoundVoteCount = 0;
+        end
+        else
+        begin
+            -- 尚有其他參與者：檢查當前回合是否因剩餘參與者皆已出牌而可自動翻牌揭曉
+            select
+                @currentRoundVoteCount = isnull(vr.voteCount, 0)
+            from storyPoint.tbVotingRound as vr
+            where vr.votingSessionPk = @targetSessionPk
+              and vr.roundNumber = @currentRound;
+
+            select
+                @votedParticipantCount = count(distinct vrec.employeePk)
+            from storyPoint.tbVoteRecord as vrec
+            inner join storyPoint.tbVotingRound as vr
+                on vrec.votingRoundPk = vr.pk
+            inner join storyPoint.tbVotingSessionParticipant as vsp
+                on vrec.votingSessionPk = vsp.votingSessionPk
+               and vrec.employeePk = vsp.employeePk
+            inner join storyPoint.tbEmployee as e
+                on vsp.employeePk = e.pk
+            where vr.votingSessionPk = @targetSessionPk
+              and vr.roundNumber = @currentRound
+              and vsp.isRequiredVoter = 1
+              and e.isActive = 1;
+
+            if @sessionStatus = 'voting' and @autoReveal = 1 and @votedParticipantCount >= @remainingParticipantCount
+            begin
+                update storyPoint.tbVotingRound
+                set roundStatus = 'revealed',
+                    revealedAt = isnull(revealedAt, sysdatetime())
+                where votingSessionPk = @targetSessionPk
+                  and roundNumber = @currentRound;
+
+                update storyPoint.tbVotingSession
+                set sessionStatus = 'revealed',
+                    updatedAt = sysdatetime()
+                where pk = @targetSessionPk;
+
+                set @sessionStatus = 'revealed';
+                set @isAutoRevealed = 1;
+            end
+        end
+
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @withdrawMsg nvarchar(512) = case
+            when @isSessionClosed = 1 then concat(N'參與者【', @empName, N' (', @empCode, N')】已退出盲投 Session【', @sessionCode, N' - ', @sessionTitle, N'】；因該 Session 已無任何剩餘參與者，系統已自動結束並移除該 Session，不再參與該工項投票')
+            when @isAutoRevealed = 1 then concat(N'參與者【', @empName, N' (', @empCode, N')】已退出盲投 Session【', @sessionCode, N' - ', @sessionTitle, N'】（剩餘 ', @remainingParticipantCount, N' 人皆已出牌，系統已自動翻牌揭曉）')
+            else concat(N'參與者【', @empName, N' (', @empCode, N')】已退出盲投 Session【', @sessionCode, N' - ', @sessionTitle, N'】，不再參與該工項於此 Session 之投票（剩餘參與者：', @remainingParticipantCount, N' 人）')
+        end;
+
+        exec storyPoint.spWriteLog
+            @logLevel = 3,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spWithdrawVotingSession',
+            @durationMillisecond = @durationMs,
+            @executionResult = @withdrawMsg,
+            @operatorAccount = @operatorAccount;
+
+        select
+            @targetSessionPk as votingSessionPk,
+            @sessionCode as sessionCode,
+            @sessionTitle as sessionTitle,
+            @targetEmpPk as withdrawnEmployeePk,
+            @empCode as withdrawnEmployeeCode,
+            @empName as withdrawnEmployeeName,
+            @remainingParticipantCount as remainingParticipantCount,
+            @currentRoundVoteCount as currentRoundVoteCount,
+            @sessionStatus as sessionStatus,
+            @isAutoRevealed as isAutoRevealed,
+            @isSessionClosed as isSessionClosed,
+            @targetKind as targetKind,
+            @workItemTypePk as workItemTypePk,
+            @workItemPk as workItemPk,
+            @withdrawMsg as resultMessage;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spWithdrawVotingSession',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'參與者退出盲投 Session 失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @operatorAccount;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
+-- 26. 新增或修改代表圖示預存程序 (storyPoint.spUpsertWorkItemIcon)
+-- ============================================================================
+/*
+用途說明: 新增或更新代表圖示庫 (tbWorkItemIcon)，支援系統內建多種代表圖示及使用者自行上傳新增自訂圖示 (SVG / PNG / JPG / ICO / WEBP / GIF)。
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-27
+參數說明:
+    @iconPk          int           : 圖示主鍵 (0 或 null 代表新增或依 iconCode 更新)
+    @iconCode        varchar(64)   : 圖示唯一識別代碼
+    @iconName        nvarchar(128) : 圖示顯示名稱
+    @iconCategory    nvarchar(64)  : 圖示分類 (如：自行上傳圖示、彩色向量圖示 (SVG)、核心工項符號)
+    @iconKind        varchar(32)   : 圖示類型 ('emoji', 'presetSvg', 'customUpload')
+    @iconValue       nvarchar(512) : 圖示值 (Emoji 字元或圖片路徑 /icons/custom/xxx.png)
+    @mimeType        varchar(64)   : 圖片 MIME 類型 (如 image/png, image/svg+xml)
+    @iconDataBase64  nvarchar(max) : 自訂上傳圖片之 Base64 內容 (供持久化保存與自動還原)
+    @sortOrder       int           : 顯示排序
+    @isCustomUpload  bit           : 是否為使用者自行上傳新增之圖示
+    @operatorAccount varchar(128)  : 操作者帳號
+修改歷程:
+    2026-10-27 初版建立，支援代表圖示庫管理與自行上傳新增圖示
+*/
+create or alter procedure storyPoint.spUpsertWorkItemIcon
+    @iconPk int = null,
+    @iconCode varchar(64),
+    @iconName nvarchar(128),
+    @iconCategory nvarchar(64) = N'自行上傳圖示',
+    @iconKind varchar(32) = 'customUpload',
+    @iconValue nvarchar(512),
+    @mimeType varchar(64) = null,
+    @iconDataBase64 nvarchar(max) = null,
+    @sortOrder int = 5,
+    @isCustomUpload bit = 1,
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+    declare @targetPk int = isnull(@iconPk, 0);
+    declare @cleanCode varchar(64) = ltrim(rtrim(isnull(@iconCode, '')));
+    declare @cleanName nvarchar(128) = ltrim(rtrim(isnull(@iconName, N'')));
+    declare @cleanCategory nvarchar(64) = isnull(nullif(ltrim(rtrim(isnull(@iconCategory, N''))), N''), N'自行上傳圖示');
+    declare @cleanKind varchar(32) = isnull(nullif(ltrim(rtrim(isnull(@iconKind, ''))), ''), 'customUpload');
+    declare @cleanValue nvarchar(512) = ltrim(rtrim(isnull(@iconValue, N'')));
+
+    begin try
+        if @cleanCode = '' or @cleanName = N'' or @cleanValue = N''
+        begin
+            ;throw 50061, N'代表圖示代碼、名稱與圖示內容不可為空白。', 1;
+        end
+
+        if @targetPk <= 0
+        begin
+            select top 1 @targetPk = pk
+            from storyPoint.tbWorkItemIcon
+            where iconCode = @cleanCode;
+        end
+
+        if isnull(@targetPk, 0) > 0 and exists (select 1 from storyPoint.tbWorkItemIcon where pk = @targetPk)
+        begin
+            update storyPoint.tbWorkItemIcon
+            set iconCode = @cleanCode,
+                iconName = @cleanName,
+                iconCategory = @cleanCategory,
+                iconKind = @cleanKind,
+                iconValue = @cleanValue,
+                mimeType = isnull(@mimeType, mimeType),
+                iconDataBase64 = isnull(@iconDataBase64, iconDataBase64),
+                sortOrder = isnull(@sortOrder, sortOrder),
+                isCustomUpload = isnull(@isCustomUpload, isCustomUpload),
+                isActive = 1,
+                uploadedBy = isnull(@operatorAccount, uploadedBy),
+                updatedAt = sysdatetime()
+            where pk = @targetPk;
+        end
+        else
+        begin
+            insert into storyPoint.tbWorkItemIcon (
+                iconCode, iconName, iconCategory, iconKind, iconValue,
+                mimeType, iconDataBase64, sortOrder, isCustomUpload,
+                isActive, uploadedBy, createdAt, updatedAt
+            )
+            values (
+                @cleanCode, @cleanName, @cleanCategory, @cleanKind, @cleanValue,
+                @mimeType, @iconDataBase64, isnull(@sortOrder, 5), isnull(@isCustomUpload, 1),
+                1, @operatorAccount, sysdatetime(), sysdatetime()
+            );
+            set @targetPk = scope_identity();
+        end
+
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        exec storyPoint.spWriteLog
+            @logLevel = 3,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spUpsertWorkItemIcon',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'新增或更新代表圖示成功',
+            @operatorAccount = @operatorAccount;
+
+        select
+            wii.pk as iconPk,
+            wii.iconCode,
+            wii.iconName,
+            wii.iconCategory,
+            wii.iconKind,
+            wii.iconValue,
+            wii.mimeType,
+            wii.sortOrder,
+            wii.isCustomUpload,
+            wii.isActive,
+            wii.uploadedBy,
+            wii.updatedAt
+        from storyPoint.tbWorkItemIcon as wii
+        where wii.pk = @targetPk;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spUpsertWorkItemIcon',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'新增或更新代表圖示失敗',
+            @errorCode = @errCode,
+            @errorLine = @errLine,
+            @errorMessage = @errMsg,
+            @operatorAccount = @operatorAccount;
+        throw;
+    end catch
+end
+go
+
+-- ============================================================================
+-- 27. 刪除自訂代表圖示預存程序 (storyPoint.spDeleteWorkItemIcon)
+-- ============================================================================
+/*
+用途說明: 刪除指定之代表圖示 (tbWorkItemIcon)，若目前有預設工項類型 (tbWorkItemKind) 正套用此圖示，自動將其回退為標準圖示 N'📌'。
+建立者  : Antigravity Senior Full-Stack Engineer
+建立日期: 2026-10-27
+參數說明:
+    @iconPk          int          : 圖示主鍵
+    @iconCode        varchar(64)  : 圖示代碼
+    @operatorAccount varchar(128) : 操作者帳號
+修改歷程:
+    2026-10-27 初版建立
+*/
+create or alter procedure storyPoint.spDeleteWorkItemIcon
+    @iconPk int = null,
+    @iconCode varchar(64) = null,
+    @operatorAccount varchar(128) = 'system'
+as
+begin
+    set nocount on;
+    declare @startTime datetime2(3) = sysdatetime();
+    declare @durationMs int = 0;
+    declare @targetPk int = isnull(@iconPk, 0);
+    declare @targetValue nvarchar(512) = null;
+    declare @targetName nvarchar(128) = null;
+
+    begin try
+        if @targetPk <= 0 and isnull(@iconCode, '') <> ''
+        begin
+            select top 1 @targetPk = pk
+            from storyPoint.tbWorkItemIcon
+            where iconCode = ltrim(rtrim(@iconCode));
+        end
+
+        if isnull(@targetPk, 0) <= 0 or not exists (select 1 from storyPoint.tbWorkItemIcon where pk = @targetPk)
+        begin
+            ;throw 50062, N'找不到指定的代表圖示紀錄。', 1;
+        end
+
+        select
+            @targetValue = iconValue,
+            @targetName = iconName
+        from storyPoint.tbWorkItemIcon
+        where pk = @targetPk;
+
+        if isnull(@targetValue, N'') <> N''
+        begin
+            update storyPoint.tbWorkItemKind
+            set badgeIcon = N'📌',
+                updatedAt = sysdatetime()
+            where badgeIcon = @targetValue;
+        end
+
+        delete from storyPoint.tbWorkItemIcon
+        where pk = @targetPk;
+
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        exec storyPoint.spWriteLog
+            @logLevel = 3,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeleteWorkItemIcon',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'刪除自訂代表圖示成功',
+            @operatorAccount = @operatorAccount;
+
+        select
+            @targetPk as deletedIconPk,
+            @targetName as deletedIconName,
+            @targetValue as deletedIconValue;
+    end try
+    begin catch
+        set @durationMs = datediff(millisecond, @startTime, sysdatetime());
+        declare @errCode int = error_number();
+        declare @errLine int = error_line();
+        declare @errMsg nvarchar(max) = error_message();
+        exec storyPoint.spWriteLog
+            @logLevel = 1,
+            @sourceName = 'tsql',
+            @objectName = 'storyPoint.spDeleteWorkItemIcon',
+            @durationMillisecond = @durationMs,
+            @executionResult = N'刪除自訂代表圖示失敗',
             @errorCode = @errCode,
             @errorLine = @errLine,
             @errorMessage = @errMsg,
