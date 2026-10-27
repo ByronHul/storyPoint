@@ -133,6 +133,9 @@ app.Use(async (context, next) =>
 <html lang=""zh-Hant"">
 <head>
     <meta charset=""utf-8"" />
+    <link rel=""icon"" type=""image/x-icon"" href=""/favicon.ico?v=20261027"" />
+    <link rel=""shortcut icon"" type=""image/x-icon"" href=""/favorit.ico?v=20261027"" />
+    <link rel=""icon"" type=""image/svg+xml"" href=""/favicon.svg?v=20261027"" />
     <title>系統防當機保護通知 - Azure Story Point 系統</title>
     <style>
         body {{ font-family:'Microsoft JhengHei UI',sans-serif; background:#f8fafc; color:#0f172a; padding:32px; }}

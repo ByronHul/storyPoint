@@ -79,8 +79,20 @@ end
 
 if object_id('storyPoint.tbWorkItemKind', 'u') is not null
 begin
+    if col_length('storyPoint.tbWorkItemKind', 'mainFeatureSummary') is null
+        alter table storyPoint.tbWorkItemKind add mainFeatureSummary nvarchar(512) null;
+    if col_length('storyPoint.tbWorkItemKind', 'estimationTrait') is null
+        alter table storyPoint.tbWorkItemKind add estimationTrait nvarchar(256) null;
+    if col_length('storyPoint.tbWorkItemKind', 'timeAndDeliverableTrait') is null
+        alter table storyPoint.tbWorkItemKind add timeAndDeliverableTrait nvarchar(256) null;
+end
+go
+
+if object_id('storyPoint.tbWorkItemKind', 'u') is not null
+begin
     select
         pk, kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        mainFeatureSummary, estimationTrait, timeAndDeliverableTrait,
         description, isActive, createdAt, updatedAt
     into storyPoint.tbPreserveWorkItemKind
     from storyPoint.tbWorkItemKind;
@@ -354,8 +366,8 @@ create table storyPoint.tbCardDeck (
     constraint uqTbCardDeckCode unique nonclustered (deckCode asc)
 );
 
--- 4.5 工項類型設定資料表 (storyPoint.tbWorkItemKind)
--- 支援增刪修工項類型（預設含：project 專案、maintenance 維運、consultingHour 顧問時數、training 教育訓練、productDevelopment 開發產品，並可自訂新增）
+-- 4.5 預設工項類型與主要特徵設定資料表 (storyPoint.tbWorkItemKind)
+-- 支援增刪修查預設工項類型並記載主要特徵（預設含：project 專案、maintenance 維運、consultingHour 顧問時數、training 教育訓練、productDevelopment 開發產品，並可自訂新增）
 create table storyPoint.tbWorkItemKind (
     pk int identity(1,1) not null,
     kindCode varchar(64) not null,
@@ -363,6 +375,9 @@ create table storyPoint.tbWorkItemKind (
     badgeIcon nvarchar(32) not null constraint dfTbWorkItemKindIcon default (N'📌'),
     badgeColor varchar(32) not null constraint dfTbWorkItemKindColor default ('blue'),
     sortOrder int not null constraint dfTbWorkItemKindSortOrder default (100),
+    mainFeatureSummary nvarchar(512) null,
+    estimationTrait nvarchar(256) null,
+    timeAndDeliverableTrait nvarchar(256) null,
     description nvarchar(512) null,
     isActive bit not null constraint dfTbWorkItemKindIsActive default (1),
     createdAt datetime2(3) not null constraint dfTbWorkItemKindCreatedAt default (sysdatetime()),
@@ -640,10 +655,44 @@ begin
     set identity_insert storyPoint.tbWorkItemKind on;
     insert into storyPoint.tbWorkItemKind (
         pk, kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        mainFeatureSummary, estimationTrait, timeAndDeliverableTrait,
         description, isActive, createdAt, updatedAt
     )
     select
         pk, kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        isnull(
+            nullif(ltrim(rtrim(mainFeatureSummary)), N''),
+            case
+                when kindCode = 'project' then N'階段性目標導向、跨模組需求開發與系統建置、明確里程碑與範圍界定'
+                when kindCode = 'maintenance' then N'常態性系統穩定度維持、例行健康巡檢、問題排查 (Troubleshooting) 與效能調校'
+                when kindCode = 'consultingHour' then N'專業技術知識輸出、客戶架構診斷、技術顧問諮詢與專家駐點支援服務'
+                when kindCode = 'training' then N'內部技術傳承、外部客戶課程講授、實機 Lab 教材編撰與新人培訓賦能'
+                when kindCode = 'productDevelopment' then N'自有產品核心研發、技術架構創新、標準化模組封裝與產品版本迭代 (Roadmap)'
+                else concat(kindName, N'專屬工作性質、標準化執行流程與跨團隊協作特徵')
+            end
+        ),
+        isnull(
+            nullif(ltrim(rtrim(estimationTrait)), N''),
+            case
+                when kindCode = 'project' then N'依功能複雜度、跨系統整合難度與未知風險綜合盲投估算 (常見 3 ~ 21 pt)'
+                when kindCode = 'maintenance' then N'依處理頻率、SLA 緊急程度、環境複雜度與影響範圍估算 (常見 0.5 ~ 5 pt)'
+                when kindCode = 'consultingHour' then N'依投入顧問人天/時數、專業技術深度與交付報告規模估算 (常見 1 ~ 8 pt)'
+                when kindCode = 'training' then N'依課程授課時數、新教材研發比例、Lab 環境準備與授課難度估算 (常見 1 ~ 8 pt)'
+                when kindCode = 'productDevelopment' then N'依技術創新度、通用架構擴充性、自動化測試覆蓋率與產品化標準估算 (常見 3 ~ 21 pt)'
+                else N'依技術複雜度、工作投入規模與風險不確定性綜合估算 (常見 1 ~ 13 pt)'
+            end
+        ),
+        isnull(
+            nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''),
+            case
+                when kindCode = 'project' then N'中長期 Sprint 或專案起訖週期｜交付上線系統與驗收文件｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                when kindCode = 'maintenance' then N'短週期或月/季例行維運期間｜交付問題修復紀錄與巡檢報告｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                when kindCode = 'consultingHour' then N'單次駐點或顧問合約起訖期間｜交付架構建議書、健檢報告與時數簽認單｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                when kindCode = 'training' then N'單日課程或培訓梯次起訖期間｜交付課程簡報、實作講義與完訓紀錄｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                when kindCode = 'productDevelopment' then N'雙週 Sprint 或產品版本起訖週期｜交付標準產品模組、API 與發行套件｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+                else N'具備明確起訖時間設定｜交付驗收成果｜達迄時自動轉已完成、扣點並通知部門主管與 HR'
+            end
+        ),
         description, isActive, createdAt, updatedAt
     from storyPoint.tbPreserveWorkItemKind;
     set identity_insert storyPoint.tbWorkItemKind off;

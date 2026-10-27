@@ -451,6 +451,52 @@
     1. Web 系統所有頁面（員工登入頁 `/login`、主系統各頁籤 `/`、獨立盲投 Session 網頁 `/voting/session`、重複進入攔截頁、獨立線上說明專頁 `/help`、匯出之互動式 HTML 報表及全域防當機保護頁面）之 `<head>` 皆嵌入 `<link rel="icon">` 與 `<link rel="shortcut icon">` 指向 `/favicon.ico`、`/favorit.ico` 與 `/favicon.svg`。
     2. PowerShell 多 Tab GUI (`ps/ui/uiMain.ps1`) 之主視窗、員工登入驗證視窗與個人帳密修改視窗同步套用 `favicon.ico` 作為視窗與工作列圖示。
 
+### 2.23 刪除盲投回合與投票議程機制（`storyPoint.spDeleteVotingRound` / `storyPoint.spDeleteVotingSession`）
+* **核心需求**：管理者可隨時刪除「**單一盲投回合 (`storyPoint.tbVotingRound`)**」或刪除「**整場盲投回合／投票議程設定 (`storyPoint.tbVotingSession`)**」：
+    1. **刪除整場盲投回合／議程 (`storyPoint.spDeleteVotingSession`，`POST /voting/delete` 及 `POST /voting/session/delete`)**：
+        * 刪除指定議程底下的所有出牌紀錄 (`storyPoint.tbVoteRecord`)、所有盲投回合 (`storyPoint.tbVotingRound`) 與受邀參與者名單 (`storyPoint.tbVotingSessionParticipant`)。
+        * 保留已封存的點數異動歷史 (`storyPoint.tbPointHistory`) 但自動解除 `votingSessionPk` 外鍵關聯。
+        * 自動同步更新關聯之工項代表類型 (`storyPoint.tbWorkItemType.lastVotingSessionPk` 與 `estimationStatus`) 及個別工項 (`storyPoint.tbWorkItem.estimationStatus`) 狀態，並釋放伺服器端活躍分頁租約。
+    2. **刪除單一盲投回合 (`storyPoint.spDeleteVotingRound`，`POST /voting/round/delete`)**：
+        * 支援依 `@votingRoundPk` 或 `@votingSessionPk + @roundNumber` 刪除特定盲投回合及其出牌紀錄 (`storyPoint.tbVoteRecord`)。
+        * 若該議程僅剩唯一 1 個回合且 `@deleteSessionIfLastRound = 1`，自動轉呼叫 `storyPoint.spDeleteVotingSession` 一併刪除整場盲投議程。
+        * 若該議程有多個回合，刪除指定回合後會以兩階段負數轉換法自動重整後續回合編號（避免觸發 `uqTbVotingRoundSessionRound` 唯一索引衝突），並同步更新 `storyPoint.tbVotingSession.currentRoundNumber` 與 `sessionStatus`。
+* **全方位 UI 操作入口**：
+    1. **表格滑鼠右鍵選單 (`#spRowContextMenu`)**：
+        * 於「1-2. 設定盲投回合」下方的「📋 各投票議程的回合設定總覽」表格 (`rowKind === 'session'`) 按滑鼠右鍵，直接提供「`🗑️ 刪除當前回合（第 N 回合，退回上一回合）`」（多回合時顯示）與「`🗑️ 刪除此盲投回合／議程 (VOTE-*)`」紅色危險操作項。
+        * 於「1-3. 查詢 Story Point 訂定歷程」各回合出牌明細列 (`rowKind === 'votingRoundVote'`) 按滑鼠右鍵，提供「`🗑️ 刪除此盲投回合（第 N 回合）`」與「`🗑️ 刪除整場盲投議程 (VOTE-*)`」。
+    2. **單筆編輯與重設盲投回合 Modal (`openSessionSetupEditModal`)**：底部工具列於編輯既有議程 (`sPk > 0`) 時提供「`🗑️ 刪除此盲投回合／議程`」按鈕。
+    3. **1-2. 設定盲投回合 (`#pane-roundSetup`)**：上方「選擇既有投票議程載入重設」選取任一既有議程時，表單底部顯示「`🗑️ 刪除此回合／議程` (`#setupDeleteSessionBtn`)」按鈕。
+    4. **1-1. 多人即時盲投大廳 (`#pane-voting`)**：左側議程清單與大廳卡片均提供管理員專屬「`🗑️ 刪除回合`」按鈕。
+    5. **1-3. 查詢 Story Point 訂定歷程 (`#pane-history`)**：每張議程卡片標題列提供「`🗑️ 刪除此議程`」按鈕，且每個回合區塊標題列右側直接提供「`🗑️ 刪除第 N 回合`」按鈕。
+    6. **獨立盲投 Session 網頁 (`/voting/session`)**：主持人控制台提供「`🗑️ 6. 刪除本回合 (第 N 回合)`」與「`🗑️ 7. 刪除此盲投議程`」按鈕，且右側「📊 本 Session 歷次盲投回合統計」表格每一回合列皆提供「`🗑️ 刪除`」按鈕。
+    7. **PowerShell Console (`ps/manageVotingSession.ps1`) 與多 Tab GUI (`ps/ui/tabVoting.ps1`)**：新增 `-actionType 'deleteRound'` 與 `'deleteSession'`，並於 GUI 提供「`🗑️ 刪除此回合/議程`」按鈕及表格右鍵刪除功能。
+
+### 2.24 預設工項類型增、刪、修、查管理與表列工項類型主要特徵（`storyPoint.tbWorkItemKind`）
+* **核心需求**：提供對「**預設工項類型 (`storyPoint.tbWorkItemKind`)**」的完整**增 (Create)、刪 (Delete)、修 (Update)、查 (Query/Filter)** 功能，並以結構化表格清楚**表列每一種工項類型的主要特徵**：
+    1. **資料表結構擴充 (`storyPoint.tbWorkItemKind`)**：
+        * 除原有之 `kindCode`（類型代碼）、`kindName`（預設類型名稱）、`badgeIcon`（圖示）、`badgeColor`（標籤主題色）、`sortOrder`（排序）、`description`（適用情境說明）外，無損新增三個結構化主要特徵欄位：
+            * **`mainFeatureSummary` (`nvarchar(512)`)**：⭐ **主要特徵 (核心工作性質)**
+            * **`estimationTrait` (`nvarchar(256)`)**：📐 **點數估算與計量特徵**
+            * **`timeAndDeliverableTrait` (`nvarchar(256)`)**：⏰ **時程週期與交付/到期特徵**
+    2. **五種預設工項類型與主要特徵定義（支援隨時新增、修改、刪除與查詢自訂類型）**：
+        | 排序 | 類型代碼 | 預設工項類型 | ⭐ 主要特徵 (核心工作性質) | 📐 點數估算與計量特徵 | ⏰ 時程週期與交付/到期特徵 | 📋 適用情境說明 |
+        | :---: | :--- | :--- | :--- | :--- | :--- | :--- |
+        | 10 | `project` | 🏗️ **專案** | 目標導向、具明確範疇與里程碑之新功能開發或系統建置 | 依功能複雜度、跨模組整合難度進行團隊盲投估算 (通常 3 ~ 21 pt) | 具明確專案起訖日與階段驗收交付物，達迄時自動轉態扣點並通知主管與 HR | 客戶導入專案、系統全新功能開發或跨部門里程碑交付工項 |
+        | 20 | `maintenance` | 🛠️ **維運** | 穩定度導向、既有系統問題排除、例行巡檢、效能調校與安全性修補 | 依問題排查深度與影響範圍套用維運代表類型標準點數 (通常 0.5 ~ 5 pt) | 具 SLA 處理時限與改善報告，達迄時自動結案扣點並寄送通知 | 既有系統日常維運、例外錯誤修復、資料庫調校與例行巡檢工項 |
+        | 30 | `consultingHour` | ⏳ **顧問時數** | 專業知識輸出導向、架構諮詢、技術評估、POC 驗證與客戶駐點支援 | 依投入時數區間與專業深度換算標準 Story Point (通常 1 ~ 8 pt) | 依約定諮詢區間設定起訖時間並產出顧問建議書或會議紀錄，達迄時自動扣點 | 提供內部或外部客戶技術架構諮詢、POC 評估、問題診斷與顧問服務時數工項 |
+        | 40 | `training` | 🎓 **教育訓練** | 知識傳承與賦能導向、教材編撰、實機 Lab 演練、內訓與客戶操作培訓 | 依課程時數、教材深度與實機環境準備複雜度估算點數 (通常 1 ~ 5 pt) | 以開課/受訓起訖時程為準，交付簡報教材與課後測驗，達迄時自動扣點歸檔 | 內部技術傳承講座、新人培訓課程、教材編撰與客戶端系統操作教育訓練工項 |
+        | 50 | `productDevelopment` | 🚀 **開發產品** | 產品化與長期演進導向、自有核心模組研發、通用架構設計與高重用性元件開發 | 依架構前瞻性、高可用度要求與自動化測試覆蓋率進行盲投估算 (通常 5 ~ 21 pt) | 配合產品 Roadmap 與版本發佈週期設定起訖時間，達迄時自動轉態扣點並發信 | 自有核心產品研發、新世代架構演進、共用引擎模組與產品路線圖功能開發工項 |
+    3. **全方位 Web 介面與 Modal 整合入口**：
+        * **主選單「📋 工項管理」子選單 `🗂️ 2-3. 預設工項類型與特徵`** 與 **`🏷️ 2-2. 工項代表類型` (`/?tab=types`)**：直接置頂顯示「**🗂️ 預設工項類型增、刪、修、查管理與主要特徵一覽表 (`#wikCrudCard_types`)**」（不隱藏於收合抽屜），提供關鍵字即時查詢 (`#filterWikKeyword_types`)、標籤顏色篩選 (`#filterWikColor_types`)、套用狀態篩選 (`#filterWikUsage_types`)、新增/修改表單、主要特徵對照表 (`#wikDataTable_types`) 以及每一列直接操作按鈕（`🏷️ 查代表類型`、`📋 查工項`、`✏️ 修改`、`🗑️ 刪除`）與滑鼠雙擊/右鍵選單。
+        * **「✏️ 單筆編輯工項代表類型 (`tbWorkItemType`)」Modal 視窗 (`openWorkItemTypeEditModal`) 與「➕ 新增/編輯工項」Modal 視窗 (`openWorkItemEditModal`)**：
+            * 在「`預設工項類型`」下拉選單旁直接提供 `➕ 新增`、`✏️ 修改`、`🗑️ 刪除`、`📋 特徵表` 快捷按鈕。
+            * 當選擇不同預設工項類型時，下方即時呈現該預設工項類型的**主要特徵摘要卡 (`#modalTypeKindFeatureBanner`)**。
+            * 視窗內直接內嵌「**📋 預設工項類型主要特徵一覽表 (`#modalTypeKindFeatureTableWrap`)**」，表列所有預設工項類型與其三大主要特徵，並支援在視窗內一鍵 `✅ 選用`、`✏️ 修改`、`🗑️ 刪除` 或 `➕ 新增預設工項類型`。
+    4. **PowerShell Console (`ps/manageWorkItem.ps1`) 與多 Tab GUI (`ps/ui/tabWorkItemType.ps1`) 同步支援**：
+        * `ps/manageWorkItem.ps1` 支援 `-mainFeatureSummary`、`-estimationTrait`、`-timeAndDeliverableTrait` 及 `-keyword` 參數。
+        * `ps/ui/tabWorkItemType.ps1` 上半部直接呈現「🗂️ 一、預設工項類型增、刪、修、查管理與主要特徵一覽表 (`tbWorkItemKind`)」，支援完整增刪修查與表列主要特徵。
+
 ---
 
 ## 3. 系統架構與技術開發規範
@@ -473,7 +519,8 @@
             3. **【📋 工項管理 / 📋 我的工項】主選單**：
                 * 子選單 2-1：`📋 2-1. 工項與員工指派` / `📋 2-1. 我的工項查詢`
                 * 子選單 2-2：`🏷️ 2-2. 工項代表類型` / `🏷️ 2-2. 代表類型參考`
-                * 子選單 2-3 ~ 2-5：`2-3. 匯出工項 (CSV)`、`2-4. 匯出工項 (Excel)`、`2-5. 匯出工項 (HTML)`
+                * 子選單 2-3：`🗂️ 2-3. 預設工項類型與特徵`
+                * 子選單 2-4 ~ 2-6：`2-4. 匯出工項 (CSV)`、`2-5. 匯出工項 (Excel)`、`2-6. 匯出工項 (HTML)`
             4. **【📊 統計報表 / 📊 我的報表】主選單**：
                 * 子選單 3-1：`📊 3-1. 員工與部門統計` / `📊 3-1. 我的分數統計`
                 * 子選單 3-2A ~ 3-3C：部門與員工點數三格式匯出（`CSV` / `Excel` / `HTML`）

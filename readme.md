@@ -32,7 +32,7 @@ c:\temp\storyPoint\
 ├── sql\
 │   ├── schemaAndTable.sql            # 專屬 storyPoint Schema 與 12 張資料表 (含無損資料保留機制)
 │   ├── viewAndFunction.sql           # 撲克牌數值解析函數與 4 張核心統計檢視表 (vw*)
-│   ├── storedProcedure.sql           # 13 支標準預存程序 (sp*，全小寫關鍵字、try...catch、spWriteLog)
+│   ├── storedProcedure.sql           # 24 支標準預存程序 (sp*，全小寫關鍵字、try...catch、spWriteLog，含刪除回合/議程)
 │   └── seedData.sql                  # 預設部門、管理員/參與者帳號、牌組、代表類型、工項與示範投票過程
 ├── ps\
 │   ├── common.ps1                    # 共用核心函數 (DPAPI 加解密、Retry 重試、雙軌 DB/CSV Log、sp_executesql)
@@ -73,6 +73,6 @@ pwsh -NoProfile -File c:\temp\storyPoint\ps\ui\uiMain.ps1 -uiMode full
 ```powershell
 dotnet run --project c:\temp\storyPoint\web\storyPointPortal\storyPointPortal.csproj --urls "http://localhost:5088"
 ```
-預設測試帳號：
-- **管理者 (`admin`)**：帳號 `admin` / 密碼 `admin123`（或 `alex.chen` / `admin123`）
-- **參與者 (`participant`)**：帳號 `kevin.wang`、`emily.lee`、`david.chang`、`grace.lin` / 密碼皆為 `pass123`
+預設帳號與密碼說明：
+- **核心保留帳戶**：`admin`、`byron.hu` (`byron`)、`raya`（維持既有設定密碼不變）
+- **所有其他員工帳戶預設密碼**：統一為 `P@ssw0rd`

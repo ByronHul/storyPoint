@@ -284,8 +284,17 @@ switch ($actionType) {
                 $resolvedDeptPk = $deptMap[$item.departmentName]
             }
 
-            $rawPwd = if ($null -ne $item.plainPassword -and -not [string]::isnullorempty($item.plainPassword)) { $item.plainPassword } else { 'pass123' }
-            $pwdHash = getSha256Hash -plainText $rawPwd
+            $isProtectedAcc = $item.loginAccount -in @('admin', 'raya', 'byron', 'byron.hu')
+            $rawPwd = if ($null -ne $item.plainPassword -and -not [string]::isnullorempty($item.plainPassword)) {
+                $item.plainPassword
+            }
+            elseif ($isProtectedAcc) {
+                ''
+            }
+            else {
+                'P@ssw0rd'
+            }
+            $pwdHash = if (-not [string]::isnullorempty($rawPwd)) { getSha256Hash -plainText $rawPwd } else { '' }
 
             $null = invokeStoredProcedureDataSet -procedureName 'storyPoint.spUpsertEmployee' -parameters @{
                 employeeCode = $item.employeeCode

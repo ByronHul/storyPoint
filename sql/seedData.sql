@@ -79,7 +79,7 @@ declare @deptBiPk int = (select top 1 pk from storyPoint.tbDepartment where depa
 declare @deptDevPk int = (select top 1 pk from storyPoint.tbDepartment where departmentCode = 'DEV');
 
 declare @adminDefaultHash varchar(256) = '0ef198f02d13c7364ebc9b7d548fd125e1678affd651c21ba25f23532acfc5b5';
-declare @participantDefaultHash varchar(256) = '9b8769a4a742959a2d0298c36fb70623f2dfacda8436237df08d8dfd5b37374c'; -- pass123
+declare @participantDefaultHash varchar(256) = 'b03ddf3ca2e714a6548e7495e2a03f5e824eaac9837cd7f159c67b90fb4b7342'; -- P@ssw0rd
 
 if not exists (select 1 from storyPoint.tbEmployee where loginAccount = 'admin')
 begin
@@ -220,6 +220,13 @@ begin
     set @idx = @idx + 1;
 end
 
+-- 將除 admin、byron (byron.hu)、raya 以外仍使用舊預設密碼雜湊之帳戶統一更新為新預設密碼 P@ssw0rd (絕不修改 admin、byron、raya 之密碼)
+update storyPoint.tbEmployee
+set passwordHash = @participantDefaultHash,
+    updatedAt = sysdatetime()
+where loginAccount not in ('admin', 'raya', 'byron', 'byron.hu')
+  and passwordHash = '9b8769a4a742959a2d0298c36fb70623f2dfacda8436237df08d8dfd5b37374c';
+
 -- ============================================================================
 -- 2.1 建立全體員工「部門主管標記 (isDepartmentManager)」與「三層樹狀遞迴主管階層 (managerEmployeePk)」
 --     第 1 層 (Root) : 胡百敬 (081201, 管理部董事長兼部門經理, managerEmployeePk = null, isDepartmentManager = 1)
@@ -318,65 +325,130 @@ end
 go
 
 -- ============================================================================
--- 4. 預設工項類型設定 (storyPoint.tbWorkItemKind：專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品，支援增刪修)
+-- 4. 預設工項類型與主要特徵設定 (storyPoint.tbWorkItemKind：專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品，支援增刪修查)
 -- ============================================================================
 if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'project')
 begin
     insert into storyPoint.tbWorkItemKind (
-        kindCode, kindName, badgeIcon, badgeColor, sortOrder, description, isActive
+        kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        mainFeatureSummary, estimationTrait, timeAndDeliverableTrait, description, isActive
     )
     values (
         'project', N'專案', N'🏗️', 'blue', 10,
+        N'階段性目標導向、跨模組需求開發與系統建置、明確里程碑與範圍界定',
+        N'依功能複雜度、跨系統整合難度與未知風險綜合盲投估算 (常見 3 ~ 21 pt)',
+        N'中長期 Sprint 或專案起訖週期｜交付上線系統與驗收文件｜達迄時自動轉已完成、扣點並通知部門主管與 HR',
         N'專案建置與功能開發工項，具備明確起訖時間，達迄時自動轉為已完成並扣除 Story Point 及寄發通知信。',
         1
     );
+end
+else
+begin
+    update storyPoint.tbWorkItemKind
+    set mainFeatureSummary = isnull(nullif(ltrim(rtrim(mainFeatureSummary)), N''), N'階段性目標導向、跨模組需求開發與系統建置、明確里程碑與範圍界定'),
+        estimationTrait = isnull(nullif(ltrim(rtrim(estimationTrait)), N''), N'依功能複雜度、跨系統整合難度與未知風險綜合盲投估算 (常見 3 ~ 21 pt)'),
+        timeAndDeliverableTrait = isnull(nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''), N'中長期 Sprint 或專案起訖週期｜交付上線系統與驗收文件｜達迄時自動轉已完成、扣點並通知部門主管與 HR'),
+        updatedAt = sysdatetime()
+    where kindCode = 'project';
 end
 
 if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'maintenance')
 begin
     insert into storyPoint.tbWorkItemKind (
-        kindCode, kindName, badgeIcon, badgeColor, sortOrder, description, isActive
+        kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        mainFeatureSummary, estimationTrait, timeAndDeliverableTrait, description, isActive
     )
     values (
         'maintenance', N'維運', N'🛠️', 'amber', 20,
+        N'常態性系統穩定度維持、例行健康巡檢、問題排查 (Troubleshooting) 與效能調校',
+        N'依處理頻率、SLA 緊急程度、環境複雜度與影響範圍估算 (常見 0.5 ~ 5 pt)',
+        N'短週期或月/季例行維運期間｜交付問題修復紀錄與巡檢報告｜達迄時自動轉已完成、扣點並通知部門主管與 HR',
         N'日常維運、例行巡檢與異常排除工項，具備起訖期間設定，達迄時自動轉態扣點並通知部門管理層與 HR。',
         1
     );
+end
+else
+begin
+    update storyPoint.tbWorkItemKind
+    set mainFeatureSummary = isnull(nullif(ltrim(rtrim(mainFeatureSummary)), N''), N'常態性系統穩定度維持、例行健康巡檢、問題排查 (Troubleshooting) 與效能調校'),
+        estimationTrait = isnull(nullif(ltrim(rtrim(estimationTrait)), N''), N'依處理頻率、SLA 緊急程度、環境複雜度與影響範圍估算 (常見 0.5 ~ 5 pt)'),
+        timeAndDeliverableTrait = isnull(nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''), N'短週期或月/季例行維運期間｜交付問題修復紀錄與巡檢報告｜達迄時自動轉已完成、扣點並通知部門主管與 HR'),
+        updatedAt = sysdatetime()
+    where kindCode = 'maintenance';
 end
 
 if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'consultingHour')
 begin
     insert into storyPoint.tbWorkItemKind (
-        kindCode, kindName, badgeIcon, badgeColor, sortOrder, description, isActive
+        kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        mainFeatureSummary, estimationTrait, timeAndDeliverableTrait, description, isActive
     )
     values (
         'consultingHour', N'顧問時數', N'⏳', 'purple', 30,
+        N'專業技術知識輸出、客戶架構診斷、技術顧問諮詢與專家駐點支援服務',
+        N'依投入顧問人天/時數、專業技術深度與交付報告規模估算 (常見 1 ~ 8 pt)',
+        N'單次駐點或顧問合約起訖期間｜交付架構建議書、健檢報告與時數簽認單｜達迄時自動轉已完成、扣點並通知部門主管與 HR',
         N'客戶架構諮詢、技術顧問與駐點時數工項，具備合約/顧問起訖時間，達迄時自動轉態扣點並通知部門管理層與 HR。',
         1
     );
+end
+else
+begin
+    update storyPoint.tbWorkItemKind
+    set mainFeatureSummary = isnull(nullif(ltrim(rtrim(mainFeatureSummary)), N''), N'專業技術知識輸出、客戶架構診斷、技術顧問諮詢與專家駐點支援服務'),
+        estimationTrait = isnull(nullif(ltrim(rtrim(estimationTrait)), N''), N'依投入顧問人天/時數、專業技術深度與交付報告規模估算 (常見 1 ~ 8 pt)'),
+        timeAndDeliverableTrait = isnull(nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''), N'單次駐點或顧問合約起訖期間｜交付架構建議書、健檢報告與時數簽認單｜達迄時自動轉已完成、扣點並通知部門主管與 HR'),
+        updatedAt = sysdatetime()
+    where kindCode = 'consultingHour';
 end
 
 if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'training')
 begin
     insert into storyPoint.tbWorkItemKind (
-        kindCode, kindName, badgeIcon, badgeColor, sortOrder, description, isActive
+        kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        mainFeatureSummary, estimationTrait, timeAndDeliverableTrait, description, isActive
     )
     values (
         'training', N'教育訓練', N'🎓', 'green', 40,
+        N'內部技術傳承、外部客戶課程講授、實機 Lab 教材編撰與新人培訓賦能',
+        N'依課程授課時數、新教材研發比例、Lab 環境準備與授課難度估算 (常見 1 ~ 8 pt)',
+        N'單日課程或培訓梯次起訖期間｜交付課程簡報、實作講義與完訓紀錄｜達迄時自動轉已完成、扣點並通知部門主管與 HR',
         N'內部技術傳承、外部課程講授與新人教育訓練工項，具備課程/培訓起訖時間，達迄時自動轉態扣點並通知部門管理層與 HR。',
         1
     );
+end
+else
+begin
+    update storyPoint.tbWorkItemKind
+    set mainFeatureSummary = isnull(nullif(ltrim(rtrim(mainFeatureSummary)), N''), N'內部技術傳承、外部客戶課程講授、實機 Lab 教材編撰與新人培訓賦能'),
+        estimationTrait = isnull(nullif(ltrim(rtrim(estimationTrait)), N''), N'依課程授課時數、新教材研發比例、Lab 環境準備與授課難度估算 (常見 1 ~ 8 pt)'),
+        timeAndDeliverableTrait = isnull(nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''), N'單日課程或培訓梯次起訖期間｜交付課程簡報、實作講義與完訓紀錄｜達迄時自動轉已完成、扣點並通知部門主管與 HR'),
+        updatedAt = sysdatetime()
+    where kindCode = 'training';
 end
 
 if not exists (select 1 from storyPoint.tbWorkItemKind where kindCode = 'productDevelopment')
 begin
     insert into storyPoint.tbWorkItemKind (
-        kindCode, kindName, badgeIcon, badgeColor, sortOrder, description, isActive
+        kindCode, kindName, badgeIcon, badgeColor, sortOrder,
+        mainFeatureSummary, estimationTrait, timeAndDeliverableTrait, description, isActive
     )
     values (
         'productDevelopment', N'開發產品', N'🚀', 'red', 50,
+        N'自有產品核心研發、技術架構創新、標準化模組封裝與產品版本迭代 (Roadmap)',
+        N'依技術創新度、通用架構擴充性、自動化測試覆蓋率與產品化標準估算 (常見 3 ~ 21 pt)',
+        N'雙週 Sprint 或產品版本起訖週期｜交付標準產品模組、API 與發行套件｜達迄時自動轉已完成、扣點並通知部門主管與 HR',
         N'自有產品研發、核心模組創新與產品版本迭代工項，具備開發階段起訖時間，達迄時自動轉態扣點並通知部門管理層與 HR。',
         1
     );
+end
+else
+begin
+    update storyPoint.tbWorkItemKind
+    set mainFeatureSummary = isnull(nullif(ltrim(rtrim(mainFeatureSummary)), N''), N'自有產品核心研發、技術架構創新、標準化模組封裝與產品版本迭代 (Roadmap)'),
+        estimationTrait = isnull(nullif(ltrim(rtrim(estimationTrait)), N''), N'依技術創新度、通用架構擴充性、自動化測試覆蓋率與產品化標準估算 (常見 3 ~ 21 pt)'),
+        timeAndDeliverableTrait = isnull(nullif(ltrim(rtrim(timeAndDeliverableTrait)), N''), N'雙週 Sprint 或產品版本起訖週期｜交付標準產品模組、API 與發行套件｜達迄時自動轉已完成、扣點並通知部門主管與 HR'),
+        updatedAt = sysdatetime()
+    where kindCode = 'productDevelopment';
 end
 go

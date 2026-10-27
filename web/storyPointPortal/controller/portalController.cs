@@ -1575,13 +1575,16 @@ public class portalController : Controller
         [FromForm] string? badgeIcon = "📌",
         [FromForm] string? badgeColor = "blue",
         [FromForm] int sortOrder = 100,
+        [FromForm] string? mainFeatureSummary = null,
+        [FromForm] string? estimationTrait = null,
+        [FromForm] string? timeAndDeliverableTrait = null,
         [FromForm] string? description = null,
-        [FromForm] string? returnTab = "workitems")
+        [FromForm] string? returnTab = "types")
     {
-        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "workitems" : returnTab.Trim();
+        string targetTab = string.IsNullOrWhiteSpace(returnTab) ? "types" : returnTab.Trim();
         if (!isAdminUser())
         {
-            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("僅管理者可新增或修改工項類型。"));
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("僅管理者可新增或修改預設工項類型。"));
         }
 
         try
@@ -1594,19 +1597,22 @@ public class portalController : Controller
                 ["badgeIcon"] = string.IsNullOrWhiteSpace(badgeIcon) ? "📌" : badgeIcon.Trim(),
                 ["badgeColor"] = string.IsNullOrWhiteSpace(badgeColor) ? "blue" : badgeColor.Trim(),
                 ["sortOrder"] = sortOrder,
-                ["description"] = description,
+                ["mainFeatureSummary"] = string.IsNullOrWhiteSpace(mainFeatureSummary) ? null : mainFeatureSummary.Trim(),
+                ["estimationTrait"] = string.IsNullOrWhiteSpace(estimationTrait) ? null : estimationTrait.Trim(),
+                ["timeAndDeliverableTrait"] = string.IsNullOrWhiteSpace(timeAndDeliverableTrait) ? null : timeAndDeliverableTrait.Trim(),
+                ["description"] = string.IsNullOrWhiteSpace(description) ? null : description.Trim(),
                 ["isActive"] = true,
                 ["operatorAccount"] = getCurrentLoginAccount()
             });
 
             string savedCode = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["kindCode"]?.ToString() ?? kindCode) : kindCode;
             string savedName = (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0) ? (ds.Tables[0].Rows[0]["kindName"]?.ToString() ?? kindName) : kindName;
-            return Redirect($"/?tab={targetTab}&msg=" + Uri.EscapeDataString($"工項類型「{savedCode} - {savedName}」已成功儲存！"));
+            return Redirect($"/?tab={targetTab}&msg=" + Uri.EscapeDataString($"預設工項類型「{savedCode} - {savedName}」及主要特徵已成功儲存！"));
         }
         catch (Exception ex)
         {
             await logPortalExceptionAsync("portalController.saveWorkItemKind", ex);
-            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("儲存工項類型失敗（已記錄至系統 Log）：" + ex.Message));
+            return Redirect($"/?tab={targetTab}&err=" + Uri.EscapeDataString("儲存預設工項類型失敗（已記錄至系統 Log）：" + ex.Message));
         }
     }
 
@@ -4351,22 +4357,26 @@ public class portalController : Controller
                             <span class=""menu-sub-icon"">📋</span>
                             <span class=""menu-sub-title"">{menu2Sub1Title}</span>
                         </a>
-                        <a class=""menu-sub-item {(currentTab == "types" ? "active" : "")}"" data-tab=""types"" data-tip=""{(isAdmin ? "2-2. 工項代表類型管理：管理已賦予標準 Story Point 的工項代表類型" : "2-2. 工項代表類型標準點數參考：查閱各工項代表類型的標準 Story Point 定義")}"" onclick=""switchTab('types')"">
+                        <a class=""menu-sub-item {(currentTab == "types" ? "active" : "")}"" data-tab=""types"" data-tip=""{(isAdmin ? "2-2. 工項代表類型與預設工項類型管理：管理工項代表類型標準點數，並增刪修查預設工項類型與主要特徵表" : "2-2. 工項代表類型與預設工項類型特徵參考：查閱各工項代表類型標準 Story Point 與預設工項類型主要特徵表")}"" onclick=""switchTab('types')"">
                             <span class=""menu-sub-icon"">🏷️</span>
                             <span class=""menu-sub-title"">2-2. {(isAdmin ? "工項代表類型" : "代表類型參考")}</span>
                         </a>
+                        <a class=""menu-sub-item"" data-tab=""types"" data-tip=""{(isAdmin ? "2-3. 預設工項類型增刪修查與主要特徵表：管理專案、維運、顧問時數、教育訓練、開發產品等預設工項類型並表列主要特徵" : "2-3. 預設工項類型主要特徵一覽表：查詢專案、維運、顧問時數、教育訓練、開發產品等工項類型的主要特徵")}"" onclick=""switchTab('types'); setTimeout(function(){{ document.getElementById('wikCrudCard_types')?.scrollIntoView({{behavior:'smooth', block:'start'}}); }}, 80);"">
+                            <span class=""menu-sub-icon"">🗂️</span>
+                            <span class=""menu-sub-title"">2-3. 預設工項類型與特徵</span>
+                        </a>
                         <div class=""menu-sub-header"" style=""margin-top:6px;"">工項報表匯出</div>
-                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=csv"" data-tip=""2-3. 匯出工項報表 (CSV 格式)：下載 UTF-8 BOM CSV 工項點數清單"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=csv"" data-tip=""2-4. 匯出工項報表 (CSV 格式)：下載 UTF-8 BOM CSV 工項點數清單"">
                             <span class=""menu-sub-icon"">📥</span>
-                            <span class=""menu-sub-title"">2-3. 匯出工項 (CSV)</span>
+                            <span class=""menu-sub-title"">2-4. 匯出工項 (CSV)</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=excel"" data-tip=""2-4. 匯出工項報表 (Excel .xlsx 格式)：下載標準 OpenXML Excel 活頁簿"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=excel"" data-tip=""2-5. 匯出工項報表 (Excel .xlsx 格式)：下載標準 OpenXML Excel 活頁簿"">
                             <span class=""menu-sub-icon"">📊</span>
-                            <span class=""menu-sub-title"">2-4. 匯出工項 (Excel)</span>
+                            <span class=""menu-sub-title"">2-5. 匯出工項 (Excel)</span>
                         </a>
-                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=html"" data-tip=""2-5. 匯出工項互動 HTML 報表：支援點擊表頭排序、多條件篩選與動態群組彙總統計"">
+                        <a class=""menu-sub-item"" href=""/export/report?type=workitem&format=html"" data-tip=""2-6. 匯出工項互動 HTML 報表：支援點擊表頭排序、多條件篩選與動態群組彙總統計"">
                             <span class=""menu-sub-icon"">🌐</span>
-                            <span class=""menu-sub-title"">2-5. 匯出工項 (HTML)</span>
+                            <span class=""menu-sub-title"">2-6. 匯出工項 (HTML)</span>
                         </a>
                     </div>
                 </div>
@@ -4962,6 +4972,7 @@ public class portalController : Controller
                         <button type=""button"" data-session-leave-btn=""{sPk}"" onclick=""leaveParticipatingSessionFromLobby(event, {sPk})"" class=""btn btn-outline"" style=""display:{(isOpenNow ? "inline-block" : "none")};padding:8px 10px;font-size:12px;color:#dc2626;border-color:#fca5a5;background:#fff;"" title=""結束本場議程的獨立網頁參與狀態並移回「待參與」"">🚪 結束參與</button>
                         {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:8px 10px;font-size:12px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' onclick=\"triggerRevoteFromTarget('session', 0, {sPk}, '{jsCardTitle}', false, 'voting')\" title='針對此議程重啟新一輪盲投'>🔄 重啟新一輪</button>" : "")}
                         {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:8px 10px;font-size:12px;color:#b45309;border-color:#fcd34d;background:#fffbeb;' onclick=\"openSessionSetupEditModal({sPk}, '', 0, true, 'restartAll')\" title='全部重新開始（重設回第 1 回合，並重新設定投票人名單與所有選項）'>🆕 全部重新開始(重設選項)</button>" : "")}
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:8px 10px;font-size:12px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;' onclick=\"triggerDeleteVotingSession({sPk}, '{escapeJsString(sRow["sessionCode"]?.ToString() ?? "")}', '{escapeJsString(sRow["sessionTitle"]?.ToString() ?? "")}', 'voting')\" title='永久刪除此場盲投回合／議程'>🗑️ 刪除回合</button>" : "")}
                     </div>
                 </div>");
         }
@@ -5282,9 +5293,12 @@ public class portalController : Controller
                                 <span>⚡ <strong>5. 全員出牌後自動翻牌揭曉</strong> <span class='sp-tip-icon'>ⓘ</span></span>
                             </label>
                         </div>
-                        <div style='display:flex;align-items:end;'>
-                            <button type='submit' class='btn btn-primary' style='width:100%;padding:10px;font-size:14px;' id='setupSubmitBtn'>
+                        <div style='display:flex;align-items:end;gap:8px;'>
+                            <button type='submit' class='btn btn-primary' style='flex:1;padding:10px;font-size:14px;' id='setupSubmitBtn'>
                                 🚀 儲存設定並啟動盲投議程
+                            </button>
+                            <button type='button' class='btn btn-outline' style='display:none;padding:10px 14px;font-size:13.5px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;white-space:nowrap;' id='setupDeleteSessionBtn' onclick='deleteSelectedSetupSession()'>
+                                🗑️ 刪除此回合／議程
                             </button>
                         </div>
                     </div>
@@ -5304,7 +5318,7 @@ public class portalController : Controller
             <div style='margin-top:18px;border-top:1px solid #e2e8f0;padding-top:14px;'>
                 <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
                     <div style='font-weight:700;font-size:15px;color:#0f172a;'>📋 各投票議程的回合設定總覽（投什麼 ／ 誰可參與 ／ 點數上下限 ／ 共識與計時規則）</div>
-                    <span class='badge badge-revealed'>🖱️ 直接於任一筆紀錄按「滑鼠右鍵」即可選擇該筆紀錄並開啟操作選單（彈出 Modal 單筆編輯設定、進入盲投網頁等）</span>
+                    <span class='badge badge-revealed'>🖱️ 直接於任一筆紀錄按「滑鼠右鍵」即可選擇該筆紀錄並開啟操作選單（彈出 Modal 單筆編輯設定、刪除回合、進入盲投網頁等）</span>
                 </div>
                 <table id='roundSetupSessionTable'>
                     <thead>
@@ -5326,6 +5340,8 @@ public class portalController : Controller
             string sTitleStr = sRow["sessionTitle"]?.ToString() ?? "";
             string sStatus = sRow["sessionStatus"].ToString() ?? "";
             string badgeCls = sStatus == "voting" ? "badge-voting" : (sStatus == "revealed" ? "badge-revealed" : "badge-finalized");
+            int curRoundNum = sRow.Table.Columns.Contains("currentRoundNumber") && sRow["currentRoundNumber"] != DBNull.Value ? Convert.ToInt32(sRow["currentRoundNumber"]) : 1;
+            int totalRoundCnt = sRow.Table.Columns.Contains("totalRoundCount") && sRow["totalRoundCount"] != DBNull.Value ? Convert.ToInt32(sRow["totalRoundCount"]) : curRoundNum;
             decimal minPt = sRow.Table.Columns.Contains("minStoryPoint") && sRow["minStoryPoint"] != DBNull.Value ? Convert.ToDecimal(sRow["minStoryPoint"]) : 0m;
             decimal maxPt = sRow.Table.Columns.Contains("maxStoryPoint") && sRow["maxStoryPoint"] != DBNull.Value ? Convert.ToDecimal(sRow["maxStoryPoint"]) : 21m;
             decimal maxSpread = sRow.Table.Columns.Contains("maxAllowedSpread") && sRow["maxAllowedSpread"] != DBNull.Value ? Convert.ToDecimal(sRow["maxAllowedSpread"]) : 5m;
@@ -5340,7 +5356,7 @@ public class portalController : Controller
                 : "";
 
             sb.Append($@"
-                        <tr class='sp-context-row' data-row-kind='session' data-row-title='{h(sCodeStr)} - {h(sTitleStr)}' data-session-pk='{sPk}' data-session-code='{h(sCodeStr)}' data-session-title='{h(sTitleStr)}' data-session-status='{h(sStatus)}' title='💡 按滑鼠右鍵選擇此筆議程紀錄並開啟操作選單（彈出 Modal 單筆編輯、進入獨立盲投網頁）'>
+                        <tr class='sp-context-row' data-row-kind='session' data-row-title='{h(sCodeStr)} - {h(sTitleStr)}' data-session-pk='{sPk}' data-session-code='{h(sCodeStr)}' data-session-title='{h(sTitleStr)}' data-session-status='{h(sStatus)}' data-session-round='{curRoundNum}' data-session-total-rounds='{totalRoundCnt}' title='💡 按滑鼠右鍵選擇此筆議程紀錄並開啟操作選單（彈出 Modal 單筆編輯、進入獨立盲投網頁、刪除此盲投回合／議程）'>
                             <td data-sort-value='{h(sCodeStr)}'>
                                 <div><strong>{h(sCodeStr)}</strong></div>
                                 <span style='font-size:12.5px;color:#334155;'>{h(sTitleStr)}</span>
@@ -5348,7 +5364,8 @@ public class portalController : Controller
                             </td>
                             <td>
                                 <span class='badge {badgeCls}'>{h(sRow["sessionStatusText"])}</span>
-                                {(sRow["finalStoryPoint"] != DBNull.Value ? $"<div style='font-size:12px;color:#15803d;font-weight:700;margin-top:4px;'>定案：{sRow["finalStoryPoint"]} pt</div>" : "")}
+                                <div style='font-size:11.5px;color:#475569;margin-top:3px;'>第 {curRoundNum} 回合（共 {totalRoundCnt} 回合）</div>
+                                {(sRow["finalStoryPoint"] != DBNull.Value ? $"<div style='font-size:12px;color:#15803d;font-weight:700;margin-top:2px;'>定案：{sRow["finalStoryPoint"]} pt</div>" : "")}
                             </td>
                             <td>
                                 <span style='font-size:12px;color:#2563eb;font-weight:700;'>{h(sRow["targetKindText"])}</span><br/>
@@ -5379,22 +5396,27 @@ public class portalController : Controller
         foreach (DataRow sRow in sessionTable.Rows)
         {
             int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
+            string sCodeHist = sRow["sessionCode"]?.ToString() ?? "";
+            string sTitleHist = sRow["sessionTitle"]?.ToString() ?? "";
             string sStatus = sRow["sessionStatus"].ToString() ?? "";
             string badgeCls = sStatus == "voting" ? "badge-voting" : (sStatus == "revealed" ? "badge-revealed" : "badge-finalized");
             string finalPt = sRow["finalStoryPoint"] != DBNull.Value ? $"{sRow["finalStoryPoint"]} pt" : "尚未定案";
-            string jsHistTitle = escapeJsString($"{sRow["sessionCode"]} - {sRow["sessionTitle"]}");
+            string jsHistTitle = escapeJsString($"{sCodeHist} - {sTitleHist}");
+            string jsHistCode = escapeJsString(sCodeHist);
+            string jsHistOnlyTitle = escapeJsString(sTitleHist);
 
             sb.Append($@"
             <div style=""border:1px solid #cbd5e1;border-radius:10px;padding:16px;margin-bottom:18px;background:#f8fafc;"">
                 <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;"">
                     <div>
                         <span class=""badge {badgeCls}"">{h(sRow["sessionStatusText"])}</span>
-                        <strong style=""font-size:16px;margin-left:6px;"">{h(sRow["sessionCode"])} - {h(sRow["sessionTitle"])}</strong>
+                        <strong style=""font-size:16px;margin-left:6px;"">{h(sCodeHist)} - {h(sTitleHist)}</strong>
                     </div>
-                    <div style=""font-size:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;"">
+                    <div style=""font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;"">
                         <span>最終核定 Story Point：<strong style=""color:#16a34a;font-size:18px;"">{finalPt}</strong> ｜ 總回合數：<strong>{sRow["totalRoundCount"]} 回合</strong> ｜ 主持管理者：{h(sRow["hostEmployeeName"])}</span>
                         {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;' onclick=\"triggerRevoteFromTarget('session', 0, {sPk}, '{jsHistTitle}', false, 'voting')\">🔄 重啟新一輪</button>" : "")}
                         {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;color:#b45309;border-color:#fcd34d;background:#fffbeb;' onclick=\"openSessionSetupEditModal({sPk}, '', 0, true, 'restartAll')\">🆕 全部重新開始(重設投票人與所有選項)</button>" : "")}
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;' onclick=\"triggerDeleteVotingSession({sPk}, '{jsHistCode}', '{jsHistOnlyTitle}', 'history')\">🗑️ 刪除此議程</button>" : "")}
                     </div>
                 </div>
                 <div style=""font-size:13px;color:#334155;margin-bottom:10px;"">
@@ -5415,8 +5437,11 @@ public class portalController : Controller
                     : $"（出牌數：{rRow["voteCount"]} 人 ｜ 盲投進行中，待全員投票後自動翻牌揭曉）";
                 sb.Append($@"
                 <div style=""background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-top:10px;"">
-                    <div style=""font-weight:700;color:#1e3a8a;margin-bottom:6px;"">
-                        🔹 第 {rNum} 回合 {roundStatSummary}
+                    <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;"">
+                        <div style=""font-weight:700;color:#1e3a8a;"">
+                            🔹 第 {rNum} 回合 {roundStatSummary}
+                        </div>
+                        {(isAdmin ? $"<button type='button' class='btn btn-outline' style='padding:3px 9px;font-size:11.5px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;' onclick=\"triggerDeleteVotingRound({sPk}, {rNum}, '{jsHistTitle}', true, 'history')\" title='刪除此回合（第 {rNum} 回合）與其出牌紀錄'>🗑️ 刪除第 {rNum} 回合</button>" : "")}
                     </div>
                     <div style=""font-size:12.5px;color:#475569;margin-bottom:8px;"">💬 回合討論紀錄：{h(rRow["roundDiscussionNote"])}</div>
                     <table>
@@ -5425,7 +5450,7 @@ public class portalController : Controller
                 foreach (DataRow vRow in voteRecordTable.Rows)
                 {
                     if (Convert.ToInt32(vRow["votingSessionPk"]) != sPk || Convert.ToInt32(vRow["roundNumber"]) != rNum) continue;
-                    sb.Append($@"<tr class='sp-context-row' data-row-kind='readonlyRecord' data-row-title='第 {rNum} 回合投票：{h(vRow["employeeCode"])} - {h(vRow["employeeName"])}' title='💡 按滑鼠右鍵選擇此筆紀錄並開啟操作選單'>
+                    sb.Append($@"<tr class='sp-context-row' data-row-kind='votingRoundVote' data-session-pk='{sPk}' data-session-code='{h(sCodeHist)}' data-session-title='{h(sTitleHist)}' data-round-number='{rNum}' data-row-title='第 {rNum} 回合投票：{h(vRow["employeeCode"])} - {h(vRow["employeeName"])}' title='💡 按滑鼠右鍵選擇此筆紀錄並開啟操作選單（可刪除此回合或檢視明細）'>
                         <td>{h(vRow["employeeCode"])}</td>
                         <td><strong>{h(vRow["employeeName"])}</strong></td>
                         <td>{h(vRow["departmentName"])}</td>
@@ -5476,87 +5501,174 @@ public class portalController : Controller
         // =====================================================================
         sb.Append($"<div id='pane-workitems' class='tab-pane {(currentTab == "workitems" ? "active" : "")}'>");
 
-        // 動態建構工項類型下拉選單選項 HTML (來自 storyPoint.tbWorkItemKind，支援增刪修)
+        // 動態建構預設工項類型下拉選單選項 HTML (來自 storyPoint.tbWorkItemKind，支援增刪修查與主要特徵屬性)
         var kindOptionsBuilder = new StringBuilder();
         if (kindTable.Rows.Count > 0)
         {
             foreach (DataRow kRow in kindTable.Rows)
             {
+                int kPk = kRow.Table.Columns.Contains("workItemKindPk") && kRow["workItemKindPk"] != DBNull.Value ? Convert.ToInt32(kRow["workItemKindPk"]) : 0;
                 string kCode = kRow["kindCode"]?.ToString() ?? "project";
                 string kName = kRow["kindName"]?.ToString() ?? kCode;
                 string kIcon = kRow.Table.Columns.Contains("badgeIcon") && kRow["badgeIcon"] != DBNull.Value ? (kRow["badgeIcon"]?.ToString() ?? "📌") : "📌";
-                kindOptionsBuilder.Append($"<option value='{h(kCode)}'>{h(kIcon)} {h(kName)} ({h(kCode)})</option>");
+                string kColor = kRow.Table.Columns.Contains("badgeColor") && kRow["badgeColor"] != DBNull.Value ? (kRow["badgeColor"]?.ToString() ?? "blue") : "blue";
+                int kSort = kRow.Table.Columns.Contains("sortOrder") && kRow["sortOrder"] != DBNull.Value ? Convert.ToInt32(kRow["sortOrder"]) : 100;
+                string kFeature = kRow.Table.Columns.Contains("mainFeatureSummary") && kRow["mainFeatureSummary"] != DBNull.Value ? (kRow["mainFeatureSummary"]?.ToString() ?? "") : "";
+                string kEstTrait = kRow.Table.Columns.Contains("estimationTrait") && kRow["estimationTrait"] != DBNull.Value ? (kRow["estimationTrait"]?.ToString() ?? "") : "";
+                string kDelivTrait = kRow.Table.Columns.Contains("timeAndDeliverableTrait") && kRow["timeAndDeliverableTrait"] != DBNull.Value ? (kRow["timeAndDeliverableTrait"]?.ToString() ?? "") : "";
+                string kDesc = kRow.Table.Columns.Contains("description") && kRow["description"] != DBNull.Value ? (kRow["description"]?.ToString() ?? "") : "";
+                int linkedWiCnt = kRow.Table.Columns.Contains("linkedWorkItemCount") && kRow["linkedWorkItemCount"] != DBNull.Value ? Convert.ToInt32(kRow["linkedWorkItemCount"]) : 0;
+                int linkedTypeCnt = kRow.Table.Columns.Contains("linkedTypeCount") && kRow["linkedTypeCount"] != DBNull.Value ? Convert.ToInt32(kRow["linkedTypeCount"]) : 0;
+                kindOptionsBuilder.Append($"<option value='{h(kCode)}' data-kind-pk='{kPk}' data-kind-code='{h(kCode)}' data-kind-name='{h(kName)}' data-kind-icon='{h(kIcon)}' data-kind-color='{h(kColor)}' data-kind-sort='{kSort}' data-kind-feature='{h(kFeature)}' data-kind-estimation='{h(kEstTrait)}' data-kind-deliverable='{h(kDelivTrait)}' data-kind-desc='{h(kDesc)}' data-linked-wi='{linkedWiCnt}' data-linked-type='{linkedTypeCnt}'>{h(kIcon)} {h(kName)} ({h(kCode)})</option>");
             }
         }
         else
         {
-            kindOptionsBuilder.Append("<option value='project'>🏗️ 專案 (project)</option>");
-            kindOptionsBuilder.Append("<option value='maintenance'>🛠️ 維運 (maintenance)</option>");
-            kindOptionsBuilder.Append("<option value='consultingHour'>⏳ 顧問時數 (consultingHour)</option>");
-            kindOptionsBuilder.Append("<option value='training'>🎓 教育訓練 (training)</option>");
-            kindOptionsBuilder.Append("<option value='productDevelopment'>🚀 開發產品 (productDevelopment)</option>");
+            kindOptionsBuilder.Append("<option value='project' data-kind-pk='1' data-kind-code='project' data-kind-name='專案' data-kind-icon='🏗️' data-kind-color='blue' data-kind-sort='10' data-kind-feature='目標導向、具明確範疇與里程碑之新功能開發或系統建置' data-kind-estimation='依功能複雜度、跨模組整合難度進行團隊盲投估算 (通常 3 ~ 21 pt)' data-kind-deliverable='具明確專案起訖日與階段驗收交付物，達迄時自動轉態扣點並通知主管與 HR' data-kind-desc='客戶導入專案、系統全新功能開發或跨部門里程碑交付工項'>🏗️ 專案 (project)</option>");
+            kindOptionsBuilder.Append("<option value='maintenance' data-kind-pk='2' data-kind-code='maintenance' data-kind-name='維運' data-kind-icon='🛠️' data-kind-color='amber' data-kind-sort='20' data-kind-feature='穩定度導向、既有系統問題排除、例行巡檢、效能調校與安全性修補' data-kind-estimation='依問題排查深度與影響範圍套用維運代表類型標準點數 (通常 0.5 ~ 5 pt)' data-kind-deliverable='具 SLA 處理時限與改善報告，達迄時自動結案扣點並寄送通知' data-kind-desc='既有系統日常維運、例外錯誤修復、資料庫調校與例行巡檢工項'>🛠️ 維運 (maintenance)</option>");
+            kindOptionsBuilder.Append("<option value='consultingHour' data-kind-pk='3' data-kind-code='consultingHour' data-kind-name='顧問時數' data-kind-icon='⏳' data-kind-color='purple' data-kind-sort='30' data-kind-feature='專業知識輸出導向、架構諮詢、技術評估、POC 驗證與客戶駐點支援' data-kind-estimation='依投入時數區間與專業深度換算標準 Story Point (通常 1 ~ 8 pt)' data-kind-deliverable='依約定諮詢區間設定起訖時間並產出顧問建議書或會議紀錄，達迄時自動扣點' data-kind-desc='提供內部或外部客戶技術架構諮詢、POC 評估、問題診斷與顧問服務時數工項'>⏳ 顧問時數 (consultingHour)</option>");
+            kindOptionsBuilder.Append("<option value='training' data-kind-pk='4' data-kind-code='training' data-kind-name='教育訓練' data-kind-icon='🎓' data-kind-color='green' data-kind-sort='40' data-kind-feature='知識傳承與賦能導向、教材編撰、實機 Lab 演練、內訓與客戶操作培訓' data-kind-estimation='依課程時數、教材深度與實機環境準備複雜度估算點數 (通常 1 ~ 5 pt)' data-kind-deliverable='以開課/受訓起訖時程為準，交付簡報教材與課後測驗，達迄時自動扣點歸檔' data-kind-desc='內部技術傳承講座、新人培訓課程、教材編撰與客戶端系統操作教育訓練工項'>🎓 教育訓練 (training)</option>");
+            kindOptionsBuilder.Append("<option value='productDevelopment' data-kind-pk='5' data-kind-code='productDevelopment' data-kind-name='開發產品' data-kind-icon='🚀' data-kind-color='red' data-kind-sort='50' data-kind-feature='產品化與長期演進導向、自有核心模組研發、通用架構設計與高重用性元件開發' data-kind-estimation='依架構前瞻性、高可用度要求與自動化測試覆蓋率進行盲投估算 (通常 5 ~ 21 pt)' data-kind-deliverable='配合產品 Roadmap 與版本發佈週期設定起訖時間，達迄時自動轉態扣點並發信' data-kind-desc='自有核心產品研發、新世代架構演進、共用引擎模組與產品路線圖功能開發工項'>🚀 開發產品 (productDevelopment)</option>");
         }
         string dynamicKindOptionsHtml = kindOptionsBuilder.ToString();
 
-        // 共用輔助局部函數：輸出「工項類型 (tbWorkItemKind) 增、刪、修管理」卡片與清單
+        // 共用輔助局部函數：輸出「預設工項類型 (tbWorkItemKind) 增、刪、修、查管理與主要特徵一覽表」卡片與清單
         void renderWorkItemKindCrudCard(string tabSuffix)
         {
             sb.Append($@"
-            <div class='card' style='border:1.5px solid #bfdbfe;background:linear-gradient(180deg,#f8fafc 0%,#ffffff 100%);margin-bottom:18px;'>
-                <div class='card-title'>
-                    <span>🗂️ 工項類型增、刪、修管理（預設含：專案 / 維運 / 顧問時數 / 教育訓練 / 開發產品，支援自由新增、修改與刪除工項類型）</span>
-                    <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick=""resetWorkItemKindForm('{tabSuffix}')"">🔄 清空切換為新增工項類型</button>
+            <div class='card' id='wikCrudCard_{tabSuffix}' style='border:2px solid #93c5fd;background:linear-gradient(180deg,#f8fafc 0%,#ffffff 100%);margin-bottom:18px;box-shadow:0 4px 14px rgba(37,99,235,0.08);'>
+                <div class='card-title' style='flex-wrap:wrap;gap:8px;'>
+                    <div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;'>
+                        <span>🗂️ 預設工項類型增、刪、修、查管理與主要特徵一覽表</span>
+                        <span class='badge badge-user' id='wikFilterCountLabel_{tabSuffix}'>共 {kindTable.Rows.Count} 種預設工項類型</span>
+                    </div>
+                    <div style='display:flex;gap:8px;flex-wrap:wrap;'>
+                        {(isAdmin ? $@"<button type='button' class='btn btn-primary' style='padding:5px 12px;font-size:12px;' onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','{tabSuffix}','','','')"">➕ 彈出視窗新增預設工項類型</button>
+                        <button type='button' class='btn btn-outline' style='padding:5px 10px;font-size:12px;' onclick=""resetWorkItemKindForm('{tabSuffix}')"">🔄 清空表單切換為新增</button>" : "")}
+                    </div>
                 </div>
-                <form method='post' action='/workitem/kind/save' style='margin-bottom:14px;'>
+
+                <!-- 1. 預設工項類型與主要特徵即時查詢篩選列 (查) -->
+                <div style='background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
+                    <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;'>
+                        <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
+                            🔍 <strong>查詢預設工項類型與主要特徵：</strong>可輸入類型代碼、名稱、核心工作性質、點數估算特徵或交付特徵關鍵字即時過濾；雙擊列或點擊右側按鈕即可<strong>新增、修改、刪除、查詢套用工項</strong>。
+                        </div>
+                        <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;background:#fff;' onclick=""resetWorkItemKindFilter('{tabSuffix}')"">🔄 清除查詢條件</button>
+                    </div>
+                    <div class='form-row' style='margin-bottom:0;align-items:end;'>
+                        <div style='grid-column: span 2;'>
+                            <label data-tip='輸入類型代碼、名稱、主要特徵（核心工作性質）、點數估算特徵、時程交付特徵或適用情境說明關鍵字即時查詢' title='輸入類型代碼、名稱、主要特徵（核心工作性質）、點數估算特徵、時程交付特徵或適用情境說明關鍵字即時查詢'>🔍 關鍵字查詢預設工項類型與主要特徵 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' id='filterWikKeyword_{tabSuffix}' oninput=""filterWorkItemKindTable('{tabSuffix}')"" placeholder='輸入例如：專案、維運、顧問時數、教育訓練、開發產品、SLA、里程碑、盲投...' />
+                        </div>
+                        <div>
+                            <label data-tip='依預設工項類型的標籤代表色進行篩選' title='依預設工項類型的標籤代表色進行篩選'>🎨 標籤顏色篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <select id='filterWikColor_{tabSuffix}' onchange=""filterWorkItemKindTable('{tabSuffix}')"">
+                                <option value=''>全部標籤顏色</option>
+                                <option value='blue'>🔵 藍色 (專案)</option>
+                                <option value='amber'>🟡 琥珀橘 (維運)</option>
+                                <option value='purple'>🟣 紫色 (顧問時數)</option>
+                                <option value='green'>🟢 綠色 (教育訓練)</option>
+                                <option value='red'>🔴 紅色 (開發產品)</option>
+                                <option value='rose'>🌹 玫瑰紅 (緊急支援)</option>
+                                <option value='teal'>🩵 藍綠色 (客戶導入)</option>
+                                <option value='slate'>⚪ 灰藍色 (一般行政)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label data-tip='依是否有工項代表類型或實際工項套用此預設類型進行篩選' title='依是否有工項代表類型或實際工項套用此預設類型進行篩選'>📊 套用狀態篩選 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <select id='filterWikUsage_{tabSuffix}' onchange=""filterWorkItemKindTable('{tabSuffix}')"">
+                                <option value=''>全部套用狀態</option>
+                                <option value='inUse'>✅ 已套用（有代表類型或工項）</option>
+                                <option value='unused'>⚪ 尚未套用</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>");
+
+            if (isAdmin)
+            {
+                sb.Append($@"
+                <!-- 2. 新增 / 修改預設工項類型與主要特徵表單 (增、修) -->
+                <form method='post' action='/workitem/kind/save' style='background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
+                    <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px;'>
+                        <span id='wikFormTitle_{tabSuffix}' style='font-size:13px;font-weight:800;color:#0f172a;'>➕ 新增或修改「預設工項類型」及三項主要特徵（亦可點擊列表「✏️ 編輯」帶入修改）</span>
+                        <span style='font-size:11.5px;color:#475569;'>儲存後全站「預設工項類型」下拉選單與主要特徵表將立即同步更新</span>
+                    </div>
                     <input type='hidden' name='workItemKindPk' id='wikPk_{tabSuffix}' value='' />
                     <input type='hidden' name='returnTab' value='{tabSuffix}' />
                     <div class='form-row' style='align-items:end;'>
                         <div>
-                            <label data-tip='設定工項類型唯一識別代碼（例如：project、maintenance、consultingHour、training、productDevelopment 或自訂 supportCase）' title='設定工項類型唯一識別代碼（例如：project、maintenance、consultingHour、training、productDevelopment 或自訂 supportCase）'>類型代碼 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='設定預設工項類型唯一識別代碼（例如：project、maintenance、consultingHour、training、productDevelopment 或自訂 supportCase）' title='設定預設工項類型唯一識別代碼（例如：project、maintenance、consultingHour、training、productDevelopment 或自訂 supportCase）'>類型代碼 (kindCode) <span class='sp-tip-icon'>ⓘ</span></label>
                             <input type='text' name='kindCode' id='wikCode_{tabSuffix}' placeholder='例如：supportCase' required />
                         </div>
                         <div>
-                            <label data-tip='設定工項類型中文顯示名稱（例如：專案、維運、顧問時數、教育訓練、開發產品、駐點支援）' title='設定工項類型中文顯示名稱（例如：專案、維運、顧問時數、教育訓練、開發產品、駐點支援）'>工項類型名稱 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='設定預設工項類型中文顯示名稱（例如：專案、維運、顧問時數、教育訓練、開發產品、駐點支援）' title='設定預設工項類型中文顯示名稱（例如：專案、維運、顧問時數、教育訓練、開發產品、駐點支援）'>預設工項類型名稱 <span class='sp-tip-icon'>ⓘ</span></label>
                             <input type='text' name='kindName' id='wikName_{tabSuffix}' placeholder='例如：駐點技術支援' required />
                         </div>
                         <div>
-                            <label data-tip='選擇或輸入代表此工項類型的圖示符號（Emoji）' title='選擇或輸入代表此工項類型的圖示符號（Emoji）'>代表圖示 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='選擇或輸入代表此預設工項類型的圖示符號（Emoji）' title='選擇或輸入代表此預設工項類型的圖示符號（Emoji）'>代表圖示 <span class='sp-tip-icon'>ⓘ</span></label>
                             <input type='text' name='badgeIcon' id='wikIcon_{tabSuffix}' value='📌' required />
                         </div>
                         <div>
-                            <label data-tip='選擇此工項類型在報表與工項列表中的標籤顏色樣式' title='選擇此工項類型在報表與工項列表中的標籤顏色樣式'>標籤顏色 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='選擇此預設工項類型在報表與列表中的標籤顏色樣式' title='選擇此預設工項類型在報表與列表中的標籤顏色樣式'>標籤顏色 <span class='sp-tip-icon'>ⓘ</span></label>
                             <select name='badgeColor' id='wikColor_{tabSuffix}'>
                                 <option value='blue'>🔵 藍色 (Blue - 專案)</option>
                                 <option value='amber'>🟡 琥珀橘 (Amber - 維運)</option>
                                 <option value='purple'>🟣 紫色 (Purple - 顧問時數)</option>
                                 <option value='green'>🟢 綠色 (Green - 教育訓練)</option>
                                 <option value='red'>🔴 紅色 (Red - 開發產品)</option>
+                                <option value='rose'>🌹 玫瑰紅 (Rose - 緊急支援)</option>
+                                <option value='teal'>🩵 藍綠色 (Teal - 客戶導入)</option>
+                                <option value='slate'>⚪ 灰藍色 (Slate - 一般行政)</option>
                             </select>
                         </div>
                         <div>
                             <label data-tip='設定下拉選單與列表的顯示排序數字（越小越前面）' title='設定下拉選單與列表的顯示排序數字（越小越前面）'>排序 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='number' name='sortOrder' id='wikSort_{tabSuffix}' value='60' required />
+                            <input type='number' name='sortOrder' id='wikSort_{tabSuffix}' value='60' step='10' required />
+                        </div>
+                    </div>
+                    <div class='form-row' style='align-items:end;'>
+                        <div>
+                            <label data-tip='表列此工項類型的主要特徵（核心工作性質與目標導向，例如：目標導向、具明確範疇與里程碑之新功能開發）' title='表列此工項類型的主要特徵（核心工作性質與目標導向）'>⭐ 主要特徵 (核心工作性質) <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' name='mainFeatureSummary' id='wikFeature_{tabSuffix}' placeholder='例如：目標導向、具明確範疇與里程碑之新功能開發或系統建置' />
+                        </div>
+                        <div>
+                            <label data-tip='表列此工項類型的 Story Point 點數估算與計量特徵（例如：依功能複雜度進行團隊盲投估算，通常 3~21 pt）' title='表列此工項類型的 Story Point 點數估算與計量特徵'>📐 點數估算與計量特徵 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' name='estimationTrait' id='wikEstimation_{tabSuffix}' placeholder='例如：依功能複雜度進行團隊盲投估算 (通常 3 ~ 21 pt)' />
+                        </div>
+                        <div>
+                            <label data-tip='表列此工項類型的時程週期、交付物與到期轉態特徵（例如：具明確專案起訖日與階段驗收交付物，達迄時自動轉態扣點）' title='表列此工項類型的時程週期、交付物與到期轉態特徵'>⏰ 時程週期與交付/到期特徵 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' name='timeAndDeliverableTrait' id='wikDeliverable_{tabSuffix}' placeholder='例如：具明確起訖日與驗收交付物，達迄時自動轉態扣點並發信' />
                         </div>
                     </div>
                     <div class='form-row' style='align-items:end;margin-bottom:0;'>
                         <div style='grid-column: span 3;'>
-                            <label data-tip='描述此工項類型的適用範圍與管理規則（所有類型工項皆有起訖時間，達迄時自動轉態扣點並寄信給部門管理層與 HR）' title='描述此工項類型的適用範圍與管理規則（所有類型工項皆有起訖時間，達迄時自動轉態扣點並寄信給部門管理層與 HR）'>工項類型說明 <span class='sp-tip-icon'>ⓘ</span></label>
-                            <input type='text' name='description' id='wikDesc_{tabSuffix}' placeholder='說明此工項類型的適用範圍（皆支援起訖時間設定與到期自動轉態扣點寄信）' />
+                            <label data-tip='描述此預設工項類型的典型適用情境與管理規則（所有類型工項皆有起訖時間，達迄時自動轉態扣點並寄信給部門管理層與 HR）' title='描述此預設工項類型的典型適用情境與管理規則'>📋 適用情境與管理規則說明 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <input type='text' name='description' id='wikDesc_{tabSuffix}' placeholder='說明此工項類型的典型適用業務情境（皆支援起訖時間設定與到期自動轉態扣點寄信）' />
                         </div>
                         <div>
-                            <button type='submit' class='btn btn-primary' id='wikSubmitBtn_{tabSuffix}' style='width:100%;'>➕ 新增 / 儲存工項類型</button>
+                            <button type='submit' class='btn btn-primary' id='wikSubmitBtn_{tabSuffix}' style='width:100%;'>➕ 新增 / 儲存預設工項類型</button>
                         </div>
                     </div>
-                </form>
-                <table class='wik-data-table'>
+                </form>");
+            }
+
+            sb.Append($@"
+                <!-- 3. 預設工項類型與主要特徵一覽表 (表列主要特徵 + 單筆增刪修查操作) -->
+                <div style='overflow-x:auto;'>
+                <table class='wik-data-table' id='wikDataTable_{tabSuffix}'>
                     <thead>
                         <tr>
-                            <th>排序</th>
-                            <th>類型代碼</th>
-                            <th>工項類型名稱与標籤預覽</th>
-                            <th>類型說明</th>
-                            <th>套用中實際工項數</th>
-                            <th>套用中代表類型數</th>
+                            <th style='width:56px;'>排序</th>
+                            <th style='width:130px;'>類型代碼</th>
+                            <th style='width:150px;'>預設工項類型</th>
+                            <th>⭐ 主要特徵 (核心工作性質)</th>
+                            <th>📐 點數估算與計量特徵</th>
+                            <th>⏰ 時程週期與交付/到期特徵</th>
+                            <th>📋 適用情境說明</th>
+                            <th style='width:155px;'>套用統計</th>
+                            <th style='width:190px;'>增刪修查操作</th>
                         </tr>
                     </thead>
                     <tbody>");
@@ -5568,34 +5680,78 @@ public class portalController : Controller
                 string kIcon = kRow.Table.Columns.Contains("badgeIcon") && kRow["badgeIcon"] != DBNull.Value ? (kRow["badgeIcon"]?.ToString() ?? "📌") : "📌";
                 string kColor = kRow.Table.Columns.Contains("badgeColor") && kRow["badgeColor"] != DBNull.Value ? (kRow["badgeColor"]?.ToString() ?? "blue") : "blue";
                 int kSort = kRow.Table.Columns.Contains("sortOrder") && kRow["sortOrder"] != DBNull.Value ? Convert.ToInt32(kRow["sortOrder"]) : 100;
+                string kFeature = kRow.Table.Columns.Contains("mainFeatureSummary") && kRow["mainFeatureSummary"] != DBNull.Value && !string.IsNullOrWhiteSpace(kRow["mainFeatureSummary"]?.ToString())
+                    ? kRow["mainFeatureSummary"]!.ToString()!
+                    : (kRow["description"]?.ToString() ?? "依業務需求設定之標準工項類型");
+                string kEstTrait = kRow.Table.Columns.Contains("estimationTrait") && kRow["estimationTrait"] != DBNull.Value && !string.IsNullOrWhiteSpace(kRow["estimationTrait"]?.ToString())
+                    ? kRow["estimationTrait"]!.ToString()!
+                    : "支援選擇工項代表類型自動帶入標準點數或發起團隊多人盲投估算";
+                string kDelivTrait = kRow.Table.Columns.Contains("timeAndDeliverableTrait") && kRow["timeAndDeliverableTrait"] != DBNull.Value && !string.IsNullOrWhiteSpace(kRow["timeAndDeliverableTrait"]?.ToString())
+                    ? kRow["timeAndDeliverableTrait"]!.ToString()!
+                    : "具備明確起訖時間 (startDate ~ endDate)，達迄時自動轉態為已完成、扣減 Story Point 並寄信通知主管與 HR";
                 string kDesc = kRow["description"]?.ToString() ?? "";
                 int linkedWiCnt = kRow.Table.Columns.Contains("linkedWorkItemCount") && kRow["linkedWorkItemCount"] != DBNull.Value ? Convert.ToInt32(kRow["linkedWorkItemCount"]) : 0;
                 int linkedTypeCnt = kRow.Table.Columns.Contains("linkedTypeCount") && kRow["linkedTypeCount"] != DBNull.Value ? Convert.ToInt32(kRow["linkedTypeCount"]) : 0;
+                decimal totalKindPt = kRow.Table.Columns.Contains("totalWorkItemStoryPoint") && kRow["totalWorkItemStoryPoint"] != DBNull.Value ? Convert.ToDecimal(kRow["totalWorkItemStoryPoint"]) : 0m;
 
                 string badgeStyle = kColor switch
                 {
                     "amber" => "background:#fef3c7;color:#b45309;border:1px solid #fde68a;",
                     "purple" => "background:#f3e8ff;color:#6b21a8;border:1px solid #d8b4fe;",
                     "green" => "background:#dcfce7;color:#15803d;border:1px solid #86efac;",
-                    "red" => "background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;",
+                    "red" or "rose" => "background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;",
+                    "teal" => "background:#ccfbf1;color:#0f766e;border:1px solid #5eead4;",
+                    "slate" => "background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;",
                     _ => "background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;"
                 };
 
+                string usageState = (linkedWiCnt > 0 || linkedTypeCnt > 0) ? "inUse" : "unused";
+                string searchBlob = $"{kCode} {kName} {kFeature} {kEstTrait} {kDelivTrait} {kDesc}".ToLowerInvariant();
+
                 sb.Append($@"
-                        <tr class='sp-context-row' data-row-kind='workitemKind' data-kind-pk='{kPk}' data-kind-code='{h(kCode)}' data-kind-name='{h(kName)}' data-kind-icon='{h(kIcon)}' data-kind-color='{h(kColor)}' data-kind-sort='{kSort}' data-kind-desc='{h(kDesc)}' data-tab-suffix='{h(tabSuffix)}' title='💡 按滑鼠右鍵選擇此筆工項類型並開啟操作選單（彈出 Modal 單筆編輯、刪除、篩選）'>
+                        <tr class='wik-row sp-context-row'
+                            data-row-kind='workitemKind'
+                            data-search='{h(searchBlob)}'
+                            data-kind-pk='{kPk}'
+                            data-kind-code='{h(kCode)}'
+                            data-kind-name='{h(kName)}'
+                            data-kind-icon='{h(kIcon)}'
+                            data-kind-color='{h(kColor)}'
+                            data-kind-sort='{kSort}'
+                            data-kind-feature='{h(kFeature)}'
+                            data-kind-estimation='{h(kEstTrait)}'
+                            data-kind-deliverable='{h(kDelivTrait)}'
+                            data-kind-desc='{h(kDesc)}'
+                            data-kind-usage='{usageState}'
+                            data-tab-suffix='{h(tabSuffix)}'
+                            title='💡 雙擊列或按滑鼠右鍵開啟「{h(kName)} ({h(kCode)})」操作選單（單筆編輯、刪除、查詢套用代表類型與工項）'>
                             <td data-sort-value='{kSort}'>
                                 <strong>{kSort}</strong>
                             </td>
                             <td><code>{h(kCode)}</code></td>
-                            <td><span class='badge' style='{badgeStyle}'>{h(kIcon)} {h(kName)}</span></td>
-                            <td style='font-size:12.5px;color:#334155;'>{h(kDesc)}</td>
-                            <td><strong>{linkedWiCnt}</strong> 件工項</td>
-                            <td><strong>{linkedTypeCnt}</strong> 個代表類型</td>
+                            <td style='white-space:nowrap;'><span class='badge' style='{badgeStyle};font-size:12.5px;padding:4px 10px;'>{h(kIcon)} {h(kName)}</span></td>
+                            <td style='font-size:12.5px;color:#0f172a;font-weight:600;line-height:1.45;'>{h(kFeature)}</td>
+                            <td style='font-size:12px;color:#1e3a8a;line-height:1.45;'>{h(kEstTrait)}</td>
+                            <td style='font-size:12px;color:#334155;line-height:1.45;'>{h(kDelivTrait)}</td>
+                            <td style='font-size:12px;color:#475569;line-height:1.45;'>{h(kDesc)}</td>
+                            <td style='font-size:12px;white-space:nowrap;'>
+                                <div>🏷️ 代表類型：<strong>{linkedTypeCnt}</strong> 個</div>
+                                <div>📋 實際工項：<strong>{linkedWiCnt}</strong> 件 ({totalKindPt:0.#} pt)</div>
+                            </td>
+                            <td style='white-space:nowrap;'>
+                                <div style='display:flex;gap:4px;flex-wrap:wrap;'>
+                                    <button type='button' class='btn btn-outline' style='padding:3px 7px;font-size:11.5px;color:#1d4ed8;border-color:#93c5fd;' onclick=""filterTypesByKindCode('{h(kCode)}', '{h(kName)}')"" title='查詢套用此預設類型的工項代表類型'>🏷️ 查代表類型</button>
+                                    <button type='button' class='btn btn-outline' style='padding:3px 7px;font-size:11.5px;color:#0f766e;border-color:#5eead4;' onclick=""filterWorkItemsByKindCode('{h(kCode)}', '{h(kName)}')"" title='查詢套用此預設類型的實際工項'>📋 查工項</button>
+                                    {(isAdmin ? $@"<button type='button' class='btn btn-outline' style='padding:3px 7px;font-size:11.5px;background:#eff6ff;color:#1e40af;border-color:#60a5fa;' onclick=""loadWorkItemKindToForm('{kPk}', '{h(kCode)}', '{h(kName)}', '{h(kIcon)}', '{h(kColor)}', '{kSort}', '{h(kDesc)}', '{h(tabSuffix)}', '{h(kFeature)}', '{h(kEstTrait)}', '{h(kDelivTrait)}')"" title='編輯此預設工項類型與主要特徵'>✏️ 修改</button>
+                                    <button type='button' class='btn btn-outline' style='padding:3px 7px;font-size:11.5px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;' onclick=""confirmDeleteWorkItemKind('{kPk}', '{h(kCode)}', '{h(kName)}', '{h(tabSuffix)}')"" title='刪除此預設工項類型（若有關聯工項或代表類型將自動移轉至備援類型）'>🗑️ 刪除</button>" : "")}
+                                </div>
+                            </td>
                         </tr>");
             }
             sb.Append(@"
                     </tbody>
                 </table>
+                </div>
             </div>");
         }
 
@@ -6055,7 +6211,7 @@ public class portalController : Controller
         sb.Append("</tbody></table></div></div>"); // end Tab 3
 
         // =====================================================================
-        // TAB 4: 工項代表類型與工項類型增刪修管理
+        // TAB 4: 工項代表類型與預設工項類型增刪修查管理（含工項類型主要特徵表）
         // =====================================================================
         sb.Append($"<div id='pane-types' class='tab-pane {(currentTab == "types" ? "active" : "")}'>");
         if (isAdmin)
@@ -6063,20 +6219,25 @@ public class portalController : Controller
             sb.Append(@"
             <div class='sp-page-action-bar'>
                 <div class='sp-action-title'>
-                    <span>⚡ 工項代表類型與工項類型快捷指令列</span>
-                    <span style='font-size:12px;font-weight:600;color:#93c5fd;'>（表格直接置頂呈現｜支援左鍵單擊選取、雙擊列彈出 Modal 編輯、右鍵選單發起盲投）</span>
+                    <span>⚡ 工項代表類型與預設工項類型快捷指令列</span>
+                    <span style='font-size:12px;font-weight:600;color:#93c5fd;'>（預設工項類型增刪修查與主要特徵表直接呈現｜支援雙擊列彈出 Modal 編輯、右鍵選單操作）</span>
                 </div>
                 <div class='sp-action-group'>
                     <button type='button' class='btn btn-primary' style='padding:6px 12px;font-size:12.5px;background:#2563eb;border-color:#60a5fa;' onclick=""openWorkItemTypeEditModal('','','','後端與資料庫','','','project')"">➕ 新增工項代表類型 (彈出 Modal)</button>
-                    <button type='button' class='sp-drawer-toggle-btn' onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','types')"">🗂️ 新增工項類型 (Modal)</button>
-                    <button type='button' class='sp-drawer-toggle-btn' onclick=""toggleAdminDrawer('drawer-types-full', this)"">🛠️ 展開/收合工項類型與代表類型管理面板 ▾</button>
+                    <button type='button' class='btn btn-success' style='padding:6px 12px;font-size:12.5px;' onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','types','','','')"">🗂️ 新增預設工項類型 (彈出 Modal)</button>
+                    <button type='button' class='sp-drawer-toggle-btn' onclick=""document.getElementById('wikCrudCard_types')?.scrollIntoView({behavior:'smooth', block:'start'})"">📋 跳至預設工項類型與主要特徵表 ▾</button>
+                    <button type='button' class='sp-drawer-toggle-btn' onclick=""toggleAdminDrawer('drawer-types-full', this)"">🛠️ 展開/收合代表類型快速表單 ▾</button>
                 </div>
-            </div>
-            <div id='drawer-types-full' class='sp-collapsible-drawer collapsed'>");
+            </div>");
+        }
 
-            renderWorkItemKindCrudCard("types");
+        // 直接置頂呈現「預設工項類型增、刪、修、查管理與主要特徵一覽表」（不隱藏於收合抽屜內，方便隨時查詢各工項類型主要特徵與增刪修）
+        renderWorkItemKindCrudCard("types");
 
+        if (isAdmin)
+        {
             sb.Append($@"
+            <div id='drawer-types-full' class='sp-collapsible-drawer collapsed'>
             <div class='card'>
                 <div class='card-title'>
                     <span id='typeFormTitle'>🏷️ 新增或修改「工項代表類型」（可設定預設工項類型與標準 Story Point）</span>
@@ -6136,7 +6297,7 @@ public class portalController : Controller
             <div style='background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:14px;'>
                 <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;'>
                     <div style='font-size:12.5px;color:#1e3a8a;font-weight:700;'>
-                        💡 <strong>操作提示：</strong>於代表類型列<strong>滑鼠雙擊 (Double-Click)</strong> 直接彈出單筆編輯 Modal；<strong>按滑鼠右鍵</strong>開啟快捷選單執行<strong>單筆編輯、重新投票、發起盲投、刪除、以此欄值篩選</strong>（選取列後亦可按 <code>Enter</code> / <code>F2</code> 編輯）！
+                        💡 <strong>操作提示：</strong>於代表類型列<strong>滑鼠雙擊 (Double-Click)</strong> 直接彈出單筆編輯 Modal（視窗內亦支援直接增刪修查預設工項類型與檢視特徵表）；<strong>按滑鼠右鍵</strong>開啟快捷選單執行<strong>單筆編輯、重新投票、發起盲投、刪除、以此欄值篩選</strong>！
                     </div>
                     <button type='button' class='btn btn-outline' style='padding:4px 10px;font-size:12px;' onclick='resetWorkItemTypeFilter()'>🔄 清除全部篩選條件</button>
                 </div>
@@ -6171,7 +6332,7 @@ public class portalController : Controller
                 </div>
             </div>
             <table id='workItemTypeDataTable'>
-                <thead><tr><th>類型代碼</th><th>代表類型名稱</th><th>預設工項類型</th><th>分類</th><th>複雜度與驗收說明</th><th>標準 Story Point</th><th>估算狀態</th><th>套用工項數</th></tr></thead><tbody>");
+                <thead><tr><th>類型代碼</th><th>代表類型名稱</th><th>預設工項類型与主要特徵</th><th>分類</th><th>複雜度與驗收說明</th><th>標準 Story Point</th><th>估算狀態</th><th>套用工項數</th></tr></thead><tbody>");
         foreach (DataRow tRow in typeTable.Rows)
         {
             int tPkVal = Convert.ToInt32(tRow["workItemTypePk"]);
@@ -6181,6 +6342,9 @@ public class portalController : Controller
             string dKind = tRow.Table.Columns.Contains("defaultWorkItemKind") ? (tRow["defaultWorkItemKind"]?.ToString() ?? "project") : "project";
             string dKindText = tRow.Table.Columns.Contains("defaultWorkItemKindText") ? (tRow["defaultWorkItemKindText"]?.ToString() ?? "專案") : "專案";
             string dKindIcon = tRow.Table.Columns.Contains("defaultWorkItemKindIcon") && tRow["defaultWorkItemKindIcon"] != DBNull.Value ? (tRow["defaultWorkItemKindIcon"]?.ToString() ?? "🏗️") : "🏗️";
+            string dKindFeature = tRow.Table.Columns.Contains("defaultWorkItemKindMainFeature") && tRow["defaultWorkItemKindMainFeature"] != DBNull.Value
+                ? (tRow["defaultWorkItemKindMainFeature"]?.ToString() ?? "")
+                : "";
             string tCodeStr = tRow["typeCode"]?.ToString() ?? "";
             string tNameStr = tRow["typeName"]?.ToString() ?? "";
             string tCatStr = tRow["categoryName"]?.ToString() ?? "";
@@ -6190,7 +6354,7 @@ public class portalController : Controller
                 ? Convert.ToInt32(tRow["lastVotingSessionPk"])
                 : 0;
             string tEstBadgeCls = tEstStatus == "finalized" ? "badge-finalized" : (tEstStatus == "voting" ? "badge-voting" : "badge-revealed");
-            string tSearchBlob = $"{tCodeStr} {tNameStr} {dKind} {dKindText} {tCatStr} {tDescStr} {ptJs}".ToLowerInvariant();
+            string tSearchBlob = $"{tCodeStr} {tNameStr} {dKind} {dKindText} {dKindFeature} {tCatStr} {tDescStr} {ptJs}".ToLowerInvariant();
 
             sb.Append($@"<tr class='type-row sp-context-row'
                 data-row-kind='workitemType'
@@ -6210,7 +6374,10 @@ public class portalController : Controller
                     <strong>{h(tCodeStr)}</strong>
                 </td>
                 <td><strong>{h(tNameStr)}</strong></td>
-                <td><span class='badge badge-user'>{h(dKindIcon)} {h(dKindText)}</span></td>
+                <td>
+                    <div><span class='badge badge-user'>{h(dKindIcon)} {h(dKindText)}</span></div>
+                    {(string.IsNullOrWhiteSpace(dKindFeature) ? "" : $"<div style='font-size:11.5px;color:#475569;margin-top:3px;line-height:1.35;'>{h(dKindFeature)}</div>")}
+                </td>
                 <td>{h(tCatStr)}</td>
                 <td>{h(tDescStr)}</td>
                 <td data-sort-value='{(hasStdPt ? ptJs : "-1")}'>{stdPt}</td>
@@ -7327,10 +7494,14 @@ public class portalController : Controller
             bool restP = sRow.Table.Columns.Contains("restrictToParticipant") && sRow["restrictToParticipant"] != DBNull.Value && Convert.ToBoolean(sRow["restrictToParticipant"]);
             string gNote = (sRow.Table.Columns.Contains("roundGoalNote") ? (sRow["roundGoalNote"]?.ToString() ?? "") : "").Replace("\\", "\\\\").Replace("'", "\\'").Replace("\r", "").Replace("\n", " ");
             string sTitle = (sRow["sessionTitle"]?.ToString() ?? "").Replace("\\", "\\\\").Replace("'", "\\'").Replace("\r", "").Replace("\n", " ");
+            string sCodeVal = (sRow["sessionCode"]?.ToString() ?? "").Replace("\\", "\\\\").Replace("'", "\\'").Replace("\r", "").Replace("\n", " ");
             string sStatusVal = (sRow["sessionStatus"]?.ToString() ?? "voting").Replace("'", "");
+            int curRoundNum = sRow.Table.Columns.Contains("currentRoundNumber") && sRow["currentRoundNumber"] != DBNull.Value ? Convert.ToInt32(sRow["currentRoundNumber"]) : 1;
+            int totalRoundCnt = roundTable.AsEnumerable().Count(r => Convert.ToInt32(r["votingSessionPk"]) == sPk);
+            if (totalRoundCnt < 1) totalRoundCnt = 1;
 
             sessionMetaJsonList.Add(
-                $"'{sPk}':{{pk:{sPk},title:'{sTitle}',sessionStatus:'{sStatusVal}',targetKind:'{tKind}',workItemTypePk:{tTypePk},workItemPk:{tItemPk},cardDeckPk:{deckPk}," +
+                $"'{sPk}':{{pk:{sPk},code:'{sCodeVal}',title:'{sTitle}',sessionStatus:'{sStatusVal}',currentRoundNumber:{curRoundNum},totalRoundCount:{totalRoundCnt},targetKind:'{tKind}',workItemTypePk:{tTypePk},workItemPk:{tItemPk},cardDeckPk:{deckPk}," +
                 $"minStoryPoint:{minPt.ToString(CultureInfo.InvariantCulture)},maxStoryPoint:{maxPt.ToString(CultureInfo.InvariantCulture)}," +
                 $"maxAllowedSpread:{maxSpread.ToString(CultureInfo.InvariantCulture)},consensusRule:'{cRule}'," +
                 $"autoRevealWhenAllVoted:{(autoRev ? "true" : "false")},roundTimeLimitSecond:{tSec}," +
@@ -7726,16 +7897,19 @@ public class portalController : Controller
         function onSetupSessionSelectChange() {
             const sel = document.getElementById('setupSessionSelector');
             const submitBtn = document.getElementById('setupSubmitBtn');
+            const deleteBtn = document.getElementById('setupDeleteSessionBtn');
             const revoteModeSel = document.getElementById('setupRevoteMode');
             if (!sel) return;
             const sPk = sel.value;
             if (!sPk || !sessionConfigMap[sPk]) {
                 if (revoteModeSel) revoteModeSel.value = 'createNewSession';
                 if (submitBtn) submitBtn.innerHTML = '🚀 儲存回合設定並啟動多人盲投議程';
+                if (deleteBtn) deleteBtn.style.display = 'none';
                 autoFillSetupTitle();
                 return;
             }
             const cfg = sessionConfigMap[sPk];
+            if (deleteBtn) deleteBtn.style.display = 'inline-block';
             document.getElementById('setupTargetKind').value = cfg.targetKind;
             toggleSetupTargetKind();
             if (cfg.targetKind === 'workItemType' && cfg.workItemTypePk > 0) {
@@ -7769,6 +7943,14 @@ public class portalController : Controller
             if (submitBtn) {
                 submitBtn.innerHTML = '🆕 儲存重新設定之投票人與選項並啟動重新投票';
             }
+        }
+
+        function deleteSelectedSetupSession() {
+            const sel = document.getElementById('setupSessionSelector');
+            if (!sel || !sel.value) return;
+            const sPk = Number(sel.value);
+            const cfg = (typeof sessionConfigMap !== 'undefined' && sessionConfigMap[sPk]) ? sessionConfigMap[sPk] : null;
+            triggerDeleteVotingSession(sPk, cfg ? (cfg.code || ('Session #' + sPk)) : ('Session #' + sPk), cfg ? (cfg.title || '') : '', 'roundSetup');
         }
 
         function openFullRoundSetupTabForTarget(sessionPk, targetKind, targetPk, defaultRevoteMode) {
@@ -8648,8 +8830,15 @@ public class portalController : Controller
                             <input type=""text"" name=""itemCode"" id=""modalWiCode"" value=""${escapeModalHtml(code)}"" required />
                         </div>
                         <div>
-                            <label>工項類型</label>
-                            <select name=""workItemKind"" id=""modalWiKind"" required style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">
+                            <label style=""display:flex;justify-content:space-between;align-items:center;gap:4px;"">
+                                <span>預設工項類型</span>
+                                <span style=""display:inline-flex;gap:3px;"">
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','workitems','','','')"" title=""新增預設工項類型"">➕ 新增</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#0f766e;border-color:#5eead4;background:#f0fdfa;"" onclick=""editSelectedModalKindBySelectId('modalWiKind','workitems')"" title=""修改目前選取的預設工項類型與主要特徵"">✏️ 修改</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""deleteSelectedModalKindBySelectId('modalWiKind','workitems')"" title=""刪除目前選取的預設工項類型"">🗑️ 刪除</button>
+                                </span>
+                            </label>
+                            <select name=""workItemKind"" id=""modalWiKind"" onchange=""onModalKindSelectChange('modalWiKind','modalWiKindFeatureBanner')"" required style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">
                                 ${kindOptionsHtml}
                             </select>
                         </div>
@@ -8658,6 +8847,7 @@ public class portalController : Controller
                             <input type=""text"" name=""itemTitle"" id=""modalWiTitle"" value=""${escapeModalHtml(title)}"" placeholder=""請輸入工項標題"" required />
                         </div>
                     </div>
+                    <div id=""modalWiKindFeatureBanner"" style=""margin-bottom:12px;""></div>
                     <div class=""form-row"">
                         <div>
                             <label data-tip=""設定工項開始時間（起時 startDate）"" title=""設定工項開始時間（起時 startDate）"">開始時間 (起時) <span class=""sp-tip-icon"">ⓘ</span></label>
@@ -8754,6 +8944,7 @@ public class portalController : Controller
             );
             const kSel = document.getElementById('modalWiKind');
             if (kSel && kind) kSel.value = kind;
+            onModalKindSelectChange('modalWiKind', 'modalWiKindFeatureBanner');
             const tSel = document.getElementById('modalWiTypeSelect');
             if (tSel && typePk !== undefined && typePk !== null) tSel.value = String(typePk);
             const sSel = document.getElementById('modalWiStatus');
@@ -8810,6 +9001,7 @@ public class portalController : Controller
             }
             if (kind && document.getElementById('modalWiKind')) {
                 document.getElementById('modalWiKind').value = kind;
+                onModalKindSelectChange('modalWiKind', 'modalWiKindFeatureBanner');
             }
         }
 
@@ -8879,9 +9071,9 @@ public class portalController : Controller
             );
         }
 
-        function openWorkItemKindEditModal(pk, code, name, icon, color, sortOrder, desc, tabSuffix) {
+        function openWorkItemKindEditModal(pk, code, name, icon, color, sortOrder, desc, tabSuffix, mainFeature, estimationTrait, deliverableTrait) {
             const isCreate = !pk || String(pk).trim() === '' || String(pk) === '0';
-            const sfx = tabSuffix || 'workitems';
+            const sfx = tabSuffix || 'types';
             const bodyHtml = `
                 <form method=""post"" action=""/workitem/kind/save"">
                     <input type=""hidden"" name=""workItemKindPk"" value=""${escapeModalHtml(pk)}"" />
@@ -8889,11 +9081,11 @@ public class portalController : Controller
                     <div class=""form-row"">
                         <div>
                             <label>類型代碼 (kindCode)</label>
-                            <input type=""text"" name=""kindCode"" value=""${escapeModalHtml(code)}"" placeholder=""例如：research"" required />
+                            <input type=""text"" name=""kindCode"" value=""${escapeModalHtml(code)}"" placeholder=""例如：project / supportCase"" required />
                         </div>
                         <div>
-                            <label>類型顯示名稱 (kindName)</label>
-                            <input type=""text"" name=""kindName"" value=""${escapeModalHtml(name)}"" placeholder=""例如：研發創新"" required />
+                            <label>預設工項類型名稱 (kindName)</label>
+                            <input type=""text"" name=""kindName"" value=""${escapeModalHtml(name)}"" placeholder=""例如：專案 / 維運 / 駐點支援"" required />
                         </div>
                         <div>
                             <label>圖示 Emoji</label>
@@ -8905,32 +9097,55 @@ public class portalController : Controller
                             <label>徽章主題色 (badgeColor)</label>
                             <select name=""badgeColor"" id=""modalWikColor"">
                                 <option value=""blue"">🔵 藍色 (blue - 專案)</option>
-                                <option value=""green"">🟢 綠色 (green - 維運)</option>
-                                <option value=""amber"">🟡 琥珀金 (amber - 顧問時數)</option>
-                                <option value=""purple"">🟣 紫色 (purple - 研發創新)</option>
-                                <option value=""rose"">🔴 玫瑰紅 (rose - 緊急支援)</option>
+                                <option value=""amber"">🟡 琥珀橘 (amber - 維運)</option>
+                                <option value=""purple"">🟣 紫色 (purple - 顧問時數)</option>
+                                <option value=""green"">🟢 綠色 (green - 教育訓練)</option>
+                                <option value=""red"">🔴 紅色 (red - 開發產品)</option>
+                                <option value=""rose"">🌹 玫瑰紅 (rose - 緊急支援)</option>
                                 <option value=""teal"">🩵 藍綠色 (teal - 客戶導入)</option>
                                 <option value=""slate"">⚪ 灰藍色 (slate - 一般行政)</option>
                             </select>
                         </div>
                         <div>
                             <label>排序順序 (sortOrder)</label>
-                            <input type=""number"" name=""sortOrder"" value=""${escapeModalHtml(sortOrder || 40)}"" step=""10"" />
+                            <input type=""number"" name=""sortOrder"" value=""${escapeModalHtml(sortOrder || 60)}"" step=""10"" required />
                         </div>
                         <div>
-                            <label>類型適用範圍與說明</label>
+                            <label>📋 適用情境與管理規則說明</label>
                             <input type=""text"" name=""description"" value=""${escapeModalHtml(desc || '')}"" placeholder=""說明此工項類型的定義與使用情境"" />
                         </div>
                     </div>
+                    <div style=""background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;margin-bottom:14px;"">
+                        <div style=""font-size:13px;font-weight:800;color:#1e3a8a;margin-bottom:8px;"">⭐ 預設工項類型主要特徵設定（表列於工項類型主要特徵一覽表）</div>
+                        <div class=""form-row"">
+                            <div style=""grid-column: span 3;"">
+                                <label>⭐ 主要特徵 (核心工作性質 mainFeatureSummary)</label>
+                                <input type=""text"" name=""mainFeatureSummary"" value=""${escapeModalHtml(mainFeature || '')}"" placeholder=""例如：目標導向、具明確範疇與里程碑之新功能開發或系統建置"" />
+                            </div>
+                        </div>
+                        <div class=""form-row"" style=""margin-bottom:0;"">
+                            <div>
+                                <label>📐 點數估算與計量特徵 (estimationTrait)</label>
+                                <input type=""text"" name=""estimationTrait"" value=""${escapeModalHtml(estimationTrait || '')}"" placeholder=""例如：依功能複雜度、跨模組整合難度進行團隊盲投估算 (通常 3 ~ 21 pt)"" />
+                            </div>
+                            <div style=""grid-column: span 2;"">
+                                <label>⏰ 時程週期與交付/到期特徵 (timeAndDeliverableTrait)</label>
+                                <input type=""text"" name=""timeAndDeliverableTrait"" value=""${escapeModalHtml(deliverableTrait || '')}"" placeholder=""例如：具明確專案起訖日與階段驗收交付物，達迄時自動轉態扣點並通知主管與 HR"" />
+                            </div>
+                        </div>
+                    </div>
                     <div class=""sp-modal-footer"">
-                        <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
-                        <button type=""submit"" class=""btn btn-primary"">💾 儲存此筆工項類型</button>
+                        <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
+                            <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
+                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""confirmDeleteWorkItemKind('${escapeModalHtml(pk)}', '${escapeModalHtml(code)}', '${escapeModalHtml(name)}', '${escapeModalHtml(sfx)}')"">🗑️ 刪除此預設工項類型</button>` : ''}
+                        </div>
+                        <button type=""submit"" class=""btn btn-primary"">${isCreate ? '➕ 新增儲存預設工項類型與特徵' : '💾 儲存修改預設工項類型與特徵'}</button>
                     </div>
                 </form>
             `;
             openRecordModalShell(
-                isCreate ? '➕ 新增工項類型 (tbWorkItemKind)' : '✏️ 單筆編輯工項類型 (tbWorkItemKind)',
-                `<span class=""badge badge-user"">${escapeModalHtml(icon || '📌')} ${name ? escapeModalHtml(name) + ' (' + escapeModalHtml(code) + ')' : '新工項類型'}</span>`,
+                isCreate ? '➕ 新增預設工項類型與主要特徵 (tbWorkItemKind)' : '✏️ 單筆編輯預設工項類型與主要特徵 (tbWorkItemKind)',
+                `<span class=""badge badge-user"">${escapeModalHtml(icon || '📌')} ${name ? escapeModalHtml(name) + ' (' + escapeModalHtml(code) + ')' : '新預設工項類型'}</span>`,
                 bodyHtml
             );
             const cSel = document.getElementById('modalWikColor');
@@ -8941,7 +9156,7 @@ public class portalController : Controller
             const isCreate = !pk || String(pk).trim() === '' || String(pk) === '0';
             const kindOptionsHtml = document.getElementById('typeKind')
                 ? document.getElementById('typeKind').innerHTML
-                : (document.getElementById('wiKindSelect') ? document.getElementById('wiKindSelect').innerHTML : '<option value=""project"">🚀 專案 (project)</option>');
+                : (document.getElementById('wiKindSelect') ? document.getElementById('wiKindSelect').innerHTML : '<option value=""project"">🏗️ 專案 (project)</option>');
             const bodyHtml = `
                 <form method=""post"" action=""/workitem/type/save"">
                     <input type=""hidden"" name=""workItemTypePk"" value=""${escapeModalHtml(pk)}"" />
@@ -8951,8 +9166,16 @@ public class portalController : Controller
                             <input type=""text"" name=""typeCode"" value=""${escapeModalHtml(code)}"" placeholder=""例如：TYPE_API_DEV"" required />
                         </div>
                         <div>
-                            <label>預設工項類型</label>
-                            <select name=""defaultWorkItemKind"" id=""modalTypeKind"" required style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">
+                            <label style=""display:flex;justify-content:space-between;align-items:center;gap:4px;"">
+                                <span>預設工項類型</span>
+                                <span style=""display:inline-flex;gap:3px;flex-wrap:wrap;"">
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','types','','','')"" title=""新增預設工項類型"">➕ 新增</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#0f766e;border-color:#5eead4;background:#f0fdfa;"" onclick=""editSelectedModalKindBySelectId('modalTypeKind','types')"" title=""修改目前選取的預設工項類型與主要特徵"">✏️ 修改</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""deleteSelectedModalKindBySelectId('modalTypeKind','types')"" title=""刪除目前選取的預設工項類型"">🗑️ 刪除</button>
+                                    <button type=""button"" class=""btn btn-outline"" style=""padding:1px 6px;font-size:11px;color:#4338ca;border-color:#a5b4fc;background:#eef2ff;"" onclick=""toggleModalKindFeatureTable()"" title=""展開或收合下方預設工項類型主要特徵一覽表"">📋 特徵表</button>
+                                </span>
+                            </label>
+                            <select name=""defaultWorkItemKind"" id=""modalTypeKind"" onchange=""onModalKindSelectChange('modalTypeKind','modalTypeKindFeatureBanner')"" required style=""border-color:#2563eb;font-weight:700;background:#eff6ff;"">
                                 ${kindOptionsHtml}
                             </select>
                         </div>
@@ -8961,6 +9184,10 @@ public class portalController : Controller
                             <input type=""text"" name=""typeName"" value=""${escapeModalHtml(name)}"" placeholder=""例如：標準 RESTful API 開發"" required />
                         </div>
                     </div>
+                    <!-- 目前選取之預設工項類型主要特徵即時提示卡 -->
+                    <div id=""modalTypeKindFeatureBanner"" style=""margin-bottom:12px;""></div>
+                    <!-- 預設工項類型主要特徵一覽與快速增刪修查面板 -->
+                    <div id=""modalTypeKindFeatureTableWrap"" style=""margin-bottom:14px;""></div>
                     <div class=""form-row"">
                         <div>
                             <label>分類群組</label>
@@ -8998,6 +9225,8 @@ public class portalController : Controller
             );
             const kSel = document.getElementById('modalTypeKind');
             if (kSel && kind) kSel.value = kind;
+            onModalKindSelectChange('modalTypeKind', 'modalTypeKindFeatureBanner');
+            renderModalKindFeatureComparisonTable('modalTypeKind', 'modalTypeKindFeatureTableWrap', 'types');
         }
 
         function openEmployeeEditModal(pk, code, name, acc, mail, title, deptPk, role, isActiveStr, isDeptMgrStr, mgrPkStr) {
@@ -9449,6 +9678,7 @@ public class portalController : Controller
                         <div style=""display:flex;gap:6px;flex-wrap:wrap;"">
                             <button type=""button"" class=""btn btn-outline"" onclick=""closeRecordEditModal()"">✖ 取消關閉</button>
                             <button type=""button"" class=""btn btn-outline"" style=""color:#1e40af;border-color:#93c5fd;"" onclick=""openFullRoundSetupTabForTarget(${sPk}, '${escapeModalHtml(tKind)}', ${tKind === 'workItem' ? wiPk : wiTypePk}, document.getElementById('modalSetupRevoteMode')?.value || 'restartAll')"">⚙️ 切換至「1-2. 設定盲投回合」完整頁面</button>
+                            ${sPk > 0 ? `<button type=""button"" class=""btn btn-outline"" style=""color:#b91c1c;border-color:#fca5a5;background:#fef2f2;"" onclick=""triggerDeleteVotingSession(${sPk}, '${escapeModalHtml(cfg ? (cfg.code || ('Session #' + sPk)) : ('Session #' + sPk))}', '${escapeModalHtml(cfg ? (cfg.title || '') : '')}', 'roundSetup')"">🗑️ 刪除此盲投回合／議程</button>` : ''}
                         </div>
                         <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
                             <button type=""submit"" class=""btn btn-outline"" onclick=""document.getElementById('modalSetupSubmitMode').value='saveStaySetup'"">💾 僅儲存於回合設定</button>
@@ -9491,6 +9721,37 @@ public class portalController : Controller
                 returnTab: rTab
             };
             submitDynamicPostAction('/voting/revote', payload);
+        }
+
+        function triggerDeleteVotingSession(sessionPk, sessionCode, sessionTitle, returnTab) {
+            const sPk = sessionPk ? Number(sessionPk) : 0;
+            if (sPk <= 0) return;
+            const label = [sessionCode, sessionTitle].filter(Boolean).join(' - ') || ('Session #' + sPk);
+            if (!window.confirm('⚠️ 確定要永久刪除盲投回合／議程「' + label + '」嗎？\n\n刪除後將一併清除此議程底下的所有盲投回合、受邀投票人設定與出牌紀錄（已封存之點數歷程將保留並解除綁定）。')) {
+                return;
+            }
+            closeRecordEditModal();
+            submitDynamicPostAction('/voting/delete', {
+                votingSessionPk: String(sPk),
+                returnTab: returnTab || 'roundSetup'
+            });
+        }
+
+        function triggerDeleteVotingRound(sessionPk, roundNumber, displayTitle, deleteSessionIfLastRound, returnTab) {
+            const sPk = sessionPk ? Number(sessionPk) : 0;
+            const rNum = roundNumber ? Number(roundNumber) : 0;
+            if (sPk <= 0 || rNum <= 0) return;
+            const label = displayTitle || ('Session #' + sPk + ' 第 ' + rNum + ' 回合');
+            if (!window.confirm('⚠️ 確定要刪除「' + label + '」嗎？\n\n刪除後將移除該回合的所有出牌紀錄並自動重整剩餘回合編號（若該議程僅剩此唯一回合，將一併刪除該盲投議程）。')) {
+                return;
+            }
+            closeRecordEditModal();
+            submitDynamicPostAction('/voting/round/delete', {
+                votingSessionPk: String(sPk),
+                roundNumber: String(rNum),
+                deleteSessionIfLastRound: deleteSessionIfLastRound === false ? 'false' : 'true',
+                returnTab: returnTab || 'roundSetup'
+            });
         }
 
         function openRowDetailReadonlyModal(tr) {
@@ -9549,7 +9810,10 @@ public class portalController : Controller
                         tr.getAttribute('data-kind-color') || 'blue',
                         tr.getAttribute('data-kind-sort') || '40',
                         tr.getAttribute('data-kind-desc') || '',
-                        tr.getAttribute('data-tab-suffix') || 'workitems'
+                        tr.getAttribute('data-tab-suffix') || 'types',
+                        tr.getAttribute('data-kind-feature') || '',
+                        tr.getAttribute('data-kind-estimation') || '',
+                        tr.getAttribute('data-kind-deliverable') || ''
                     );
                     return;
                 } else if (rowKind === 'workitemType') {
@@ -9808,35 +10072,38 @@ public class portalController : Controller
                 const kColor = tr.getAttribute('data-kind-color') || 'blue';
                 const kSort = tr.getAttribute('data-kind-sort') || '40';
                 const kDesc = tr.getAttribute('data-kind-desc') || '';
-                const tabSuffix = tr.getAttribute('data-tab-suffix') || 'workitems';
+                const kFeature = tr.getAttribute('data-kind-feature') || '';
+                const kEstimation = tr.getAttribute('data-kind-estimation') || '';
+                const kDeliverable = tr.getAttribute('data-kind-deliverable') || '';
+                const tabSuffix = tr.getAttribute('data-tab-suffix') || 'types';
 
-                headerTitle = `🗂️ 工項類型右鍵操作：${kIcon} ${kName} (${kCode})`;
+                headerTitle = `🗂️ 預設工項類型右鍵操作：${kIcon} ${kName} (${kCode})`;
                 headerDiv.innerHTML = `<span>${headerTitle}</span>`;
                 spContextMenuEl.appendChild(headerDiv);
 
                 if (isCurrentUserAdmin) {
-                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此工項類型（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
-                        openWorkItemKindEditModal(kPk, kCode, kName, kIcon, kColor, kSort, kDesc, tabSuffix);
+                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此預設工項類型與主要特徵（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
+                        openWorkItemKindEditModal(kPk, kCode, kName, kIcon, kColor, kSort, kDesc, tabSuffix, kFeature, kEstimation, kDeliverable);
                     }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('🔍', '篩選套用此類型 (' + kName + ') 的所有工項', '工項篩選', '', function () {
-                        switchTab('workitems');
-                        const fKind = document.getElementById('filterWiKind');
-                        if (fKind) {
-                            fKind.value = kCode;
-                            filterWorkItemTable();
-                        }
-                        showToastNotice('🔍 已篩選工項類型為「' + kName + '」的工項紀錄');
+                    spContextMenuEl.appendChild(createCtxMenuItem('➕', '新增另一種預設工項類型（彈出 Modal 視窗）', '新增類型', '', function () {
+                        openWorkItemKindEditModal('', '', '', '📌', 'blue', 60, '', tabSuffix, '', '', '');
                     }));
+                }
 
-                    spContextMenuEl.appendChild(createCtxDivider());
+                spContextMenuEl.appendChild(createCtxMenuItem('🏷️', '查詢套用此預設類型 (' + kName + ') 的工項代表類型', '代表類型篩選', '', function () {
+                    filterTypesByKindCode(kCode, kName);
+                }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', '刪除此工項類型 (' + kCode + ')', '移轉備援', 'danger', function () {
-                        submitDynamicPostAction('/workitem/kind/delete', {
-                            workItemKindPk: kPk,
-                            kindCode: kCode,
-                            returnTab: tabSuffix
-                        }, '確定要刪除工項類型「' + kCode + ' - ' + kName + '」嗎？（若有工項使用此類型將自動移轉至備援類型）');
+                spContextMenuEl.appendChild(createCtxMenuItem('📋', '查詢套用此預設類型 (' + kName + ') 的所有實際工項', '工項篩選', '', function () {
+                    filterWorkItemsByKindCode(kCode, kName);
+                }));
+
+                spContextMenuEl.appendChild(createCtxDivider());
+
+                if (isCurrentUserAdmin) {
+                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', '刪除此預設工項類型 (' + kCode + ')', '移轉備援', 'danger', function () {
+                        confirmDeleteWorkItemKind(kPk, kCode, kName, tabSuffix);
                     }));
 
                     spContextMenuEl.appendChild(createCtxDivider());
@@ -9984,6 +10251,8 @@ public class portalController : Controller
                 const sPk = tr.getAttribute('data-session-pk') || '';
                 const sCode = tr.getAttribute('data-session-code') || '';
                 const sTitle = tr.getAttribute('data-session-title') || '';
+                const sRound = Number(tr.getAttribute('data-session-round') || '1');
+                const sTotalRounds = Number(tr.getAttribute('data-session-total-rounds') || '1');
                 const sUrl = tr.getAttribute('data-session-url') || ('/voting/session?sessionPk=' + sPk);
                 const sLocked = tr.getAttribute('data-session-locked') === '1';
 
@@ -9992,6 +10261,10 @@ public class portalController : Controller
                 spContextMenuEl.appendChild(headerDiv);
 
                 if (isCurrentUserAdmin && sPk) {
+                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此盲投議程回合設定（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
+                        openSessionSetupEditModal(sPk, '', 0, false, 'keepVotes');
+                    }));
+
                     spContextMenuEl.appendChild(createCtxMenuItem('🆕', '重新投票 — 全部重新開始（重設回第 1 回合，並重新設定投票人與所有選項）', '全部重新開始', 'primary-action', function () {
                         openSessionSetupEditModal(sPk, '', 0, true, 'restartAll');
                     }));
@@ -10007,6 +10280,16 @@ public class portalController : Controller
                     spContextMenuEl.appendChild(createCtxMenuItem('⚙️', '前往「1-2. 設定盲投回合」完整頁面重新設定並開始', '完整設定頁', '', function () {
                         openFullRoundSetupTabForTarget(sPk, '', 0, 'restartAll');
                     }));
+
+                    if (sTotalRounds > 1 && sRound > 0) {
+                        spContextMenuEl.appendChild(createCtxMenuItem('🗑️', `刪除當前回合（第 ${sRound} 回合，退回上一回合）`, `刪第 ${sRound} 輪`, 'danger', function () {
+                            triggerDeleteVotingRound(sPk, sRound, `${sCode} - ${sTitle}（第 ${sRound} 回合）`, false, 'roundSetup');
+                        }));
+                    }
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', `刪除此盲投回合／議程 (${sCode})`, '永久刪除', 'danger', function () {
+                        triggerDeleteVotingSession(sPk, sCode, sTitle, 'roundSetup');
+                    }));
                 }
 
                 spContextMenuEl.appendChild(createCtxMenuItem('🚀', sLocked ? '此盲投 Session 已在獨立網頁開啟中' : '開啟此盲投 Session 獨立網頁', '#' + sPk, 'primary-action', function () {
@@ -10014,6 +10297,27 @@ public class portalController : Controller
                 }, sLocked));
 
                 spContextMenuEl.appendChild(createCtxDivider());
+            } else if (rowKind === 'votingRoundVote' || rowKind === 'votingRound') {
+                const sPk = tr.getAttribute('data-session-pk') || '';
+                const sCode = tr.getAttribute('data-session-code') || '';
+                const sTitle = tr.getAttribute('data-session-title') || '';
+                const rNum = Number(tr.getAttribute('data-round-number') || '1');
+
+                headerTitle = `🗳️ 盲投回合右鍵操作：${sCode}（第 ${rNum} 回合）`;
+                headerDiv.innerHTML = `<span>${headerTitle}</span>`;
+                spContextMenuEl.appendChild(headerDiv);
+
+                if (isCurrentUserAdmin && sPk && rNum > 0) {
+                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', `刪除此盲投回合（第 ${rNum} 回合）`, `刪第 ${rNum} 輪`, 'danger', function () {
+                        triggerDeleteVotingRound(sPk, rNum, `${sCode} - ${sTitle}（第 ${rNum} 回合）`, true, 'history');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxMenuItem('🗑️', `刪除整場盲投議程 (${sCode})`, '刪除議程', 'danger', function () {
+                        triggerDeleteVotingSession(sPk, sCode, sTitle, 'history');
+                    }));
+
+                    spContextMenuEl.appendChild(createCtxDivider());
+                }
             } else {
                 headerDiv.innerHTML = `<span>${headerTitle}</span>`;
                 spContextMenuEl.appendChild(headerDiv);
@@ -10050,6 +10354,8 @@ public class portalController : Controller
                     applyToolbarTableFilter(state);
                     if (table.id === 'workItemDataTable') resetWorkItemFilter();
                     if (table.id === 'workItemTypeDataTable') resetWorkItemTypeFilter();
+                    if (table.id === 'wikDataTable_types') resetWorkItemKindFilter('types');
+                    if (table.id === 'wikDataTable_workitems') resetWorkItemKindFilter('workitems');
                     if (table.id === 'empDataTable') resetEmployeeFilter();
                     showToastNotice('🔄 已清除本表格所有篩選條件');
                 }));
@@ -10257,45 +10563,283 @@ public class portalController : Controller
             }
         }
 
-        function loadWorkItemKindToForm(pk, code, name, icon, color, sortOrder, desc, tabSuffix) {
-            const sfx = tabSuffix || 'workitems';
+        function loadWorkItemKindToForm(pk, code, name, icon, color, sortOrder, desc, tabSuffix, mainFeature, estimationTrait, deliverableTrait) {
+            const sfx = tabSuffix || 'types';
             const pkEl = document.getElementById('wikPk_' + sfx);
             const codeEl = document.getElementById('wikCode_' + sfx);
             const nameEl = document.getElementById('wikName_' + sfx);
             const iconEl = document.getElementById('wikIcon_' + sfx);
             const colorEl = document.getElementById('wikColor_' + sfx);
             const sortEl = document.getElementById('wikSort_' + sfx);
+            const featureEl = document.getElementById('wikFeature_' + sfx);
+            const estEl = document.getElementById('wikEstimation_' + sfx);
+            const delivEl = document.getElementById('wikDeliverable_' + sfx);
             const descEl = document.getElementById('wikDesc_' + sfx);
             const btnEl = document.getElementById('wikSubmitBtn_' + sfx);
+            const titleEl = document.getElementById('wikFormTitle_' + sfx);
             if (pkEl) pkEl.value = pk;
             if (codeEl) codeEl.value = code || '';
             if (nameEl) nameEl.value = name || '';
             if (iconEl) iconEl.value = icon || '📌';
             if (colorEl) colorEl.value = color || 'blue';
             if (sortEl) sortEl.value = sortOrder || 40;
+            if (featureEl) featureEl.value = mainFeature || '';
+            if (estEl) estEl.value = estimationTrait || '';
+            if (delivEl) delivEl.value = deliverableTrait || '';
             if (descEl) descEl.value = desc || '';
-            if (btnEl) btnEl.textContent = '💾 儲存修改工項類型 (' + code + ')';
-            openWorkItemKindEditModal(pk, code, name, icon, color, sortOrder, desc, sfx);
+            if (btnEl) btnEl.textContent = '💾 儲存修改預設工項類型 (' + code + ')';
+            if (titleEl) titleEl.textContent = '✏️ 正在修改預設工項類型：' + (icon || '📌') + ' ' + (name || '') + ' (' + (code || '') + ')';
+            openWorkItemKindEditModal(pk, code, name, icon, color, sortOrder, desc, sfx, mainFeature, estimationTrait, deliverableTrait);
         }
 
         function resetWorkItemKindForm(tabSuffix) {
-            const sfx = tabSuffix || 'workitems';
+            const sfx = tabSuffix || 'types';
             const pkEl = document.getElementById('wikPk_' + sfx);
             const codeEl = document.getElementById('wikCode_' + sfx);
             const nameEl = document.getElementById('wikName_' + sfx);
             const iconEl = document.getElementById('wikIcon_' + sfx);
             const colorEl = document.getElementById('wikColor_' + sfx);
             const sortEl = document.getElementById('wikSort_' + sfx);
+            const featureEl = document.getElementById('wikFeature_' + sfx);
+            const estEl = document.getElementById('wikEstimation_' + sfx);
+            const delivEl = document.getElementById('wikDeliverable_' + sfx);
             const descEl = document.getElementById('wikDesc_' + sfx);
             const btnEl = document.getElementById('wikSubmitBtn_' + sfx);
+            const titleEl = document.getElementById('wikFormTitle_' + sfx);
             if (pkEl) pkEl.value = '';
             if (codeEl) codeEl.value = '';
             if (nameEl) nameEl.value = '';
             if (iconEl) iconEl.value = '📌';
             if (colorEl) colorEl.value = 'blue';
             if (sortEl) sortEl.value = '60';
+            if (featureEl) featureEl.value = '';
+            if (estEl) estEl.value = '';
+            if (delivEl) delivEl.value = '';
             if (descEl) descEl.value = '';
-            if (btnEl) btnEl.textContent = '➕ 新增 / 儲存工項類型';
+            if (btnEl) btnEl.textContent = '➕ 新增 / 儲存預設工項類型';
+            if (titleEl) titleEl.textContent = '➕ 新增或修改「預設工項類型」及三項主要特徵（亦可點擊列表「✏️ 修改」帶入修改）';
+        }
+
+        function filterWorkItemKindTable(tabSuffix) {
+            const sfx = tabSuffix || 'types';
+            const kw = (document.getElementById('filterWikKeyword_' + sfx)?.value || '').trim().toLowerCase();
+            const color = document.getElementById('filterWikColor_' + sfx)?.value || '';
+            const usage = document.getElementById('filterWikUsage_' + sfx)?.value || '';
+
+            const rows = document.querySelectorAll('#wikDataTable_' + sfx + ' tbody tr.wik-row');
+            let visibleCount = 0;
+            rows.forEach(r => {
+                const matchKw = !kw || (r.getAttribute('data-search') || '').indexOf(kw) !== -1;
+                const matchColor = !color || r.getAttribute('data-kind-color') === color;
+                const matchUsage = !usage || r.getAttribute('data-kind-usage') === usage;
+
+                const customMatch = matchKw && matchColor && matchUsage;
+                r.setAttribute('data-custom-hidden', customMatch ? '0' : '1');
+                if (syncRowDisplayState(r)) {
+                    visibleCount++;
+                }
+            });
+
+            const lbl = document.getElementById('wikFilterCountLabel_' + sfx);
+            if (lbl) {
+                lbl.textContent = '符合查詢：' + visibleCount + ' / ' + rows.length + ' 種預設工項類型';
+            }
+            refreshToolbarCountBadgeForTable('wikDataTable_' + sfx);
+        }
+
+        function resetWorkItemKindFilter(tabSuffix) {
+            const sfx = tabSuffix || 'types';
+            if (document.getElementById('filterWikKeyword_' + sfx)) document.getElementById('filterWikKeyword_' + sfx).value = '';
+            if (document.getElementById('filterWikColor_' + sfx)) document.getElementById('filterWikColor_' + sfx).value = '';
+            if (document.getElementById('filterWikUsage_' + sfx)) document.getElementById('filterWikUsage_' + sfx).value = '';
+            const tbl = document.getElementById('wikDataTable_' + sfx);
+            if (tbl && spTableStateMap.has(tbl)) {
+                const st = spTableStateMap.get(tbl);
+                st.colSelect.value = '-1';
+                st.valSelect.style.display = 'none';
+                st.filterInput.value = '';
+                applyToolbarTableFilter(st);
+            }
+            filterWorkItemKindTable(sfx);
+        }
+
+        function filterTypesByKindCode(kindCode, kindName) {
+            switchTab('types');
+            const fKind = document.getElementById('filterTypeKind');
+            if (fKind) {
+                fKind.value = kindCode;
+                filterWorkItemTypeTable();
+                document.getElementById('workItemTypeDataTable')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            showToastNotice('🏷️ 已篩選預設工項類型為「' + (kindName || kindCode) + '」的工項代表類型');
+        }
+
+        function filterWorkItemsByKindCode(kindCode, kindName) {
+            switchTab('workitems');
+            const fKind = document.getElementById('filterWiKind');
+            if (fKind) {
+                fKind.value = kindCode;
+                filterWorkItemTable();
+                document.getElementById('workItemDataTable')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            showToastNotice('📋 已篩選預設工項類型為「' + (kindName || kindCode) + '」的實際工項紀錄');
+        }
+
+        function confirmDeleteWorkItemKind(pk, code, name, tabSuffix) {
+            const sfx = tabSuffix || 'types';
+            submitDynamicPostAction('/workitem/kind/delete', {
+                workItemKindPk: pk || '',
+                kindCode: code || '',
+                returnTab: sfx
+            }, '確定要刪除預設工項類型「' + (code || '') + ' - ' + (name || '') + '」嗎？\n（系統至少會保留 1 個預設類型；若有代表類型或工項正在使用此類型，將自動安全移轉至備援類型）');
+        }
+
+        function onModalKindSelectChange(selectId, bannerId) {
+            const sel = document.getElementById(selectId);
+            const banner = document.getElementById(bannerId);
+            if (!sel || !banner) return;
+            const opt = sel.options[sel.selectedIndex];
+            if (!opt) {
+                banner.innerHTML = '';
+                return;
+            }
+            const kCode = opt.getAttribute('data-kind-code') || opt.value || '';
+            const kName = opt.getAttribute('data-kind-name') || opt.textContent || kCode;
+            const kIcon = opt.getAttribute('data-kind-icon') || '📌';
+            const kFeature = opt.getAttribute('data-kind-feature') || '依業務需求設定之標準工項類型';
+            const kEst = opt.getAttribute('data-kind-estimation') || '支援選擇工項代表類型自動帶入標準點數或發起團隊多人盲投估算';
+            const kDeliv = opt.getAttribute('data-kind-deliverable') || '具備明確起訖時間 (startDate ~ endDate)，達迄時自動轉態為已完成、扣減 Story Point 並寄信通知主管與 HR';
+            const kDesc = opt.getAttribute('data-kind-desc') || '';
+
+            banner.innerHTML = `
+                <div style=""background:#f0f9ff;border:1.5px solid #93c5fd;border-radius:9px;padding:10px 12px;font-size:12.5px;color:#0f172a;line-height:1.5;"">
+                    <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:4px;"">
+                        <span style=""font-weight:800;color:#1e3a8a;"">${escapeModalHtml(kIcon)} 目前所選預設工項類型【${escapeModalHtml(kName)} (${escapeModalHtml(kCode)})】主要特徵：</span>
+                        <span style=""font-size:11.5px;color:#475569;"">可點擊上方「➕ 新增 / ✏️ 修改 / 🗑️ 刪除」直接管理預設工項類型</span>
+                    </div>
+                    <div><strong>⭐ 主要特徵 (核心工作性質)：</strong><span style=""color:#0f172a;font-weight:600;"">${escapeModalHtml(kFeature)}</span></div>
+                    <div><strong>📐 點數估算與計量特徵：</strong><span style=""color:#1e40af;"">${escapeModalHtml(kEst)}</span></div>
+                    <div><strong>⏰ 時程週期與交付/到期特徵：</strong><span style=""color:#334155;"">${escapeModalHtml(kDeliv)}</span></div>
+                    ${kDesc ? `<div><strong>📋 適用情境說明：</strong><span style=""color:#475569;"">${escapeModalHtml(kDesc)}</span></div>` : ''}
+                </div>
+            `;
+
+            // 同步高亮下方特徵表選中列
+            document.querySelectorAll('.modal-wik-feature-row').forEach(tr => {
+                if (tr.getAttribute('data-kind-code') === kCode) {
+                    tr.style.background = '#dbeafe';
+                    tr.style.fontWeight = '700';
+                } else {
+                    tr.style.background = '';
+                    tr.style.fontWeight = '';
+                }
+            });
+        }
+
+        function editSelectedModalKindBySelectId(selectId, tabSuffix) {
+            const sel = document.getElementById(selectId);
+            if (!sel) return;
+            const opt = sel.options[sel.selectedIndex];
+            if (!opt) return;
+            openWorkItemKindEditModal(
+                opt.getAttribute('data-kind-pk') || '',
+                opt.getAttribute('data-kind-code') || opt.value || '',
+                opt.getAttribute('data-kind-name') || '',
+                opt.getAttribute('data-kind-icon') || '📌',
+                opt.getAttribute('data-kind-color') || 'blue',
+                opt.getAttribute('data-kind-sort') || '40',
+                opt.getAttribute('data-kind-desc') || '',
+                tabSuffix || 'types',
+                opt.getAttribute('data-kind-feature') || '',
+                opt.getAttribute('data-kind-estimation') || '',
+                opt.getAttribute('data-kind-deliverable') || ''
+            );
+        }
+
+        function deleteSelectedModalKindBySelectId(selectId, tabSuffix) {
+            const sel = document.getElementById(selectId);
+            if (!sel) return;
+            const opt = sel.options[sel.selectedIndex];
+            if (!opt) return;
+            confirmDeleteWorkItemKind(
+                opt.getAttribute('data-kind-pk') || '',
+                opt.getAttribute('data-kind-code') || opt.value || '',
+                opt.getAttribute('data-kind-name') || opt.value || '',
+                tabSuffix || 'types'
+            );
+        }
+
+        function toggleModalKindFeatureTable() {
+            const box = document.getElementById('modalTypeKindFeatureTableInner');
+            if (!box) return;
+            box.style.display = (box.style.display === 'none') ? 'block' : 'none';
+        }
+
+        function selectModalTypeKindFromTable(kindCode) {
+            const sel = document.getElementById('modalTypeKind');
+            if (!sel) return;
+            sel.value = kindCode;
+            onModalKindSelectChange('modalTypeKind', 'modalTypeKindFeatureBanner');
+        }
+
+        function renderModalKindFeatureComparisonTable(selectId, wrapId, tabSuffix) {
+            const sel = document.getElementById(selectId);
+            const wrap = document.getElementById(wrapId);
+            if (!sel || !wrap) return;
+            const currentVal = sel.value;
+            const sfx = tabSuffix || 'types';
+            let rowsHtml = '';
+            Array.from(sel.options).forEach(opt => {
+                const kPk = opt.getAttribute('data-kind-pk') || '';
+                const kCode = opt.getAttribute('data-kind-code') || opt.value || '';
+                const kName = opt.getAttribute('data-kind-name') || opt.textContent || kCode;
+                const kIcon = opt.getAttribute('data-kind-icon') || '📌';
+                const kColor = opt.getAttribute('data-kind-color') || 'blue';
+                const kSort = opt.getAttribute('data-kind-sort') || '40';
+                const kFeature = opt.getAttribute('data-kind-feature') || '';
+                const kEst = opt.getAttribute('data-kind-estimation') || '';
+                const kDeliv = opt.getAttribute('data-kind-deliverable') || '';
+                const kDesc = opt.getAttribute('data-kind-desc') || '';
+                const isSelected = (kCode === currentVal);
+
+                rowsHtml += `
+                    <tr class=""modal-wik-feature-row"" data-kind-code=""${escapeModalHtml(kCode)}"" style=""${isSelected ? 'background:#dbeafe;font-weight:700;' : ''}cursor:pointer;"" onclick=""selectModalTypeKindFromTable('${escapeModalHtml(kCode)}')"">
+                        <td style=""white-space:nowrap;""><strong>${escapeModalHtml(kIcon)} ${escapeModalHtml(kName)}</strong><br/><code style=""font-size:11px;"">${escapeModalHtml(kCode)}</code></td>
+                        <td style=""font-size:12px;line-height:1.4;"">${escapeModalHtml(kFeature)}</td>
+                        <td style=""font-size:12px;line-height:1.4;color:#1e3a8a;"">${escapeModalHtml(kEst)}</td>
+                        <td style=""font-size:12px;line-height:1.4;color:#334155;"">${escapeModalHtml(kDeliv)}</td>
+                        <td style=""white-space:nowrap;"">
+                            <div style=""display:flex;gap:4px;flex-wrap:wrap;"">
+                                <button type=""button"" class=""btn btn-outline"" style=""padding:2px 6px;font-size:11px;color:#15803d;border-color:#86efac;background:#f0fdf4;"" onclick=""event.stopPropagation(); selectModalTypeKindFromTable('${escapeModalHtml(kCode)}')"">✅ 選用</button>
+                                <button type=""button"" class=""btn btn-outline"" style=""padding:2px 6px;font-size:11px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""event.stopPropagation(); openWorkItemKindEditModal('${escapeModalHtml(kPk)}','${escapeModalHtml(kCode)}','${escapeModalHtml(kName)}','${escapeModalHtml(kIcon)}','${escapeModalHtml(kColor)}','${escapeModalHtml(kSort)}','${escapeModalHtml(kDesc)}','${escapeModalHtml(sfx)}','${escapeModalHtml(kFeature)}','${escapeModalHtml(kEst)}','${escapeModalHtml(kDeliv)}')"">✏️ 修改</button>
+                                <button type=""button"" class=""btn btn-outline"" style=""padding:2px 6px;font-size:11px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""event.stopPropagation(); confirmDeleteWorkItemKind('${escapeModalHtml(kPk)}','${escapeModalHtml(kCode)}','${escapeModalHtml(kName)}','${escapeModalHtml(sfx)}')"">🗑️ 刪除</button>
+                            </div>
+                        </td>
+                    </tr>`;
+            });
+
+            wrap.innerHTML = `
+                <div id=""modalTypeKindFeatureTableInner"" style=""border:1px solid #cbd5e1;border-radius:10px;padding:10px 12px;background:#f8fafc;"">
+                    <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px;"">
+                        <span style=""font-size:12.5px;font-weight:800;color:#0f172a;"">📋 預設工項類型主要特徵一覽表（點擊列即可套用，或直接執行增、刪、修、查）</span>
+                        <button type=""button"" class=""btn btn-primary"" style=""padding:3px 10px;font-size:11.5px;"" onclick=""openWorkItemKindEditModal('','','','📌','blue',60,'','${escapeModalHtml(sfx)}','','','')"">➕ 新增預設工項類型</button>
+                    </div>
+                    <div style=""max-height:220px;overflow-y:auto;"">
+                        <table style=""width:100%;font-size:12px;"">
+                            <thead>
+                                <tr>
+                                    <th style=""width:125px;"">預設工項類型</th>
+                                    <th>⭐ 主要特徵 (核心工作性質)</th>
+                                    <th>📐 點數估算與計量特徵</th>
+                                    <th>⏰ 時程週期與交付/到期特徵</th>
+                                    <th style=""width:155px;"">操作 (選用/修/刪)</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rowsHtml}</tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
         }
 
         function resetWorkItemForm(nextCode) {
@@ -11913,6 +12457,12 @@ public class portalController : Controller
                         <button type=""submit"" name=""submitAction"" value=""finalize"" class=""btn btn-success"" onclick=""document.getElementById('inputFinalStoryPoint').value='{suggestedFinalPt.ToString(CultureInfo.InvariantCulture)}'; document.getElementById('controlActionType').value='finalize';"">
                             🏆 5. 一鍵採用推薦點數 ({suggestedFinalPt:0.##} pt) 拍板定案
                         </button>
+                        <button type=""button"" class=""btn btn-outline"" style=""border-color:#fca5a5;color:#b91c1c;background:#fef2f2;"" onclick=""deleteStandaloneRound({activeSessionPk}, {currentRoundNumber}, '{h(activeSessionRow["sessionCode"]?.ToString()?.Replace("'", "\\'"))} - {h(activeSessionRow["sessionTitle"]?.ToString()?.Replace("'", "\\'"))}（第 {currentRoundNumber} 回合）')"">
+                            🗑️ 6. 刪除本回合 (第 {currentRoundNumber} 回合)
+                        </button>
+                        <button type=""button"" class=""btn btn-outline"" style=""border-color:#dc2626;color:#991b1b;background:#fee2e2;"" onclick=""deleteStandaloneSession({activeSessionPk}, '{h(activeSessionRow["sessionCode"]?.ToString()?.Replace("'", "\\'"))} - {h(activeSessionRow["sessionTitle"]?.ToString()?.Replace("'", "\\'"))}')"">
+                            🗑️ 7. 刪除此盲投議程
+                        </button>
                     </div>
                     <div style=""background:#f8fafc;border:1px solid #cbd5e1;padding:12px;border-radius:8px;margin-bottom:12px;"">
                         <div style=""font-weight:700;margin-bottom:8px;color:#15803d;"">
@@ -12092,6 +12642,7 @@ public class portalController : Controller
                             <th>投票數</th>
                             <th>最低 / 最高 / 平均 / 極差</th>
                             <th>回合討論紀錄 / 定案決議</th>
+                            {(isAdmin ? "<th style='width:86px;text-align:center;'>操作</th>" : "")}
                         </tr>
                     </thead>
                     <tbody>");
@@ -12123,6 +12674,7 @@ public class portalController : Controller
                             <td>{rRow["voteCount"]} 票</td>
                             <td>{(isMasked ? "<span style='color:#b45309;'>🙈 盲投保密中</span>" : $"Min: <strong>{rRow["minPoint"]}</strong> / Max: <strong>{rRow["maxPoint"]}</strong> / Avg: <strong>{rRow["averagePoint"]}</strong> / 極差: <strong style='color:#dc2626;'>{rSpread:0.##}</strong>")}</td>
                             <td>{h(rNote)}</td>
+                            {(isAdmin ? $"<td style='text-align:center;'><button type='button' class='btn btn-outline' style='padding:2px 8px;font-size:11px;color:#b91c1c;border-color:#fca5a5;background:#fef2f2;' onclick=\"deleteStandaloneRound({activeSessionPk}, {rNum}, '{h(activeSessionRow["sessionCode"]?.ToString()?.Replace("'", "\\'"))} 第 {rNum} 回合')\">🗑️ 刪除</button></td>" : "")}
                         </tr>");
         }
 
@@ -12331,6 +12883,59 @@ public class portalController : Controller
                     else formEl.submit();
                 }
             }
+        }
+
+        function deleteStandaloneRound(sessionPk, roundNum, label) {
+            if (!window.confirm('⚠️ 確定要刪除「' + (label || ('第 ' + roundNum + ' 回合')) + '」嗎？\n\n刪除後將清除該回合的出牌紀錄並自動重整剩餘回合編號（若本議程僅剩此唯一回合，將一併刪除本議程並返回大廳）。')) {
+                return;
+            }
+            window.__isInternalSessionNavigation = true;
+            isAutoReloading = true;
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/voting/round/delete';
+            form.style.display = 'none';
+            const fields = {
+                votingSessionPk: String(sessionPk),
+                roundNumber: String(roundNum),
+                deleteSessionIfLastRound: 'true',
+                fromStandalone: 'true',
+                tabInstanceId: assignedTabInstanceId,
+                returnTab: 'voting'
+            };
+            Object.keys(fields).forEach(k => {
+                const inp = document.createElement('input');
+                inp.type = 'hidden';
+                inp.name = k;
+                inp.value = fields[k];
+                form.appendChild(inp);
+            });
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        function deleteStandaloneSession(sessionPk, label) {
+            if (!window.confirm('⚠️ 確定要永久刪除整場盲投議程「' + (label || ('Session #' + sessionPk)) + '」嗎？\n\n刪除後將移除本議程的所有回合與出牌紀錄，並返回盲投大廳。')) {
+                return;
+            }
+            onExplicitLeaveSessionClick();
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/voting/delete';
+            form.style.display = 'none';
+            const fields = {
+                votingSessionPk: String(sessionPk),
+                returnTab: 'voting'
+            };
+            Object.keys(fields).forEach(k => {
+                const inp = document.createElement('input');
+                inp.type = 'hidden';
+                inp.name = k;
+                inp.value = fields[k];
+                form.appendChild(inp);
+            });
+            document.body.appendChild(form);
+            form.submit();
         }
 
         // 5. 表格標題排序与鎖定 (Sticky Header)

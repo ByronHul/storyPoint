@@ -50,6 +50,15 @@ param(
     [int]$sortOrder = 100,
 
     [parameter(mandatory = $false)]
+    [string]$mainFeatureSummary = '',
+
+    [parameter(mandatory = $false)]
+    [string]$estimationTrait = '',
+
+    [parameter(mandatory = $false)]
+    [string]$timeAndDeliverableTrait = '',
+
+    [parameter(mandatory = $false)]
     [int]$workItemTypePk = 0,
 
     [parameter(mandatory = $false)]
@@ -144,9 +153,16 @@ param(
 switch ($actionType) {
     'listWorkItemKind' {
         $ds = invokeStoredProcedureDataSet -procedureName 'storyPoint.spGetStoryPointDashboard' -parameters @{}
+        $kindTable = $ds.tables[8]
+        if (-not [string]::isnullorempty($keyword)) {
+            $kwEsc = $keyword.replace("'", "''")
+            $dv = $kindTable.defaultview
+            $dv.rowfilter = "kindCode like '%$kwEsc%' or kindName like '%$kwEsc%' or mainFeatureSummary like '%$kwEsc%' or estimationTrait like '%$kwEsc%' or timeAndDeliverableTrait like '%$kwEsc%' or description like '%$kwEsc%'"
+            $kindTable = $dv.totable()
+        }
         writeSystemLog -logLevel 3 -sourceScript 'manageWorkItem.ps1' -objectName 'listWorkItemKind' `
-            -executionResult "查詢工項類型完成，共 $($ds.tables[8].rows.count) 筆" -operatorAccount $operatorAccount
-        return ,$ds.tables[8]
+            -executionResult "查詢預設工項類型與主要特徵完成，共 $($kindTable.rows.count) 筆" -operatorAccount $operatorAccount
+        return ,$kindTable
     }
 
     'upsertWorkItemKind' {
@@ -157,6 +173,9 @@ switch ($actionType) {
             badgeIcon = $badgeIcon
             badgeColor = $badgeColor
             sortOrder = $sortOrder
+            mainFeatureSummary = $(if (-not [string]::isnullorempty($mainFeatureSummary)) { $mainFeatureSummary } else { $null })
+            estimationTrait = $(if (-not [string]::isnullorempty($estimationTrait)) { $estimationTrait } else { $null })
+            timeAndDeliverableTrait = $(if (-not [string]::isnullorempty($timeAndDeliverableTrait)) { $timeAndDeliverableTrait } else { $null })
             description = $description
             isActive = $true
             operatorAccount = $operatorAccount

@@ -67,7 +67,7 @@ process {
     $txtPwd = new-object system.windows.forms.textbox
     $txtPwd.location = new-object system.drawing.point(640, 13)
     $txtPwd.width = 100
-    $txtPwd.text = 'pass123'
+    $txtPwd.text = 'P@ssw0rd'
 
     $lblDept = new-object system.windows.forms.label
     $lblDept.text = '部門 ID：'
