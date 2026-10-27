@@ -784,6 +784,12 @@ public class portalController : Controller
             }
 
             bool isUpdatingExisting = votingSessionPk.HasValue && votingSessionPk.Value > 0;
+            if (!isUpdatingExisting)
+            {
+                restartAllRounds = false;
+                openNextRound = false;
+                resetCurrentRoundVotes = false;
+            }
             string sessionCode = "VOTE-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
             string cleanTitle = string.IsNullOrWhiteSpace(sessionTitle)
                 ? $"Story Point 估算議程 ({sessionCode})"
@@ -1080,17 +1086,28 @@ public class portalController : Controller
                 _ => "投票議程狀態已更新"
             };
 
+            if (resolvedAction == "finalize")
+            {
+                sqlDataService.releaseAllLeasesForSession(effectiveSessionPk);
+            }
+
             await _hubContext.Clients.All.SendAsync("onVotingSessionUpdated", new
             {
                 votingSessionPk = effectiveSessionPk,
                 eventName = resolvedAction,
-                sessionStatus = (resolvedAction == "revote" || resolvedAction == "resetRound" || resolvedAction == "restartAll" || resolvedAction == "nextRound") ? "voting" : null,
+                sessionStatus = resolvedAction == "finalize"
+                    ? "finalized"
+                    : ((resolvedAction == "revote" || resolvedAction == "resetRound" || resolvedAction == "restartAll" || resolvedAction == "nextRound") ? "voting" : null),
                 messageText = actionText,
                 timestamp = DateTime.Now.ToString("HH:mm:ss")
             });
 
             if (fromStandalone || !string.IsNullOrWhiteSpace(tabInstanceId))
             {
+                if (resolvedAction == "finalize")
+                {
+                    return Redirect($"/voting/session?sessionPk={effectiveSessionPk}&msg=" + Uri.EscapeDataString(actionText));
+                }
                 var (_, assignedTabId, _) = sqlDataService.tryEnterOrRefreshVotingSessionLease(
                     getCurrentEmployeePk(),
                     getCurrentEmployeeName(),
@@ -5805,33 +5822,6 @@ public class portalController : Controller
                         </div>
                     </div>");
 
-        // Folder 3: 已拍板定案議程 (finalized) — 預設一律收合
-        string finalizedFolderClass = "collapsed";
-        sb.Append($@"
-                    <div class=""agenda-folder {finalizedFolderClass}"" id=""folder-finalized"">
-                        <div class=""agenda-folder-header"" onclick=""toggleSessionFolder('folder-finalized')"">
-                            <div>
-                                <span class=""agenda-folder-caret"">▼</span>
-                                <span>📁 已拍板定案議程</span>
-                            </div>
-                            <span class=""badge badge-finalized"">{finalizedSessions.Count} 場</span>
-                        </div>
-                        <div class=""agenda-folder-body"">");
-        if (finalizedSessions.Count == 0)
-        {
-            sb.Append("<div style='font-size:12.5px;color:#64748b;padding:8px;text-align:center;'>尚無已拍板定案的議程。</div>");
-        }
-        else
-        {
-            foreach (DataRow sRow in finalizedSessions)
-            {
-                renderSessionAgendaItem(sRow);
-            }
-        }
-        sb.Append(@"
-                        </div>
-                    </div>");
-
         if (isAdmin)
         {
             sb.Append(@"
@@ -6043,11 +6033,11 @@ public class portalController : Controller
                 <!-- 模式切換：發起新盲投議程 vs 修改既有進行中議程設定 vs 全部重新開始 -->
                 <div class='setup-section' style='background:#eff6ff;border-color:#bfdbfe;'>
                     <div class='setup-section-title'>
-                        <span>🔄 設定對象與重新投票模式（可發起新議程、重啟新一輪，或將既有議程「全部重新開始」並重新設定投票人與所有選項）</span>
+                        <span>🔄 設定對象與重新投票模式（可發起新議程、重啟新一輪，或將進行中議程「全部重新開始」並重新設定投票人與所有選項）</span>
                     </div>
                     <div class='form-row' style='margin-bottom:0;'>
                         <div>
-                            <label data-tip='選擇設定作業模式：可建立並啟動全新的多人盲投議程，或載入既有／已定案議程重新設定投票人與所有相關選項' title='選擇設定作業模式：可建立並啟動全新的多人盲投議程，或載入既有／已定案議程重新設定投票人與所有相關選項'>1. 選擇目標盲投議程 <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='選擇設定作業模式：可建立並啟動全新的多人盲投議程，或載入進行中（未定案）議程重新設定投票人與所有相關選項（已定案議程已決定 Story Point，不會出現在此選單）' title='選擇設定作業模式：可建立並啟動全新的多人盲投議程，或載入進行中（未定案）議程重新設定投票人與所有相關選項'>1. 選擇目標盲投議程 <span class='sp-tip-icon'>ⓘ</span></label>
                             <select name='votingSessionPk' id='setupSessionSelector' onchange='onSetupSessionSelectChange()'>
                                 <option value=''>➕ 建立並啟動全新的多人盲投議程</option>");
             foreach (DataRow sRow in ongoingSessions)
@@ -6055,22 +6045,17 @@ public class portalController : Controller
                 int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
                 sb.Append($"<option value='{sPk}'>✏️ 進行中議程：{h(sRow["sessionCode"])} - {h(sRow["sessionTitle"])}</option>");
             }
-            foreach (DataRow sRow in finalizedSessions)
-            {
-                int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
-                sb.Append($"<option value='{sPk}'>🔄 已定案議程：{h(sRow["sessionCode"])} - {h(sRow["sessionTitle"])}</option>");
-            }
             sb.Append(@"
                             </select>
                         </div>
                         <div style='grid-column: span 2;'>
-                            <label data-tip='當選擇既有或已定案議程時，可選擇「🆕 全部重新開始（清空歷次回合與選票回第 1 回合，並重新設定投票人與所有選項）」或「🔄 重啟新一輪盲投」' title='當選擇既有或已定案議程時，可選擇「🆕 全部重新開始（清空歷次回合與選票回第 1 回合，並重新設定投票人與所有選項）」或「🔄 重啟新一輪盲投」'>2. 重新投票 ／ 議程重設模式（支援全部重新開始並重設投票人與所有選項） <span class='sp-tip-icon'>ⓘ</span></label>
+                            <label data-tip='當建立新議程時預設為「➕ 建立並啟動全新的多人盲投議程 Session」；當選擇進行中議程時，可選擇「🆕 全部重新開始」或「🔄 重啟新一輪盲投」' title='當建立新議程時預設為「➕ 建立並啟動全新的多人盲投議程 Session」；當選擇進行中議程時，可選擇「🆕 全部重新開始」或「🔄 重啟新一輪盲投」'>2. 重新投票 ／ 議程重設模式（支援全部重新開始並重設投票人與所有選項） <span class='sp-tip-icon'>ⓘ</span></label>
                             <select name='revoteMode' id='setupRevoteMode' style='border-color:#2563eb;font-weight:700;background:#ffffff;'>
+                                <option value='createNewSession' selected>➕ 建立並啟動全新的多人盲投議程 Session</option>
                                 <option value='restartAll'>🆕 全部重新開始（清空歷次回合與選票，從第 1 回合全新開始，並重新設定下方投票人名單與所有選項）</option>
                                 <option value='nextRound'>🔄 重啟新一輪盲投（保留歷次回合紀錄，開啟下一輪 N+1 並套用下方重新設定之投票人與選項）</option>
                                 <option value='resetCurrent'>🔁 重設當前回合（僅清空本回合已出牌紀錄，保持目前回合號並更新選項）</option>
                                 <option value='keepVotes'>💾 僅更新設定與投票人（保留目前已投選票不清除）</option>
-                                <option value='createNewSession'>➕ 另建全新盲投議程 Session（保留原議程紀錄不動，額外建立新議程）</option>
                             </select>
                         </div>
                     </div>
@@ -6093,8 +6078,9 @@ public class portalController : Controller
                         <div id='setupBoxType' style='grid-column: span 2;'>
                             <div style='display:grid;grid-template-columns:1.25fr 1fr;gap:10px;'>
                                 <div>
-                                    <label data-tip='選擇本回合要進行多人盲投估算的「3-2 基本工項」（如：資料庫健檢），或選「➕ 依下方盲投議程標題自動建立新基本工項」（新增基本工項的投票，只要設定右方參照類型）' title='選擇本回合要進行多人盲投估算的「3-2 基本工項」（如：資料庫健檢），或選「➕ 依下方盲投議程標題自動建立新基本工項」（新增基本工項的投票，只要設定右方參照類型）'>目標基本工項 (如：資料庫健檢｜無起訖時間) <span class='sp-tip-icon'>ⓘ</span></label>
-                                    <select name='workItemTypePk' id='setupWorkItemTypePk' onchange='onSetupBasicWorkItemSelectChange()'>");
+                                    <label data-tip='選擇本回合要進行多人盲投估算的「待估算／投票中基本工項」（已定案的基本工項已決定 SP，不會出現在此選單），或選「➕ 依下方盲投議程標題自動建立新基本工項」' title='選擇本回合要進行多人盲投估算的「待估算／投票中基本工項」（已定案的基本工項已決定 SP，不會出現在此選單），或選「➕ 依下方盲投議程標題自動建立新基本工項」'>目標基本工項 (僅列未定案基本工項或自動建立新基本工項) <span class='sp-tip-icon'>ⓘ</span></label>
+                                    <select name='workItemTypePk' id='setupWorkItemTypePk' onchange='onSetupBasicWorkItemSelectChange()'>
+                                        <option value='0' data-code='' data-kind='' data-kind-name='' data-icon='' data-name='' data-std-pt=''>➕ 依下方「盲投議程標題」自動建立新基本工項（只要參照右方類型）</option>");
             var refBasicTypeOptionsBuilder = new StringBuilder();
             foreach (DataRow tRow in typeTable.Rows)
             {
@@ -6106,15 +6092,20 @@ public class portalController : Controller
                 string optIconPrefix = isImageIconValue(rawIconVal)
                     ? (tKindVal == "maintenance" ? "🛠️" : tKindVal == "consultingHour" ? "⏳" : tKindVal == "training" ? "🎓" : tKindVal == "productDevelopment" ? "🚀" : "🏗️")
                     : rawIconVal;
+                string tEstStatus = tRow.Table.Columns.Contains("estimationStatus") ? (tRow["estimationStatus"]?.ToString() ?? "") : "";
+                bool isTypeFinalized = tRow["standardStoryPoint"] != DBNull.Value || string.Equals(tEstStatus, "finalized", StringComparison.OrdinalIgnoreCase);
                 string stdPtVal = tRow["standardStoryPoint"] != DBNull.Value ? Convert.ToDecimal(tRow["standardStoryPoint"]).ToString("0.##", CultureInfo.InvariantCulture) : "5";
                 string curPt = tRow["standardStoryPoint"] != DBNull.Value ? $" (目前標準: {tRow["standardStoryPoint"]} pt)" : " (待估算)";
                 string displayLabel = $"{optIconPrefix} [{tKindTextVal}] {tNameVal} ({tCodeVal}){curPt}";
                 string optTag = $"<option value='{tRow["workItemTypePk"]}' data-code='{h(tCodeVal)}' data-kind='{h(tKindVal)}' data-kind-name='{h(tKindTextVal)}' data-icon='{h(rawIconVal)}' data-name='{h(tNameVal)}' data-std-pt='{h(stdPtVal)}'>{h(displayLabel)}</option>";
-                sb.Append(optTag);
+                if (!isTypeFinalized)
+                {
+                    sb.Append(optTag);
+                }
                 refBasicTypeOptionsBuilder.Append(optTag);
             }
             string refBasicTypeOptionsHtml = refBasicTypeOptionsBuilder.ToString();
-            sb.Append(@"<option value='0' data-code='' data-kind='' data-kind-name='' data-icon='' data-name='' data-std-pt=''>➕ 依下方「盲投議程標題」自動建立新基本工項（只要參照右方類型）</option>
+            sb.Append(@"
                                     </select>
                                 </div>
                                 <div>
@@ -6129,10 +6120,17 @@ public class portalController : Controller
                         <div id='setupBoxItem' style='display:none;grid-column: span 2;'>
                             <div style='display:grid;grid-template-columns:1.15fr 1.15fr;gap:10px;'>
                                 <div>
-                                    <label data-tip='選擇本回合要進行多人盲投估算的「3-1 一般工項」（如：集保健檢），或選「➕ 依下方盲投議程標題自動建立新一般工項」（新增一般工項的投票，應於右方設定該一般工項要參照的基本工項）' title='選擇本回合要進行多人盲投估算的「3-1 一般工項」（如：集保健檢），或選「➕ 依下方盲投議程標題自動建立新一般工項」（新增一般工項的投票，應於右方設定該一般工項要參照的基本工項）'>目標一般工項 (如：集保健檢｜具起訖時間) <span class='sp-tip-icon'>ⓘ</span></label>
-                                    <select name='workItemPk' id='setupWorkItemPk' onchange='onSetupWorkItemSelectChange()'>");
+                                    <label data-tip='選擇本回合要進行多人盲投估算的「未定案 3-1 一般工項」（如：集保健檢），或選「➕ 依下方盲投議程標題自動建立新一般工項」（新增一般工項的投票，應於右方設定該一般工項要參照的基本工項）' title='選擇本回合要進行多人盲投估算的「未定案 3-1 一般工項」（如：集保健檢），或選「➕ 依下方盲投議程標題自動建立新一般工項」（新增一般工項的投票，應於右方設定該一般工項要參照的基本工項）'>目標一般工項 (如：集保健檢｜具起訖時間) <span class='sp-tip-icon'>ⓘ</span></label>
+                                    <select name='workItemPk' id='setupWorkItemPk' onchange='onSetupWorkItemSelectChange()'>
+                                        <option value='0' data-code='' data-name='' data-ref-type-pk='' data-ref-type-name='' data-kind=''>➕ 依下方「盲投議程標題」自動建立新一般工項（請設定右方要參照的基本工項）</option>");
             foreach (DataRow wRow in itemTable.Rows)
             {
+                string wEstStatus = wRow.Table.Columns.Contains("estimationStatus") ? (wRow["estimationStatus"]?.ToString() ?? "") : "";
+                string wExecStatus = wRow.Table.Columns.Contains("executionStatus") ? (wRow["executionStatus"]?.ToString() ?? "") : "";
+                if (string.Equals(wEstStatus, "finalized", StringComparison.OrdinalIgnoreCase) || string.Equals(wExecStatus, "done", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
                 string wCodeVal = wRow["itemCode"]?.ToString() ?? "";
                 string wTitleVal = wRow["itemTitle"]?.ToString() ?? "";
                 string wRefTypePkVal = wRow.Table.Columns.Contains("workItemTypePk") && wRow["workItemTypePk"] != DBNull.Value ? wRow["workItemTypePk"].ToString()! : "";
@@ -6141,7 +6139,7 @@ public class portalController : Controller
                 string wRefDisplay = !string.IsNullOrWhiteSpace(wRefTypeNameVal) ? $"參照基本工項: {wRefTypeNameVal}｜" : "";
                 sb.Append($"<option value='{wRow["workItemPk"]}' data-code='{h(wCodeVal)}' data-name='{h(wTitleVal)}' data-ref-type-pk='{h(wRefTypePkVal)}' data-ref-type-name='{h(wRefTypeNameVal)}' data-kind='{h(wKindVal)}'>{h(wCodeVal)} - {h(wTitleVal)} ({h(wRefDisplay)}目前: {wRow["storyPoint"]} pt)</option>");
             }
-            sb.Append(@"<option value='0' data-code='' data-name='' data-ref-type-pk='' data-ref-type-name='' data-kind=''>➕ 依下方「盲投議程標題」自動建立新一般工項（請設定右方要參照的基本工項）</option>
+            sb.Append(@"
                                     </select>
                                 </div>
                                 <div>
@@ -6361,7 +6359,7 @@ public class portalController : Controller
                         </tr>
                     </thead>
                     <tbody>");
-        foreach (DataRow sRow in sessionTable.Rows)
+        foreach (DataRow sRow in ongoingSessions)
         {
             int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
             string sCodeStr = sRow["sessionCode"]?.ToString() ?? "";
@@ -7495,8 +7493,8 @@ public class portalController : Controller
                         </label>
                         <div style='display:flex;gap:8px;flex-wrap:wrap;'>
                             <button type='button' class='btn btn-outline' id='btnTypeDeleteCurrent' style='padding:7px 12px;font-size:12.5px;color:#dc2626;border-color:#fca5a5;background:#fef2f2;{(initTypePk > 0 ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeDelete()"">🗑️ 刪除此基本工項 (Delete)</button>
-                            <button type='button' class='btn btn-outline' id='btnTypeRevoteNextRound' style='padding:7px 12px;font-size:12.5px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;{(initTypePk > 0 ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeRevote('nextRound')"">🔄 重啟新一輪盲投</button>
-                            <button type='button' class='btn btn-outline' id='btnTypeRevoteRestartAll' style='padding:7px 12px;font-size:12.5px;color:#b45309;border-color:#fcd34d;background:#fffbeb;{(initTypePk > 0 ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeRevote('restartAll')"">🃏 重新盲投設定 (全部重新開始)</button>
+                            <button type='button' class='btn btn-outline' id='btnTypeRevoteNextRound' style='padding:7px 12px;font-size:12.5px;color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;{(initTypePk > 0 && string.IsNullOrWhiteSpace(initTypePt) ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeRevote('nextRound')"">🔄 重啟新一輪盲投</button>
+                            <button type='button' class='btn btn-outline' id='btnTypeRevoteRestartAll' style='padding:7px 12px;font-size:12.5px;color:#b45309;border-color:#fcd34d;background:#fffbeb;{(initTypePk > 0 && string.IsNullOrWhiteSpace(initTypePt) ? "" : "display:none;")}' onclick=""triggerCurrentFormTypeRevote('restartAll')"">🃏 重新盲投設定 (全部重新開始)</button>
                             <button type='submit' class='btn btn-primary' id='typeSubmitBtn' style='padding:8px 18px;font-size:13.5px;'>💾 {(initTypePk > 0 ? $"儲存「{h(initTypeName)}」基本工項與套用類型" : "新增並儲存基本工項")}</button>
                         </div>
                     </div>
@@ -8745,9 +8743,9 @@ public class portalController : Controller
             initialTopic: Request.Query["topic"].ToString()));
         sb.Append("</div>"); // end Tab 8 (help)
 
-        // 建立前端設定回合所需的既有議程設定與工項指派對應 JSON
+        // 建立前端設定回合所需的進行中議程設定與工項指派對應 JSON（已定案議程已決定 SP，不再列入重新設定選單）
         var sessionMetaJsonList = new List<string>();
-        foreach (DataRow sRow in sessionTable.Rows)
+        foreach (DataRow sRow in ongoingSessions)
         {
             int sPk = Convert.ToInt32(sRow["votingSessionPk"]);
             var pList = new List<int>();
@@ -9411,7 +9409,7 @@ public class portalController : Controller
             if (sPk <= 0 && targetPk && typeof sessionConfigMap !== 'undefined') {
                 const matchKey = Object.keys(sessionConfigMap).find(k => {
                     const item = sessionConfigMap[k];
-                    if (!item) return false;
+                    if (!item || item.sessionStatus === 'finalized') return false;
                     if (targetKind === 'workItem') return Number(item.workItemPk) === Number(targetPk);
                     return Number(item.workItemTypePk) === Number(targetPk);
                 });
@@ -9419,7 +9417,7 @@ public class portalController : Controller
             }
             const sel = document.getElementById('setupSessionSelector');
             const revoteModeSel = document.getElementById('setupRevoteMode');
-            if (sel && sPk > 0 && sessionConfigMap[sPk]) {
+            if (sel && sPk > 0 && sessionConfigMap[sPk] && sessionConfigMap[sPk].sessionStatus !== 'finalized') {
                 sel.value = String(sPk);
                 onSetupSessionSelectChange();
                 if (revoteModeSel) {
@@ -9440,10 +9438,10 @@ public class portalController : Controller
                     autoFillSetupTitle();
                 }
                 if (revoteModeSel) {
-                    revoteModeSel.value = defaultRevoteMode || 'restartAll';
+                    revoteModeSel.value = 'createNewSession';
                 }
             }
-            showToastNotice('⚙️ 已載入完整盲投回合設定精靈，您可重新設定投票人名單與所有選項後啟動重新投票！');
+            showToastNotice('⚙️ 已載入盲投回合設定精靈，您可設定投票人名單與所有選項後啟動盲投議程！');
         }
 
         function openRoundSetupForSession(sessionPk) {
@@ -10875,8 +10873,8 @@ public class portalController : Controller
                             ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#dc2626;border-color:#fca5a5;background:#fef2f2;"" onclick=""submitDynamicPostAction('/workitem/type/delete', { workItemTypePk: '${escapeModalHtml(pk)}', typeCode: '${escapeModalHtml(code)}', returnTab: getCurrentActiveTabName() || 'types' }, '確定要刪除基本工項／代表類型「${escapeModalHtml(code)} - ${escapeModalHtml(name)}」嗎？');"">🗑️ 刪除此基本工項</button>` : ''}
                         </div>
                         <div style=""display:flex;gap:8px;flex-wrap:wrap;"">
-                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""closeRecordEditModal(); triggerRevoteFromTarget('workItemType', '${escapeModalHtml(pk)}', 0, '${escapeModalHtml(code)} - ${escapeModalHtml(name)}', false, 'voting');"">🔄 重啟新一輪</button>` : ''}
-                            ${!isCreate ? `<button type=""button"" class=""btn btn-outline"" style=""color:#b45309;border-color:#fcd34d;background:#fffbeb;"" onclick=""openSessionSetupEditModal(0, 'workItemType', '${escapeModalHtml(pk)}', true, 'restartAll');"">🆕 全部重新開始(重設投票人與所有選項)</button>` : ''}
+                            ${(!isCreate && (!pt || String(pt).trim() === '')) ? `<button type=""button"" class=""btn btn-outline"" style=""color:#1d4ed8;border-color:#93c5fd;background:#eff6ff;"" onclick=""closeRecordEditModal(); triggerRevoteFromTarget('workItemType', '${escapeModalHtml(pk)}', 0, '${escapeModalHtml(code)} - ${escapeModalHtml(name)}', false, 'voting');"">🔄 重啟新一輪</button>` : ''}
+                            ${(!isCreate && (!pt || String(pt).trim() === '')) ? `<button type=""button"" class=""btn btn-outline"" style=""color:#b45309;border-color:#fcd34d;background:#fffbeb;"" onclick=""openSessionSetupEditModal(0, 'workItemType', '${escapeModalHtml(pk)}', true, 'restartAll');"">🆕 全部重新開始(重設投票人與所有選項)</button>` : ''}
                             <button type=""submit"" class=""btn btn-primary"">💾 儲存此基本工項屬性與套用類型</button>
                         </div>
                     </div>
@@ -11232,7 +11230,7 @@ public class portalController : Controller
             if (sPk <= 0 && targetPkOverride && typeof sessionConfigMap !== 'undefined') {
                 const matchKey = Object.keys(sessionConfigMap).find(k => {
                     const item = sessionConfigMap[k];
-                    if (!item) return false;
+                    if (!item || item.sessionStatus === 'finalized') return false;
                     if (targetKindOverride === 'workItem') return Number(item.workItemPk) === Number(targetPkOverride);
                     return Number(item.workItemTypePk) === Number(targetPkOverride);
                 });
@@ -11240,7 +11238,10 @@ public class portalController : Controller
                     sPk = Number(matchKey);
                 }
             }
-            const cfg = (sPk > 0 && typeof sessionConfigMap !== 'undefined' && sessionConfigMap[sPk]) ? sessionConfigMap[sPk] : null;
+            const cfg = (sPk > 0 && typeof sessionConfigMap !== 'undefined' && sessionConfigMap[sPk] && sessionConfigMap[sPk].sessionStatus !== 'finalized') ? sessionConfigMap[sPk] : null;
+            if (!cfg) {
+                sPk = 0;
+            }
             const tKind = targetKindOverride || (cfg ? cfg.targetKind : 'workItemType');
             const wiTypePk = (tKind === 'workItemType' && targetPkOverride) ? targetPkOverride : (cfg ? cfg.workItemTypePk : 0);
             const wiPk = (tKind === 'workItem' && targetPkOverride) ? targetPkOverride : (cfg ? cfg.workItemPk : 0);
@@ -11989,17 +11990,19 @@ public class portalController : Controller
                         openWorkItemTypeEditModal(tPk, tCode, tName, tCat, tDesc, tPt, tKind, tDeckPk);
                     }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('🆕', '重新投票 — 全部重新開始（重新設定投票人名單與所有相關選項）', '全部重新開始', 'primary-action', function () {
-                        openSessionSetupEditModal(tLastSessionPk, 'workItemType', tPk, true, 'restartAll');
-                    }));
+                    if (!tPt || String(tPt).trim() === '') {
+                        spContextMenuEl.appendChild(createCtxMenuItem('🆕', '重新投票 — 全部重新開始（重新設定投票人名單與所有相關選項）', '全部重新開始', 'primary-action', function () {
+                            openSessionSetupEditModal(tLastSessionPk, 'workItemType', tPk, true, 'restartAll');
+                        }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('🔄', '重新投票 — 重啟新一輪盲投（沿用原設定直接開啟下一輪）', '重啟新一輪', 'primary-action', function () {
-                        triggerRevoteFromTarget('workItemType', tPk, tLastSessionPk, tCode + ' - ' + tName, false, 'voting');
-                    }));
+                        spContextMenuEl.appendChild(createCtxMenuItem('🔄', '重新投票 — 重啟新一輪盲投（沿用原設定直接開啟下一輪）', '重啟新一輪', 'primary-action', function () {
+                            triggerRevoteFromTarget('workItemType', tPk, tLastSessionPk, tCode + ' - ' + tName, false, 'voting');
+                        }));
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('⚙️', '前往「1-2. 設定盲投回合」完整頁面重新設定並開始', '完整設定頁', '', function () {
-                        openFullRoundSetupTabForTarget(tLastSessionPk, 'workItemType', tPk, 'restartAll');
-                    }));
+                        spContextMenuEl.appendChild(createCtxMenuItem('⚙️', '前往「1-2. 設定盲投回合」完整頁面重新設定並開始', '完整設定頁', '', function () {
+                            openFullRoundSetupTabForTarget(tLastSessionPk, 'workItemType', tPk, 'restartAll');
+                        }));
+                    }
 
                     spContextMenuEl.appendChild(createCtxMenuItem('🔍', '檢視套用此代表類型的所有工項', '工項篩選', '', function () {
                         switchTab('workitems');
@@ -12177,30 +12180,32 @@ public class portalController : Controller
                 if (isCurrentUserAdmin && sPk) {
                     spContextMenuEl.appendChild(createCtxDivider());
 
-                    spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此盲投議程回合設定（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
-                        openSessionSetupEditModal(sPk, '', 0, false, 'keepVotes');
-                    }));
-
-                    spContextMenuEl.appendChild(createCtxMenuItem('🔄', '重新投票 — 重啟新一輪盲投（保留歷次回合，開啟下一輪並重設已定案狀態）', '重啟新一輪', 'primary-action', function () {
-                        triggerRevoteFromTarget('session', 0, sPk, sCode + ' - ' + sTitle, false, sReturnTab);
-                    }));
-
-                    spContextMenuEl.appendChild(createCtxMenuItem('🆕', '重新投票 — 全部重新開始（重設回第 1 回合，並重新設定投票人與所有選項）', '全部重新開始', 'primary-action', function () {
-                        openSessionSetupEditModal(sPk, '', 0, true, 'restartAll');
-                    }));
-
-                    spContextMenuEl.appendChild(createCtxMenuItem('🔁', '重新投票 — 清空本回合已出牌紀錄（保持同一回合號重投）', '重設本輪', 'warn', function () {
-                        triggerRevoteFromTarget('session', 0, sPk, sCode + ' - ' + sTitle, true, sReturnTab);
-                    }));
-
-                    spContextMenuEl.appendChild(createCtxMenuItem('⚙️', '前往「1-2. 設定盲投回合」完整頁面重新設定並開始', '完整設定頁', '', function () {
-                        openFullRoundSetupTabForTarget(sPk, '', 0, 'restartAll');
-                    }));
-
-                    if (sTotalRounds > 1 && sRound > 0) {
-                        spContextMenuEl.appendChild(createCtxMenuItem('🗑️', `刪除當前回合（第 ${sRound} 回合，退回上一回合）`, `刪第 ${sRound} 輪`, 'danger', function () {
-                            triggerDeleteVotingRound(sPk, sRound, `${sCode} - ${sTitle}（第 ${sRound} 回合）`, false, sReturnTab);
+                    if (sStatus !== 'finalized') {
+                        spContextMenuEl.appendChild(createCtxMenuItem('✏️', '單筆編輯此盲投議程回合設定（彈出 Modal 視窗）', 'Modal 編輯', 'primary-action', function () {
+                            openSessionSetupEditModal(sPk, '', 0, false, 'keepVotes');
                         }));
+
+                        spContextMenuEl.appendChild(createCtxMenuItem('🔄', '重新投票 — 重啟新一輪盲投（保留歷次回合，開啟下一輪）', '重啟新一輪', 'primary-action', function () {
+                            triggerRevoteFromTarget('session', 0, sPk, sCode + ' - ' + sTitle, false, sReturnTab);
+                        }));
+
+                        spContextMenuEl.appendChild(createCtxMenuItem('🆕', '重新投票 — 全部重新開始（重設回第 1 回合，並重新設定投票人與所有選項）', '全部重新開始', 'primary-action', function () {
+                            openSessionSetupEditModal(sPk, '', 0, true, 'restartAll');
+                        }));
+
+                        spContextMenuEl.appendChild(createCtxMenuItem('🔁', '重新投票 — 清空本回合已出牌紀錄（保持同一回合號重投）', '重設本輪', 'warn', function () {
+                            triggerRevoteFromTarget('session', 0, sPk, sCode + ' - ' + sTitle, true, sReturnTab);
+                        }));
+
+                        spContextMenuEl.appendChild(createCtxMenuItem('⚙️', '前往「1-2. 設定盲投回合」完整頁面重新設定並開始', '完整設定頁', '', function () {
+                            openFullRoundSetupTabForTarget(sPk, '', 0, 'restartAll');
+                        }));
+
+                        if (sTotalRounds > 1 && sRound > 0) {
+                            spContextMenuEl.appendChild(createCtxMenuItem('🗑️', `刪除當前回合（第 ${sRound} 回合，退回上一回合）`, `刪第 ${sRound} 輪`, 'danger', function () {
+                                triggerDeleteVotingRound(sPk, sRound, `${sCode} - ${sTitle}（第 ${sRound} 回合）`, false, sReturnTab);
+                            }));
+                        }
                     }
 
                     spContextMenuEl.appendChild(createCtxMenuItem('🗑️', `刪除此盲投回合／議程 (${sCode})`, '永久刪除', 'danger', function () {
@@ -13299,8 +13304,9 @@ public class portalController : Controller
                 document.getElementById('typeSubmitBtn').textContent = '💾 儲存「' + (name || code) + '」基本工項屬性與套用工項類型';
             }
             if (document.getElementById('btnTypeDeleteCurrent')) document.getElementById('btnTypeDeleteCurrent').style.display = pk ? '' : 'none';
-            if (document.getElementById('btnTypeRevoteNextRound')) document.getElementById('btnTypeRevoteNextRound').style.display = '';
-            if (document.getElementById('btnTypeRevoteRestartAll')) document.getElementById('btnTypeRevoteRestartAll').style.display = '';
+            const canRevoteType = !!(pk && (!pt || String(pt).trim() === ''));
+            if (document.getElementById('btnTypeRevoteNextRound')) document.getElementById('btnTypeRevoteNextRound').style.display = canRevoteType ? '' : 'none';
+            if (document.getElementById('btnTypeRevoteRestartAll')) document.getElementById('btnTypeRevoteRestartAll').style.display = canRevoteType ? '' : 'none';
 
             document.querySelectorAll('.quick-type-pill-btn').forEach(btn => {
                 const isMatch = String(btn.getAttribute('data-pill-type-pk')) === String(pk);
@@ -14531,17 +14537,86 @@ public class portalController : Controller
         }
         .seat-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
             gap: 14px;
-            margin-top: 16px;
+            margin-top: 14px;
         }
         .seat-card {
             background: rgba(255,255,255,0.12);
-            border: 1px solid rgba(255,255,255,0.28);
+            border: 1.5px solid rgba(255,255,255,0.28);
             border-radius: 12px;
             padding: 12px;
             text-align: center;
             backdrop-filter: blur(4px);
+            transition: all 0.25s ease;
+        }
+        .seat-card.seat-entered {
+            background: rgba(22, 163, 74, 0.28);
+            border: 2px solid #4ade80;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+        }
+        .seat-card.seat-not-entered {
+            background: rgba(15, 23, 42, 0.28);
+            border: 1.5px dashed rgba(255, 255, 255, 0.35);
+            opacity: 0.86;
+        }
+        .seat-presence-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 2px 9px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 800;
+            margin-bottom: 6px;
+        }
+        .seat-presence-pill.entered {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #4ade80;
+        }
+        .seat-presence-pill.not-entered {
+            background: rgba(15, 23, 42, 0.55);
+            color: #cbd5e1;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .presence-roster-bar {
+            margin-top: 14px;
+            background: rgba(15, 23, 42, 0.42);
+            border: 1.5px solid rgba(134, 239, 172, 0.5);
+            border-radius: 14px;
+            padding: 12px 16px;
+            display: grid;
+            grid-template-columns: 1.35fr 1fr;
+            gap: 12px;
+            align-items: start;
+        }
+        @media (max-width: 900px) { .presence-roster-bar { grid-template-columns: 1fr; } }
+        .presence-chip-entered {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: rgba(220, 252, 231, 0.95);
+            color: #14532d;
+            border: 1.5px solid #4ade80;
+            font-size: 12px;
+            font-weight: 800;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+        }
+        .presence-chip-waiting {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.12);
+            color: #e2e8f0;
+            border: 1px dashed rgba(255, 255, 255, 0.4);
+            font-size: 12px;
+            font-weight: 700;
         }
         .playing-card {
             width: 68px;
@@ -14822,6 +14897,98 @@ public class portalController : Controller
             : "";
         bool hasFinalizedPoint = activeSessionRow["finalStoryPoint"] != DBNull.Value;
 
+        var seatEmployees = restrictToParticipant && currentSessionParticipantRows.Count > 0
+            ? empTable.AsEnumerable().Where(r => Convert.ToBoolean(r["isActive"]) && currentSessionParticipantIds.Contains(Convert.ToInt32(r["employeePk"]))).ToList()
+            : empTable.AsEnumerable().Where(r => Convert.ToBoolean(r["isActive"])).ToList();
+
+        // 整合記憶體內即時活躍 Lease 與資料庫進場狀態，計算本場盲投 Session 已經有哪些人進場了
+        var activePresentLeases = sqlDataService.getActivePresentLeasesForSession(activeSessionPk)
+            .GroupBy(x => x.employeePk)
+            .ToDictionary(g => g.Key, g => g.First());
+        var participantRowByEmpPk = currentSessionParticipantRows
+            .GroupBy(r => Convert.ToInt32(r["employeePk"]))
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var enteredSeatInfos = new List<(int empPk, string empName, string deptName, bool isSelf, bool hasVoted, string enteredAtText)>();
+        var waitingSeatInfos = new List<(int empPk, string empName, string deptName)>();
+        var initialPresenceSigParts = new List<string>();
+
+        foreach (DataRow emp in seatEmployees)
+        {
+            int empPk = Convert.ToInt32(emp["employeePk"]);
+            string empName = emp["employeeName"].ToString() ?? "";
+            string deptName = emp["departmentName"].ToString() ?? "";
+            bool isSelf = empPk == currentEmployeePk;
+            bool hasVoted = currentRoundVotes.Any(v => Convert.ToInt32(v["employeePk"]) == empPk);
+
+            bool dbEntered = false;
+            string enteredTimeStr = "";
+            if (participantRowByEmpPk.TryGetValue(empPk, out DataRow? pRow) && pRow != null)
+            {
+                dbEntered = (pRow.Table.Columns.Contains("isEnteredEffective") && pRow["isEnteredEffective"] != DBNull.Value && Convert.ToBoolean(pRow["isEnteredEffective"]))
+                    || (pRow.Table.Columns.Contains("hasEnteredSession") && pRow["hasEnteredSession"] != DBNull.Value && Convert.ToBoolean(pRow["hasEnteredSession"]));
+                if (pRow.Table.Columns.Contains("enteredAt") && pRow["enteredAt"] != DBNull.Value)
+                {
+                    enteredTimeStr = Convert.ToDateTime(pRow["enteredAt"]).ToString("HH:mm");
+                }
+            }
+
+            bool hasActiveLease = activePresentLeases.TryGetValue(empPk, out var leaseObj);
+            if (hasActiveLease && leaseObj != null)
+            {
+                enteredTimeStr = leaseObj.enteredAtLocal.ToString("HH:mm");
+            }
+            else if (isSelf && string.IsNullOrEmpty(enteredTimeStr))
+            {
+                enteredTimeStr = DateTime.UtcNow.AddHours(8).ToString("HH:mm");
+            }
+
+            bool isEntered = isSelf || hasActiveLease || dbEntered || hasVoted;
+            initialPresenceSigParts.Add($"{empPk}:{(isEntered ? 1 : 0)}:{(hasVoted ? 1 : 0)}");
+
+            if (isEntered)
+            {
+                enteredSeatInfos.Add((empPk, empName, deptName, isSelf, hasVoted, enteredTimeStr));
+            }
+            else
+            {
+                waitingSeatInfos.Add((empPk, empName, deptName));
+            }
+        }
+
+        string initialPresenceSignature = string.Join(",", initialPresenceSigParts);
+
+        var enteredChipsSb = new StringBuilder();
+        if (enteredSeatInfos.Count == 0)
+        {
+            enteredChipsSb.Append("<span style='font-size:12.5px;color:#fde68a;'>尚無人進場</span>");
+        }
+        else
+        {
+            foreach (var info in enteredSeatInfos)
+            {
+                string selfTag = info.isSelf ? " (您)" : "";
+                string timeTag = !string.IsNullOrEmpty(info.enteredAtText) ? $" · {h(info.enteredAtText)} 進場" : "";
+                string voteTag = info.hasVoted
+                    ? "<span style='background:#15803d;color:#fff;padding:1px 6px;border-radius:999px;font-size:10.5px;'>🃏 已出牌</span>"
+                    : "<span style='background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:999px;font-size:10.5px;border:1px solid #f59e0b;'>💭 思考中</span>";
+                enteredChipsSb.Append($@"<span class=""presence-chip-entered"">🟢 {h(info.empName)}{selfTag} <span style=""font-weight:600;color:#166534;font-size:11px;"">({h(info.deptName)}{timeTag})</span> {voteTag}</span>");
+            }
+        }
+
+        var waitingChipsSb = new StringBuilder();
+        if (waitingSeatInfos.Count == 0)
+        {
+            waitingChipsSb.Append("<span style='display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;background:rgba(22,163,74,0.35);color:#bbf7d0;border:1px solid #4ade80;font-size:12px;font-weight:800;'>🎉 全員皆已進場到齊！</span>");
+        }
+        else
+        {
+            foreach (var w in waitingSeatInfos)
+            {
+                waitingChipsSb.Append($@"<span class=""presence-chip-waiting"">⏳ {h(w.empName)} <span style=""font-size:11px;opacity:0.85;"">({h(w.deptName)}・尚未進場)</span></span>");
+            }
+        }
+
         // 綠色撲克牌桌面區塊
         sb.Append($@"
         <div class=""poker-table-box"" data-row-kind=""standaloneSession"" title=""💡 按滑鼠右鍵開啟本場盲投 Session 快捷選單（退出 Session、暫離返回大廳、重新整理等）"">
@@ -14845,18 +15012,41 @@ public class portalController : Controller
                     {(!string.IsNullOrWhiteSpace(roundTopicGoal) ? $@"<div style=""margin-top:8px;background:rgba(254,243,199,0.18);border-left:4px solid #fbbf24;padding:6px 12px;border-radius:6px;font-size:13px;color:#fef08a;"">📢 <strong>本回合聚焦目標 (第 {currentRoundNumber} 回合)：</strong>{h(roundTopicGoal)}</div>" : "")}
                     {(hasFinalizedPoint ? $@"<div style=""margin-top:8px;background:rgba(220,252,231,0.22);border-left:4px solid #4ade80;padding:7px 12px;border-radius:6px;font-size:13.5px;color:#bbf7d0;"">🏆 <strong>已拍板定案決議（最終 Story Point：{activeSessionRow["finalStoryPoint"]} pt）：</strong>{(!string.IsNullOrWhiteSpace(savedFinalDecisionNote) ? h(savedFinalDecisionNote) : "（已完成拍板定案）")}</div>" : "")}
                 </div>
-                <div style=""text-align:right;font-size:13px;opacity:0.9;"">
-                    主持人：{h(activeSessionRow["hostEmployeeName"])}<br/>
-                    本回合已出牌：<strong>{currentRoundVotes.Count} / {expectedVoterCount}</strong> 人
+                <div style=""text-align:right;font-size:13px;"">
+                    <div style=""opacity:0.92;margin-bottom:6px;"">主持人：<strong>{h(activeSessionRow["hostEmployeeName"])}</strong></div>
+                    <div style=""display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;"">
+                        <span style=""background:rgba(22,163,74,0.45);border:1.5px solid #4ade80;padding:4px 11px;border-radius:999px;font-weight:800;color:#dcfce7;"">
+                            🟢 已進場：<strong id=""headerEnteredCountVal"">{enteredSeatInfos.Count} / {expectedVoterCount}</strong> 人
+                        </span>
+                        <span style=""background:rgba(15,23,42,0.45);border:1.5px solid #fbbf24;padding:4px 11px;border-radius:999px;font-weight:800;color:#fef08a;"">
+                            🃏 本回合已出牌：<strong id=""headerVoteCountVal"">{currentRoundVotes.Count} / {expectedVoterCount}</strong> 人
+                        </span>
+                    </div>
                     {(roundTimeLimitSecond > 0 && status == "voting" ? $@"<div id=""roundCountdownBox"" data-limit=""{roundTimeLimitSecond}"" style=""margin-top:6px;background:#991b1b;color:#fef08a;padding:4px 10px;border-radius:8px;font-weight:800;font-size:13px;display:inline-block;"">⏳ 倒數計時：{roundTimeLimitSecond} 秒</div>" : "")}
                 </div>
             </div>
 
-            <div class=""seat-grid"">");
+            <!-- 即時進場人員名單看板（呈現已經有哪些人進場了 vs 尚未進場人員） -->
+            <div class=""presence-roster-bar"" id=""standalonePresenceBar"">
+                <div>
+                    <div style=""font-size:12.5px;font-weight:800;color:#86efac;margin-bottom:6px;display:flex;align-items:center;gap:6px;"">
+                        <span>🟢 已經進場人員（<span id=""presenceBarEnteredCount"">{enteredSeatInfos.Count}</span> / {expectedVoterCount} 人）：</span>
+                    </div>
+                    <div id=""enteredRosterList"" style=""display:flex;flex-wrap:wrap;gap:6px;"">
+                        {enteredChipsSb}
+                    </div>
+                </div>
+                <div style=""border-left:1px dashed rgba(255,255,255,0.28);padding-left:12px;"">
+                    <div style=""font-size:12.5px;font-weight:800;color:#cbd5e1;margin-bottom:6px;display:flex;align-items:center;gap:6px;"">
+                        <span>⏳ 尚未進場人員（<span id=""presenceBarNotEnteredCount"">{waitingSeatInfos.Count}</span> 人）：</span>
+                    </div>
+                    <div id=""notEnteredRosterList"" style=""display:flex;flex-wrap:wrap;gap:6px;"">
+                        {waitingChipsSb}
+                    </div>
+                </div>
+            </div>
 
-        var seatEmployees = restrictToParticipant && currentSessionParticipantRows.Count > 0
-            ? empTable.AsEnumerable().Where(r => Convert.ToBoolean(r["isActive"]) && currentSessionParticipantIds.Contains(Convert.ToInt32(r["employeePk"]))).ToList()
-            : empTable.AsEnumerable().Where(r => Convert.ToBoolean(r["isActive"])).ToList();
+            <div class=""seat-grid"">");
 
         foreach (DataRow emp in seatEmployees)
         {
@@ -14865,6 +15055,10 @@ public class portalController : Controller
             string deptName = emp["departmentName"].ToString() ?? "";
             var vote = currentRoundVotes.FirstOrDefault(v => Convert.ToInt32(v["employeePk"]) == empPk);
             bool isSelf = empPk == currentEmployeePk;
+            var enteredInfo = enteredSeatInfos.FirstOrDefault(x => x.empPk == empPk);
+            bool isEntered = enteredInfo.empPk == empPk;
+            string enteredAtText = isEntered ? enteredInfo.enteredAtText : "";
+
             string voteCleanCard = "";
             if (vote != null)
             {
@@ -14874,28 +15068,46 @@ public class portalController : Controller
                 else voteCleanCard = rawDisp.Replace(" pt", "").Trim();
             }
 
-            sb.Append($@"<div class=""seat-card"" style=""{(isSelf ? "border:2px solid #fbbf24;background:rgba(251,191,36,0.18);" : "")}"">
-                <div style=""font-size:13px;font-weight:700;"">{h(empName)} {(isSelf ? "<span style='color:#fde047;'>(您)</span>" : "")}</div>
-                <div style=""font-size:11px;opacity:0.8;"">{h(deptName)}</div>");
+            string seatStateClass = isEntered ? "seat-entered" : "seat-not-entered";
+            string selfStyle = isSelf ? "border:2.5px solid #fbbf24;background:rgba(251,191,36,0.22);" : "";
+            string presenceBadgeClass = isEntered ? "seat-presence-pill entered" : "seat-presence-pill not-entered";
+            string presenceBadgeText = isEntered
+                ? $"🟢 已進場{(!string.IsNullOrEmpty(enteredAtText) ? $" ({h(enteredAtText)})" : "")}"
+                : "⏳ 尚未進場";
+
+            sb.Append($@"<div class=""seat-card {seatStateClass}"" id=""seatCard_{empPk}"" data-emp-pk=""{empPk}"" data-is-self=""{(isSelf ? "1" : "0")}"" style=""{selfStyle}"">
+                <div>
+                    <span id=""seatPresenceBadge_{empPk}"" class=""{presenceBadgeClass}"">{presenceBadgeText}</span>
+                </div>
+                <div style=""font-size:13.5px;font-weight:800;"">{h(empName)} {(isSelf ? "<span style='color:#fde047;'>(您)</span>" : "")}</div>
+                <div style=""font-size:11px;opacity:0.85;"">{h(deptName)}</div>");
 
             if (vote == null)
             {
-                sb.Append(@"<div class=""playing-card playing-card-empty"">思考中...</div>
-                            <div style=""font-size:11.5px;color:#cbd5e1;"">尚未出牌</div>");
+                if (isEntered)
+                {
+                    sb.Append($@"<div id=""seatCardBox_{empPk}"" class=""playing-card playing-card-empty"" style=""border-color:#86efac;color:#dcfce7;background:rgba(22,163,74,0.18);"">💭 思考中...</div>
+                                <div id=""seatVoteStatus_{empPk}"" style=""font-size:11.5px;color:#bbf7d0;font-weight:700;"">🟢 已進場・尚未出牌</div>");
+                }
+                else
+                {
+                    sb.Append($@"<div id=""seatCardBox_{empPk}"" class=""playing-card playing-card-empty"">🚪 待進場</div>
+                                <div id=""seatVoteStatus_{empPk}"" style=""font-size:11.5px;color:#cbd5e1;"">⏳ 尚未進場・未出牌</div>");
+                }
             }
             else if (status == "voting")
             {
-                sb.Append($@"<div class=""playing-card playing-card-hidden"">🃏</div>
-                            <div style=""font-size:12px;color:#fde047;font-weight:700;"">✅ 已蓋牌{(isSelf ? $" ({h(voteCleanCard)})" : " (盲投保密)")}</div>");
+                sb.Append($@"<div id=""seatCardBox_{empPk}"" class=""playing-card playing-card-hidden"">🃏</div>
+                            <div id=""seatVoteStatus_{empPk}"" style=""font-size:12px;color:#fde047;font-weight:700;"">✅ 已蓋牌{(isSelf ? $" ({h(voteCleanCard)})" : " (盲投保密)")}</div>");
             }
             else
             {
                 string cardMeaningSeat = getPokerCardMeaning(voteCleanCard).shortMeaning;
-                sb.Append($@"<div class=""playing-card playing-card-revealed"" title=""{h(cardMeaningSeat)}"">
+                sb.Append($@"<div id=""seatCardBox_{empPk}"" class=""playing-card playing-card-revealed"" title=""{h(cardMeaningSeat)}"">
                                 <div>{h(voteCleanCard)}</div>
                                 <div style=""font-size:10px;font-weight:700;color:#475569;margin-top:3px;line-height:1.15;padding:0 2px;"">{h(cardMeaningSeat)}</div>
                             </div>
-                            <div style=""font-size:11.5px;color:#fef08a;"">{h(vote["voteComment"])}</div>");
+                            <div id=""seatVoteStatus_{empPk}"" style=""font-size:11.5px;color:#fef08a;"">{h(vote["voteComment"])}</div>");
             }
 
             sb.Append("</div>");
@@ -15064,7 +15276,26 @@ public class portalController : Controller
                     </label>");
             }
 
-            sb.Append($@"
+            if (status == "finalized")
+            {
+                sb.Append($@"
+            <div class=""card"" style=""border-color:#86efac;background:#f0fdf4;"">
+                <div class=""card-title"">
+                    <span>🏆 議程已完成拍板定案（Story Point 已決定，本投票議程已結束）</span>
+                    <span class=""badge badge-finalized"">已定案結案</span>
+                </div>
+                <div style=""background:#dcfce7;border:1px solid #86efac;color:#166534;padding:12px 14px;border-radius:8px;margin-bottom:10px;font-size:13.5px;font-weight:700;"">
+                    ✅ 最終核定 Story Point：<strong>{activeSessionRow["finalStoryPoint"]} pt</strong> ｜ 定案決議說明：<strong>{(!string.IsNullOrWhiteSpace(savedFinalDecisionNote) ? h(savedFinalDecisionNote) : "（未填寫決議說明）")}</strong>
+                </div>
+                <div style=""display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;"">
+                    <span style=""font-size:12.5px;color:#15803d;"">💡 此估算標的已拍板決定 Story Point 並寫入基本工項／一般工項與歷史紀錄，無須再次投票。</span>
+                    <a href=""/?tab=types"" class=""btn btn-primary"" style=""text-decoration:none;padding:7px 14px;font-size:12.5px;"">🏷️ 前往 3-2. 基本工項管理檢視</a>
+                </div>
+            </div>");
+            }
+            else
+            {
+                sb.Append($@"
             <div class=""card"">
                 <div class=""card-title"">
                     <span>🎛️ 議程主持人控制台（翻牌揭曉 / 重啟新一輪 / 全部重新開始 / 拍板定案）</span>
@@ -15252,6 +15483,7 @@ public class portalController : Controller
                     </form>
                 </details>
             </div>");
+            }
         }
         else
         {
@@ -15370,10 +15602,12 @@ public class portalController : Controller
     <script>
         const currentEmployeePk = " + currentEmployeePk + @";
         const currentVotingSessionPk = " + activeSessionPk + @";
+        const expectedVoterCount = " + expectedVoterCount + @";
         const assignedTabInstanceId = '" + h(assignedTabInstanceId) + @"';
         let currentSessionStatus = '" + h(status) + @"';
         let currentRoundNumber = " + currentRoundNumber + @";
         let currentRoundVoteCount = " + currentRoundVotes.Count + @";
+        let currentPresenceSignature = '" + h(initialPresenceSignature) + @"';
         let myActiveOpenSessionPks = [" + string.Join(",", myActiveLockedPks) + @"];
         let isAutoReloading = false;
         window.__isInternalSessionNavigation = false;
@@ -15982,7 +16216,116 @@ public class portalController : Controller
             triggerStandaloneAutoReload('🔄 已重新整理本盲投 Session 最新桌面狀態！');
         }
 
-        // 7. 每 2 秒向後端發送心跳續約並檢查本 Session 是否有新出牌或自動翻牌
+        function escapeHtmlClient(s) {
+            return String(s || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/""/g, '&quot;');
+        }
+
+        // 即時更新綠色撲克牌桌上的「已經進場人員 / 尚未進場人員」名單橫幅與各座位進場狀態
+        function updateStandalonePresenceDom(data) {
+            if (!data || !Array.isArray(data.participants)) return;
+            const parts = data.participants;
+            const enteredList = [];
+            const waitingList = [];
+
+            parts.forEach(function (p) {
+                const empPk = Number(p.employeePk);
+                const isSelf = empPk === Number(currentEmployeePk);
+                const isEntered = Boolean(p.isEntered) || isSelf;
+                const hasVoted = Boolean(p.hasVoted);
+                const enteredAtText = p.enteredAtText ? String(p.enteredAtText) : '';
+                if (isEntered) {
+                    enteredList.push({ empPk: empPk, name: p.employeeName, dept: p.departmentName, isSelf: isSelf, hasVoted: hasVoted, enteredAtText: enteredAtText });
+                } else {
+                    waitingList.push({ empPk: empPk, name: p.employeeName, dept: p.departmentName });
+                }
+
+                // 同步更新座位卡片上的進場徽章與未出牌時的狀態提示
+                const seatCard = document.getElementById('seatCard_' + empPk);
+                const seatBadge = document.getElementById('seatPresenceBadge_' + empPk);
+                const seatBox = document.getElementById('seatCardBox_' + empPk);
+                const seatVoteStatus = document.getElementById('seatVoteStatus_' + empPk);
+
+                if (seatCard) {
+                    seatCard.classList.toggle('seat-entered', isEntered);
+                    seatCard.classList.toggle('seat-not-entered', !isEntered);
+                }
+                if (seatBadge) {
+                    seatBadge.className = isEntered ? 'seat-presence-pill entered' : 'seat-presence-pill not-entered';
+                    seatBadge.textContent = isEntered
+                        ? ('🟢 已進場' + (enteredAtText ? ' (' + enteredAtText + ')' : ''))
+                        : '⏳ 尚未進場';
+                }
+                if (!hasVoted && currentSessionStatus === 'voting') {
+                    if (seatBox && seatBox.classList.contains('playing-card-empty')) {
+                        if (isEntered) {
+                            seatBox.textContent = '💭 思考中...';
+                            seatBox.style.borderColor = '#86efac';
+                            seatBox.style.color = '#dcfce7';
+                            seatBox.style.background = 'rgba(22,163,74,0.18)';
+                        } else {
+                            seatBox.textContent = '🚪 待進場';
+                            seatBox.style.borderColor = '';
+                            seatBox.style.color = '';
+                            seatBox.style.background = '';
+                        }
+                    }
+                    if (seatVoteStatus) {
+                        seatVoteStatus.textContent = isEntered ? '🟢 已進場・尚未出牌' : '⏳ 尚未進場・未出牌';
+                        seatVoteStatus.style.color = isEntered ? '#bbf7d0' : '#cbd5e1';
+                        seatVoteStatus.style.fontWeight = isEntered ? '700' : '400';
+                    }
+                }
+            });
+
+            const totalVoterCnt = Number(data.participantCount || expectedVoterCount || parts.length);
+            const headerEnteredEl = document.getElementById('headerEnteredCountVal');
+            if (headerEnteredEl) {
+                headerEnteredEl.textContent = enteredList.length + ' / ' + totalVoterCnt;
+            }
+            const barEnteredCntEl = document.getElementById('presenceBarEnteredCount');
+            if (barEnteredCntEl) {
+                barEnteredCntEl.textContent = String(enteredList.length);
+            }
+            const barWaitingCntEl = document.getElementById('presenceBarNotEnteredCount');
+            if (barWaitingCntEl) {
+                barWaitingCntEl.textContent = String(waitingList.length);
+            }
+
+            const enteredRosterEl = document.getElementById('enteredRosterList');
+            if (enteredRosterEl) {
+                if (enteredList.length === 0) {
+                    enteredRosterEl.innerHTML = '<span style=""font-size:12.5px;color:#fde68a;"">尚無人進場</span>';
+                } else {
+                    enteredRosterEl.innerHTML = enteredList.map(function (info) {
+                        const selfTag = info.isSelf ? ' (您)' : '';
+                        const timeTag = info.enteredAtText ? (' · ' + escapeHtmlClient(info.enteredAtText) + ' 進場') : '';
+                        const voteTag = info.hasVoted
+                            ? '<span style=""background:#15803d;color:#fff;padding:1px 6px;border-radius:999px;font-size:10.5px;"">🃏 已出牌</span>'
+                            : '<span style=""background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:999px;font-size:10.5px;border:1px solid #f59e0b;"">💭 思考中</span>';
+                        return '<span class=""presence-chip-entered"">🟢 ' + escapeHtmlClient(info.name) + selfTag +
+                            ' <span style=""font-weight:600;color:#166534;font-size:11px;"">(' + escapeHtmlClient(info.dept) + timeTag + ')</span> ' + voteTag + '</span>';
+                    }).join('');
+                }
+            }
+
+            const waitingRosterEl = document.getElementById('notEnteredRosterList');
+            if (waitingRosterEl) {
+                if (waitingList.length === 0) {
+                    waitingRosterEl.innerHTML = '<span style=""display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;background:rgba(22,163,74,0.35);color:#bbf7d0;border:1px solid #4ade80;font-size:12px;font-weight:800;"">🎉 全員皆已進場到齊！</span>';
+                } else {
+                    waitingRosterEl.innerHTML = waitingList.map(function (w) {
+                        return '<span class=""presence-chip-waiting"">⏳ ' + escapeHtmlClient(w.name) +
+                            ' <span style=""font-size:11px;opacity:0.85;"">(' + escapeHtmlClient(w.dept) + '・尚未進場)</span></span>';
+                    }).join('');
+                }
+            }
+        }
+
+        // 7. 每 2 秒向後端發送心跳續約並檢查本 Session 是否有新進場人員、新出牌或自動翻牌
         function pollStandaloneSessionStatus() {
             if (isAutoReloading) return;
             writeLocalSessionPresenceLock();
@@ -15995,6 +16338,12 @@ public class portalController : Controller
                     if (!data || !data.found) return;
                     if (Array.isArray(data.myActiveOpenSessionPks)) {
                         myActiveOpenSessionPks = data.myActiveOpenSessionPks.map(Number);
+                    }
+                    if (Array.isArray(data.participants)) {
+                        updateStandalonePresenceDom(data);
+                    }
+                    if (data.presenceSignature) {
+                        currentPresenceSignature = String(data.presenceSignature);
                     }
                     const statusChanged = data.sessionStatus && data.sessionStatus !== currentSessionStatus;
                     const roundChanged = Number(data.currentRoundNumber) !== Number(currentRoundNumber);
@@ -16022,6 +16371,15 @@ public class portalController : Controller
                 if (Number(payload.votingSessionPk) !== Number(currentVotingSessionPk)) {
                     return;
                 }
+                if (payload.eventName === 'participantEntered' || payload.eventName === 'participantLeft') {
+                    const banner = document.getElementById('liveSignalRBanner');
+                    if (banner && payload.messageText) {
+                        banner.style.display = 'block';
+                        banner.innerHTML = '⚡ <strong>即時進場狀態更新 (' + (payload.timestamp || '') + ')：</strong>' + escapeHtmlClient(payload.messageText);
+                    }
+                    pollStandaloneSessionStatus();
+                    return;
+                }
                 const isMajorFlipEvent = payload.isAutoRevealed === true
                     || payload.eventName === 'autoRevealed'
                     || payload.eventName === 'reveal'
@@ -16040,6 +16398,8 @@ public class portalController : Controller
                     setTimeout(function () {
                         triggerStandaloneAutoReload('');
                     }, 300);
+                } else {
+                    pollStandaloneSessionStatus();
                 }
             });
 

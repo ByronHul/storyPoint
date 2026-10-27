@@ -619,6 +619,26 @@
             * 右欄為「**該一般工項要參照的基本工項 (如：資料庫健檢｜決定所屬類型與基準點數)** (`#setupItemRefTypePk`, `name='referencedWorkItemTypePk'`)」；選擇既有一般工項時自動帶出其參照的基本工項，選擇新增一般工項時由使用者設定要參照的基本工項，並於下方橫幅 (`#setupItemRefNormBanner`) 即時顯示所參照基本工項的標準點數、所屬工項類型、基本規範與一般 SP 範圍，同步帶入本回合允許點數上下限。
         * 後端 `POST /voting/create` (`portalController.cs`) 與 `storyPoint.spCreateVotingSession` (`sql/storedProcedure.sql`) 完整接收並保存 `@refBasicTypePk`（所參照的基本工項 PK），在建立新一般工項 (`storyPoint.tbWorkItem`) 時自動寫入 `workItemTypePk = @refBasicTypePk`、承接該基本工項之 `workItemKind` 與 `defaultTypePoint` / `storyPoint`，並於 `storyPoint.vwVotingSessionSummary` 與 `storyPoint.spGetVotingProcessHistory` 輸出 `referencedWorkItemTypePk`、`referencedWorkItemTypeCode`、`referencedWorkItemTypeName`。
 
+### 2.32 即時呈現已經有哪些人進場了（盲投 Session 進場人員名單、座位進場狀態與大廳即時進場同步）
+* **核心需求**：在多人盲投 Session 進行過程中，系統必須清楚且即時呈現**已經有哪些人進場了（已進場人數、已進場人員名單、進場時間）**以及**尚未進場人員名單**，讓主持人與參與者能明確區分「已進場思考中」與「尚未進場」。
+* **資料庫與後端雙軌即時追蹤**：
+    1. **T-SQL 資料表與預存程序擴充 (`sql/schemaAndTable.sql`、`sql/viewAndFunction.sql`、`sql/storedProcedure.sql`)**：
+        * `storyPoint.tbVotingSessionParticipant` 新增 `hasEnteredSession` (`bit`)、`enteredAt` (`datetime2(3)`) 與 `lastHeartbeatAt` (`datetime2(3)`) 欄位（並具備無損升級保留機制）。
+        * 新增預存程序 `storyPoint.spUpdateVotingParticipantPresence`，在參與者進入獨立盲投網頁 (`/voting/session`)、出牌 (`/voting/cast`)、暫離 (`/voting/session/leave`) 或登出 (`/logout`) 時同步更新進場狀態。
+        * `storyPoint.vwVotingSessionSummary` 與 `storyPoint.spGetVotingProcessHistory` 輸出 `enteredParticipantCount`（已進場人數）、`enteredParticipantNameCsv`（已進場人員名單）、`notEnteredParticipantNameCsv`（尚未進場人員名單）及每位參與者的 `hasEnteredSession` / `isEnteredEffective` / `enteredAt`。
+    2. **記憶體內即時 Lease 整合 (`web/storyPointPortal/service/sqlDataService.cs`)**：
+        * `sqlDataService.votingSessionPresenceLease` 記錄參與者進入獨立盲投網頁的即時租約與進場時間 (`enteredAtLocal`)，並提供 `getActivePresentLeasesForSession` 與 `getAllActiveSessionLeasesBySessionPk` 供 Web 端點與 `/voting/liveStatus` 即時查詢。
+* **前端介面呈現規範**：
+    1. **獨立盲投 Session 網頁 (`/voting/session`) 綠色撲克牌桌**：
+        * **右上角即時統計徽章**：並排呈現「`🟢 已進場：X / Y 人`」與「`🃏 本回合已出牌：A / Y 人`」。
+        * **即時進場人員名單看板 (`#standalonePresenceBar`)**：於撲克牌桌上方醒目列出「**🟢 已經進場人員 (X / Y 人)**」（顯示姓名、`(您)`、部門、進場時間 `HH:mm` 以及 `🃏 已出牌` / `💭 思考中` 狀態標籤）與「**⏳ 尚未進場人員 (Z 人)**」（當全員皆已進場時顯示 `🎉 全員皆已進場到齊！`）。
+        * **個人座位卡片 (`.seat-card`)**：每個座位頂部顯示「`🟢 已進場 (HH:mm)`」（綠底鮮明外框）或「`⏳ 尚未進場`」（虛線半透明外框）；尚未出牌時，已進場者顯示「`💭 思考中...` / `🟢 已進場・尚未出牌`」，未進場者顯示「`🚪 待進場` / `⏳ 尚未進場・未出牌`」。
+        * **SignalR 與每 2 秒 `/voting/liveStatus` 無縫即時更新**：當其他受邀同仁進入或暫離該盲投 Session 時，透過 SignalR (`participantEntered` / `participantLeft`) 與 `/voting/liveStatus` 即時動態更新牌桌上的已進場人數、已進場人員名單與座位卡片狀態（即使使用者正在輸入出牌理由亦即時更新 DOM 不中斷輸入）。
+    2. **即時盲投大廳 (`/?tab=voting`) 與設定盲投回合 (`/?tab=roundSetup`)**：
+        * 左側投票議程邊欄、「待參與 / 參與中」大廳卡片及回合設定總覽表皆同步顯示「`🟢 已進場：X / Y 人（已進場名單）｜⏳ 未進場：...`」，並隨每 2 秒輪詢即時更新。
+    3. **PowerShell 模組 (`ps/manageVotingSession.ps1`)**：
+        * 支援 `-actionType 'updatePresence'` 呼叫 `storyPoint.spUpdateVotingParticipantPresence` 更新及查詢進場人員名單。
+
 ---
 
 ## 3. 系統架構與技術開發規範

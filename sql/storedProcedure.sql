@@ -2022,6 +2022,29 @@ begin
                 where kindName = cast(@resolvedKind as nvarchar(128));
             end
 
+            -- 若為發起新盲投議程 (@sessionPk <= 0)，且傳入之 @workItemTypePk 已拍板定案，或使用者輸入之新基本工項名稱 (@autoTypeName) 與該筆紀錄名稱不同，
+            -- 則不可覆寫既有已定案之基本工項，應自動轉為依 @autoTypeName 建立或對應未定案之基本工項
+            if isnull(@sessionPk, 0) <= 0 and isnull(@workItemTypePk, 0) > 0
+            begin
+                if exists (
+                    select 1
+                    from storyPoint.tbWorkItemType as wit
+                    where wit.pk = @workItemTypePk
+                      and (
+                          wit.estimationStatus = 'finalized'
+                          or wit.standardStoryPoint is not null
+                          or (
+                              @autoTypeName <> N''
+                              and wit.typeName <> @autoTypeName
+                              and wit.typeCode <> @autoTypeName
+                          )
+                      )
+                )
+                begin
+                    set @workItemTypePk = null;
+                end
+            end
+
             if isnull(@workItemTypePk, 0) > 0 and exists (select 1 from storyPoint.tbWorkItemType where pk = @workItemTypePk)
             begin
                 if @resolvedKind is not null
@@ -2041,11 +2064,13 @@ begin
                     select top 1 @workItemTypePk = wit.pk
                     from storyPoint.tbWorkItemType as wit
                     where wit.isActive = 1
+                      and wit.estimationStatus <> 'finalized'
+                      and wit.standardStoryPoint is null
                       and (
                           wit.typeName = @autoTypeName
                           or wit.typeCode = @autoTypeName
                       )
-                    order by case when @resolvedKind is not null and wit.defaultWorkItemKind = @resolvedKind then 0 else 1 end asc, wit.pk asc;
+                    order by case when @resolvedKind is not null and wit.defaultWorkItemKind = @resolvedKind then 0 else 1 end asc, wit.pk desc;
                 end
 
                 if @workItemTypePk is not null and @resolvedKind is not null
@@ -2056,8 +2081,13 @@ begin
                     where pk = @workItemTypePk;
                 end
 
-                if @workItemTypePk is null and @autoTypeName <> N'' and not exists (select 1 from storyPoint.tbWorkItemKind where kindName = @autoTypeName or kindCode = @autoTypeName)
+                if @workItemTypePk is null
                 begin
+                    declare @effectiveNewTypeName nvarchar(128) = case
+                        when @autoTypeName <> N'' and not exists (select 1 from storyPoint.tbWorkItemKind where kindName = @autoTypeName or kindCode = @autoTypeName)
+                        then @autoTypeName
+                        else concat(N'新基本工項-', format(sysdatetime(), 'yyyyMMdd-HHmmss'))
+                    end;
                     declare @effectiveNewKind varchar(64) = isnull(@resolvedKind, 'project');
                     declare @effectiveNewKindName nvarchar(128) = N'專案';
                     select top 1 @effectiveNewKindName = kindName
@@ -2076,10 +2106,10 @@ begin
                     )
                     values (
                         @autoTypeCode,
-                        left(@autoTypeName, 128),
+                        left(@effectiveNewTypeName, 128),
                         isnull(@effectiveNewKindName, N'專案'),
                         @effectiveNewKind,
-                        isnull(nullif(ltrim(rtrim(@roundGoalNote)), N''), concat(N'由盲投回合設定建立之基本工項（參照類型：', isnull(@effectiveNewKindName, N'專案'), N'）：', left(@autoTypeName, 128))),
+                        isnull(nullif(ltrim(rtrim(@roundGoalNote)), N''), concat(N'由盲投回合設定建立之基本工項（參照類型：', isnull(@effectiveNewKindName, N'專案'), N'）：', left(@effectiveNewTypeName, 128))),
                         null,
                         @cardDeckPk,
                         'voting',
@@ -2088,17 +2118,6 @@ begin
                         sysdatetime()
                     );
                     set @workItemTypePk = scope_identity();
-                end
-
-                if @workItemTypePk is null
-                begin
-                    select top 1 @workItemTypePk = wit.pk
-                    from storyPoint.tbWorkItemType as wit
-                    where wit.isActive = 1
-                    order by
-                        case when @resolvedKind is not null and wit.defaultWorkItemKind = @resolvedKind then 0 else 1 end asc,
-                        case when wit.typeName = N'資料庫健檢' then 0 else 1 end asc,
-                        wit.pk asc;
                 end
             end
 
@@ -2256,7 +2275,7 @@ begin
             where pk = @workItemPk;
         end
 
-        -- 若執行重新投票（全部重新開始 / 重啟新一輪 / 重設當前回合）但未顯式傳入 @sessionPk，自動反查該標的之最新既有議程
+        -- 若執行重新投票（全部重新開始 / 重啟新一輪 / 重設當前回合）但未顯式傳入 @sessionPk，僅反查該標的「尚未拍板定案 (sessionStatus <> 'finalized')」之最新進行中議程；已定案議程代表已結束，不可再重開
         if isnull(@sessionPk, 0) <= 0 and (isnull(@restartAllRounds, 0) = 1 or isnull(@openNextRound, 0) = 1 or isnull(@resetCurrentRoundVotes, 0) = 1)
         begin
             if @targetKind = 'workItemType' and isnull(@workItemTypePk, 0) > 0
@@ -2265,6 +2284,7 @@ begin
                 from storyPoint.tbVotingSession as vs
                 where vs.targetKind = 'workItemType'
                   and vs.workItemTypePk = @workItemTypePk
+                  and vs.sessionStatus <> 'finalized'
                 order by vs.pk desc;
             end
             else if @targetKind = 'workItem' and isnull(@workItemPk, 0) > 0
@@ -2273,6 +2293,7 @@ begin
                 from storyPoint.tbVotingSession as vs
                 where vs.targetKind = 'workItem'
                   and vs.workItemPk = @workItemPk
+                  and vs.sessionStatus <> 'finalized'
                 order by vs.pk desc;
             end
         end

@@ -264,6 +264,36 @@ public class sqlDataService
     }
 
     /// <summary>
+    /// 當指定盲投議程 (votingSessionPk) 已拍板定案或刪除時，立即釋放該議程名下所有參與者之佔用鎖定
+    /// </summary>
+    public static int releaseAllLeasesForSession(int votingSessionPk)
+    {
+        if (votingSessionPk <= 0)
+        {
+            return 0;
+        }
+
+        string suffix = $"_{votingSessionPk}";
+        int releasedCount = 0;
+
+        lock (_leaseSyncLock)
+        {
+            foreach (var kv in _activeVotingSessionLeases.ToArray())
+            {
+                if (kv.Key.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) || kv.Value.votingSessionPk == votingSessionPk)
+                {
+                    if (_activeVotingSessionLeases.TryRemove(kv.Key, out _))
+                    {
+                        releasedCount++;
+                    }
+                }
+            }
+        }
+
+        return releasedCount;
+    }
+
+    /// <summary>
     /// 取得指定盲投議程 (votingSessionPk) 目前所有已進場且活躍中之員工清單
     /// </summary>
     public static List<votingSessionPresenceLease> getActivePresentLeasesForSession(int votingSessionPk)
